@@ -1,0 +1,40 @@
+{
+  "name": "contextkit",
+  "version": "0.1.0",
+  "description": "Self-healing, token-efficient context engineering framework for AI coding harnesses",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "ctx": "dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "ctx": "tsx src/cli.ts"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "better-sqlite3",
+      "esbuild",
+      "tree-sitter",
+      "tree-sitter-javascript",
+      "tree-sitter-typescript"
+    ]
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.5.0",
+    "commander": "^12.1.0",
+    "web-tree-sitter": "^0.26.11"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}
