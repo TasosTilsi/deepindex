@@ -28,7 +28,8 @@ const SUPPORTED_EXTS = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs']);
 
 export async function buildGraph(
   db: Database.Database,
-  repoPath: string
+  repoPath: string,
+  opts: { force?: boolean } = {}
 ): Promise<BuildStats> {
   const start = Date.now();
   const absRoot = resolve(repoPath);
@@ -76,7 +77,7 @@ export async function buildGraph(
       .prepare('SELECT hash FROM files WHERE path = ?')
       .get(relPath) as { hash: string } | undefined;
 
-    if (existing && existing.hash === hash) {
+    if (existing && existing.hash === hash && !opts.force) {
       skippedCount++;
       continue;
     }

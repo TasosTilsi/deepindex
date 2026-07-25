@@ -8,9 +8,14 @@ export interface BuildStats {
   elapsedMs: number;
 }
 
+export interface BuildOptions {
+  force?: boolean;
+}
+
 export async function buildGraph(
   db: Database.Database,
-  repoPath: string
+  repoPath: string,
+  opts: BuildOptions = {}
 ): Promise<BuildStats> {
-  return buildGraphImpl(db, repoPath);
+  return buildGraphImpl(db, repoPath, { force: opts.force === true });
 }

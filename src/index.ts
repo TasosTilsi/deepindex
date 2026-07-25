@@ -22,6 +22,20 @@ export {
   REPAIR_CACHE_PREFIX,
 } from './repair.js';
 export { parseVitestJson, parseEslintJson, parseCoverageJson } from './reflect.js';
+export {
+  createWatcher,
+  type WatcherOptions,
+  type WatcherHandle,
+} from './watcher.js';
+export { serve, type ServeOptions, type ServeHandle } from './serve.js';
+export {
+  adaptClaudeCode,
+  type AdapterResult,
+  type AdaptOptions,
+  type AdapterSymbol,
+  type AdapterTopFile,
+  type AdapterNeighborhood,
+} from './adapter-claude-code.js';
 export type {
   Fingerprint,
   CacheStats,
