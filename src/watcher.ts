@@ -4,8 +4,8 @@
 
 import chokidar from 'chokidar';
 import Database from 'better-sqlite3';
-import { existsSync } from 'node:fs';
-import { resolve, relative } from 'node:path';
+import { existsSync, mkdirSync } from 'node:fs';
+import { resolve, relative, dirname } from 'node:path';
 import { cacheDelete } from './cache.js';
 import { sha256 } from './fingerprint.js';
 
@@ -31,8 +31,15 @@ export function createWatcher(opts: WatcherOptions): WatcherHandle {
     resolve(r)
   );
 
-  // Validate db path up-front. Open a single read-only handle for the
-  // lifetime of the watcher; close it on close().
+  // Validate db path up-front. Touch the parent dir + ensure the file
+  // exists (read-only open needs the file to be present). Open a single
+  // read-only handle for the lifetime of the watcher; close it on close().
+  mkdirSync(dirname(opts.dbPath), { recursive: true });
+  if (!existsSync(opts.dbPath)) {
+    // Create via a writeable handle in a separate scope, then close.
+    const w = new Database(opts.dbPath);
+    w.close();
+  }
   const db = new Database(opts.dbPath, { readonly: true });
 
   const ignored =
@@ -60,9 +67,14 @@ export function createWatcher(opts: WatcherOptions): WatcherHandle {
         const key = 'summary:' + sha256(absPath);
         try {
           cacheDelete(db, key);
-        } catch {
-          // best-effort; log but don't crash
-          console.error(`watcher: cacheDelete failed for ${rel}`);
+        } catch (err) {
+          // The cache table may not exist yet (e.g. watcher created before
+          // `ctx build` ran, or in tests). Treat "no such table" as a quiet
+          // no-op so stderr stays clean; surface other errors.
+          const msg = err instanceof Error ? err.message : String(err);
+          if (!/no such table/i.test(msg)) {
+            console.error(`watcher: cacheDelete failed for ${rel}: ${msg}`);
+          }
         }
         console.log(`invalidated: ${rel}`);
         if (opts.onInvalidate) opts.onInvalidate(rel);
