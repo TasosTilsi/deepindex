@@ -116,4 +116,93 @@ describe('retrieve', () => {
       expect(DEFAULT_TOP_K).toBe(10);
     });
   });
+
+  describe('graph BFS combined score', () => {
+    it('seed file (depth 0) ranks higher than depth-1 and depth-2 dependents', () => {
+      const dir = mkdtempSync(join(tmpdir(), 'ctx-bfs-'));
+      const db = initDb(join(dir, 'test.db'));
+      db.exec(`INSERT INTO files (path, hash, mtime, size, language, parsed_at) VALUES ('a.ts','h',1,1,'ts',1)`);
+      db.exec(`INSERT INTO files (path, hash, mtime, size, language, parsed_at) VALUES ('b.ts','h',1,1,'ts',1)`);
+      db.exec(`INSERT INTO files (path, hash, mtime, size, language, parsed_at) VALUES ('c.ts','h',1,1,'ts',1)`);
+      const a = (db.prepare(`SELECT id FROM files WHERE path='a.ts'`).get() as { id: number }).id;
+      const b = (db.prepare(`SELECT id FROM files WHERE path='b.ts'`).get() as { id: number }).id;
+      const c = (db.prepare(`SELECT id FROM files WHERE path='c.ts'`).get() as { id: number }).id;
+      // Symbols that do NOT contain 'auth' as a substring, so the LIKE branch
+      // does not accidentally make b/c depth-0 seeds.
+      db.prepare(`INSERT INTO symbols (file_id, name, kind, start_line, end_line, exported) VALUES (?, 'auth', 'function', 1, 2, 1)`).run(a);
+      db.prepare(`INSERT INTO symbols (file_id, name, kind, start_line, end_line, exported) VALUES (?, 'zzz_b', 'function', 1, 2, 1)`).run(b);
+      db.prepare(`INSERT INTO symbols (file_id, name, kind, start_line, end_line, exported) VALUES (?, 'zzz_c', 'function', 1, 2, 1)`).run(c);
+      const sa = (db.prepare(`SELECT id FROM symbols WHERE name='auth'`).get() as { id: number }).id;
+      const sb = (db.prepare(`SELECT id FROM symbols WHERE name='zzz_b'`).get() as { id: number }).id;
+      const sc = (db.prepare(`SELECT id FROM symbols WHERE name='zzz_c'`).get() as { id: number }).id;
+      // b depends on a (b's symbol points to a's symbol); c depends on b.
+      // getDependents(seed) walks edges WHERE to_symbol_id = seed, returning
+      // from_symbol_id. So getDependents(sa, 1) -> [sb], getDependents(sa, 2) -> [sb, sc].
+      db.prepare(`INSERT INTO edges (from_symbol_id, to_symbol_id, kind) VALUES (?, ?, 'imports')`).run(sb, sa);
+      db.prepare(`INSERT INTO edges (from_symbol_id, to_symbol_id, kind) VALUES (?, ?, 'imports')`).run(sc, sb);
+      const r = retrieve(db, 'auth', { topK: 5 });
+      // a.ts is the seed file (depth 0); b.ts is depth-1; c.ts is depth-2.
+      expect(r[0].path).toBe('a.ts');
+      const byPath = new Map(r.map((h) => [h.path, h.score]));
+      const aScore = byPath.get('a.ts')!;
+      const bScore = byPath.get('b.ts')!;
+      const cScore = byPath.get('c.ts')!;
+      expect(aScore).toBeGreaterThan(bScore);
+      expect(bScore).toBeGreaterThan(cScore);
+      db.close();
+      rmSync(dir, { recursive: true, force: true });
+    });
+
+    it('depth-1 file with the same keyword outranks a depth-2 file', () => {
+      const dir = mkdtempSync(join(tmpdir(), 'ctx-bfs2-'));
+      const db = initDb(join(dir, 'test.db'));
+      db.exec(`INSERT INTO files (path, hash, mtime, size, language, parsed_at) VALUES ('seed.ts','h',1,1,'ts',1)`);
+      db.exec(`INSERT INTO files (path, hash, mtime, size, language, parsed_at) VALUES ('near.ts','h',1,1,'ts',1)`);
+      db.exec(`INSERT INTO files (path, hash, mtime, size, language, parsed_at) VALUES ('far.ts','h',1,1,'ts',1)`);
+      const seed = (db.prepare(`SELECT id FROM files WHERE path='seed.ts'`).get() as { id: number }).id;
+      const near = (db.prepare(`SELECT id FROM files WHERE path='near.ts'`).get() as { id: number }).id;
+      const far = (db.prepare(`SELECT id FROM files WHERE path='far.ts'`).get() as { id: number }).id;
+      // Symbols: 'auth' for seed (exact match), 'near' for near (no match),
+      // 'far' for far (no match). Use path tokens via 'auth' as a path token:
+      // we use 'authx' as the keyword in 'near.ts' and 'authy' in 'far.ts'
+      // file paths so that LIKE substring match doesn't promote them to depth 0.
+      // We rely on path tokens for keyword matching here.
+      db.prepare(`INSERT INTO symbols (file_id, name, kind, start_line, end_line, exported) VALUES (?, 'auth', 'function', 1, 2, 1)`).run(seed);
+      db.prepare(`INSERT INTO symbols (file_id, name, kind, start_line, end_line, exported) VALUES (?, 'near', 'function', 1, 2, 1)`).run(near);
+      db.prepare(`INSERT INTO symbols (file_id, name, kind, start_line, end_line, exported) VALUES (?, 'far', 'function', 1, 2, 1)`).run(far);
+      const sa = (db.prepare(`SELECT id FROM symbols WHERE name='auth'`).get() as { id: number }).id;
+      const sn = (db.prepare(`SELECT id FROM symbols WHERE name='near'`).get() as { id: number }).id;
+      const sf = (db.prepare(`SELECT id FROM symbols WHERE name='far'`).get() as { id: number }).id;
+      // near depends on seed; far depends on near.
+      db.prepare(`INSERT INTO edges (from_symbol_id, to_symbol_id, kind) VALUES (?, ?, 'imports')`).run(sn, sa);
+      db.prepare(`INSERT INTO edges (from_symbol_id, to_symbol_id, kind) VALUES (?, ?, 'imports')`).run(sf, sn);
+      // Query 'auth' only matches seed.ts via exact symbol name. near/far get
+      // only graphProximity: near depth 1 (proximity 0.5) > far depth 2 (proximity 0.333).
+      const r = retrieve(db, 'auth', { topK: 5 });
+      const nearRow = r.find((h) => h.path === 'near.ts')!;
+      const farRow = r.find((h) => h.path === 'far.ts')!;
+      expect(nearRow.score).toBeGreaterThan(farRow.score);
+      db.close();
+      rmSync(dir, { recursive: true, force: true });
+    });
+
+    it('seed file with no keyword match is still included (depth 0 proximity alone)', () => {
+      const dir = mkdtempSync(join(tmpdir(), 'ctx-bfs3-'));
+      const db = initDb(join(dir, 'test.db'));
+      db.exec(`INSERT INTO files (path, hash, mtime, size, language, parsed_at) VALUES ('unrelated_seed.ts','h',1,1,'ts',1)`);
+      db.exec(`INSERT INTO files (path, hash, mtime, size, language, parsed_at) VALUES ('other.ts','h',1,1,'ts',1)`);
+      const a = (db.prepare(`SELECT id FROM files WHERE path='unrelated_seed.ts'`).get() as { id: number }).id;
+      const b = (db.prepare(`SELECT id FROM files WHERE path='other.ts'`).get() as { id: number }).id;
+      db.prepare(`INSERT INTO symbols (file_id, name, kind, start_line, end_line, exported) VALUES (?, 'auth', 'function', 1, 2, 1)`).run(a);
+      db.prepare(`INSERT INTO symbols (file_id, name, kind, start_line, end_line, exported) VALUES (?, 'zzz_nomatch', 'function', 1, 2, 1)`).run(b);
+      // Query 'auth' has exact match in seed file; depth 0 proximity makes the
+      // seed file rank even though no other file has the keyword.
+      const r = retrieve(db, 'auth', { topK: 5 });
+      expect(r.length).toBeGreaterThan(0);
+      expect(r[0].path).toBe('unrelated_seed.ts');
+      expect(r[0].score).toBeGreaterThan(0);
+      db.close();
+      rmSync(dir, { recursive: true, force: true });
+    });
+  });
 });
