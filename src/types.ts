@@ -67,3 +67,54 @@ export interface CacheStats {
   oldestAccess: number;
   capacityBytes: number;
 }
+
+// Phase 2: health signals
+export interface HealthIssue {
+  type: string;
+  message: string;
+  location?: string;
+}
+
+export interface HealthDims {
+  freshness: number;
+  consistency: number;
+  coverage: number;
+  confidence: number;
+}
+
+export interface HealthReport {
+  score: number;
+  dimensions: HealthDims;
+  issues: HealthIssue[];
+}
+
+export interface HealthConfig {
+  repairBelow: number;
+}
+
+// Phase 2: retrieval
+export interface RetrieveSymbol {
+  name: string;
+  kind: string;
+  startLine: number;
+  endLine: number;
+  exported: boolean;
+}
+
+export interface RetrieveHit {
+  path: string;
+  score: number;
+  symbols: RetrieveSymbol[];
+  summary: string;
+}
+
+// Phase 2: repair
+export interface RepairStageResult {
+  ok: boolean;
+  actions: string[];
+}
+
+export interface RepairCost {
+  prompt: number;
+  completion: number;
+}

@@ -2,7 +2,16 @@ import Database from 'better-sqlite3';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
+
+const SCHEMA_V2 = `
+CREATE TABLE IF NOT EXISTS health_signals (
+  key TEXT PRIMARY KEY,
+  value REAL NOT NULL,
+  source TEXT,
+  updated_at INTEGER NOT NULL
+);
+`;
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS files (
@@ -62,8 +71,9 @@ export function initDb(dbPath: string): Database.Database {
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
   db.exec(SCHEMA);
+  db.exec(SCHEMA_V2);
   const v = db.pragma('user_version', { simple: true }) as number;
-  if (v === 0) {
+  if (v < SCHEMA_VERSION) {
     db.pragma(`user_version = ${SCHEMA_VERSION}`);
   }
   _db = db;
