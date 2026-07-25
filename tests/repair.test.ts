@@ -9,6 +9,7 @@ import {
   stage1Rebuild,
   stage2CacheInvalidate,
   stage3GitHistory,
+  stage4LLM,
   repair,
   repairCacheKey,
   REPAIR_CACHE_PREFIX,
@@ -109,6 +110,137 @@ describe('repair', () => {
       const r = await repair(db, FIXTURE, { config: { repairBelow: 100 } });
       expect(r.stages.length).toBeLessThanOrEqual(3);
       expect(r.llmCost).toBeUndefined();
+      db.close();
+      rmSync(dir, { recursive: true, force: true });
+    });
+  });
+
+  describe('OpenAICompatibleClient', () => {
+    it('complete() returns parsed content and usage on 2xx', async () => {
+      const fetchSpy = vi
+        .spyOn(globalThis, 'fetch')
+        .mockResolvedValue(
+          new Response(
+            JSON.stringify({
+              choices: [{ message: { content: 'fix here' } }],
+              usage: { prompt_tokens: 12, completion_tokens: 4 },
+            }),
+            { status: 200, headers: { 'content-type': 'application/json' } }
+          )
+        );
+      const client = OpenAICompatibleClient({
+        baseUrl: 'https://api.example.com/v1',
+        apiKey: 'k',
+        model: 'm',
+      });
+      const r = await client.complete('hi');
+      expect(r.content).toBe('fix here');
+      expect(r.usage.prompt_tokens).toBe(12);
+      expect(r.usage.completion_tokens).toBe(4);
+      expect(fetchSpy).toHaveBeenCalledOnce();
+      fetchSpy.mockRestore();
+    });
+
+    it('complete() throws on non-2xx with status and body', async () => {
+      const fetchSpy = vi
+        .spyOn(globalThis, 'fetch')
+        .mockResolvedValue(
+          new Response('upstream down', { status: 500 })
+        );
+      const client = OpenAICompatibleClient({
+        baseUrl: 'https://api.example.com/v1',
+        apiKey: 'k',
+        model: 'm',
+      });
+      await expect(client.complete('hi')).rejects.toThrow(/LLM 500: upstream down/);
+      fetchSpy.mockRestore();
+    });
+  });
+
+  describe('stage4LLM', () => {
+    it('cache miss then hit: first call invokes fetch, second does not', async () => {
+      const dir = mkdtempSync(join(tmpdir(), 'ctx-s4-'));
+      const db = initDb(join(dir, 'test.db'));
+      const fetchSpy = vi
+        .spyOn(globalThis, 'fetch')
+        .mockResolvedValue(
+          new Response(
+            JSON.stringify({
+              choices: [{ message: { content: 'fix' } }],
+              usage: { prompt_tokens: 7, completion_tokens: 3 },
+            }),
+            { status: 200 }
+          )
+        );
+      const client = OpenAICompatibleClient({
+        baseUrl: 'https://x',
+        apiKey: 'k',
+        model: 'm',
+      });
+      const prompt = 'test prompt';
+      const r1 = await stage4LLM(db, client, prompt);
+      expect(r1.ok).toBe(true);
+      expect(r1.cost).toEqual({ prompt: 7, completion: 3 });
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+      const r2 = await stage4LLM(db, client, prompt);
+      expect(r2.ok).toBe(true);
+      expect(r2.cost).toEqual({ prompt: 7, completion: 3 });
+      expect(fetchSpy).toHaveBeenCalledTimes(1); // unchanged
+      fetchSpy.mockRestore();
+      db.close();
+      rmSync(dir, { recursive: true, force: true });
+    });
+
+    it('returns ok:false on LLM throw and does not rethrow', async () => {
+      const dir = mkdtempSync(join(tmpdir(), 'ctx-s4-throw-'));
+      const db = initDb(join(dir, 'test.db'));
+      const fetchSpy = vi
+        .spyOn(globalThis, 'fetch')
+        .mockResolvedValue(new Response('bad', { status: 500 }));
+      const client = OpenAICompatibleClient({
+        baseUrl: 'https://x',
+        apiKey: 'k',
+        model: 'm',
+      });
+      const r = await stage4LLM(db, client, 'p');
+      expect(r.ok).toBe(false);
+      expect(r.cost).toEqual({ prompt: 0, completion: 0 });
+      expect(r.actions[0]).toMatch(/llm call failed/);
+      fetchSpy.mockRestore();
+      db.close();
+      rmSync(dir, { recursive: true, force: true });
+    });
+  });
+
+  describe('repair with LLM', () => {
+    it('runs all 4 stages and reports llmCost when score < threshold and llm is set', async () => {
+      const dir = mkdtempSync(join(tmpdir(), 'ctx-repair-llm-'));
+      const db = initDb(join(dir, 'test.db'));
+      await buildGraph(db, FIXTURE);
+      const fetchSpy = vi
+        .spyOn(globalThis, 'fetch')
+        .mockResolvedValue(
+          new Response(
+            JSON.stringify({
+              choices: [{ message: { content: 'ok' } }],
+              usage: { prompt_tokens: 5, completion_tokens: 2 },
+            }),
+            { status: 200 }
+          )
+        );
+      const client = OpenAICompatibleClient({
+        baseUrl: 'https://x',
+        apiKey: 'k',
+        model: 'm',
+      });
+      const r = await repair(db, FIXTURE, {
+        llm: client,
+        config: { repairBelow: 100 },
+      });
+      expect(r.stages.length).toBe(4);
+      expect(r.llmCost).toBeDefined();
+      expect(r.llmCost!.prompt + r.llmCost!.completion).toBeGreaterThan(0);
+      fetchSpy.mockRestore();
       db.close();
       rmSync(dir, { recursive: true, force: true });
     });

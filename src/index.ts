@@ -16,6 +16,7 @@ export {
   stage1Rebuild,
   stage2CacheInvalidate,
   stage3GitHistory,
+  stage4LLM,
   OpenAICompatibleClient,
   repairCacheKey,
   REPAIR_CACHE_PREFIX,

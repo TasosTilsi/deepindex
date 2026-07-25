@@ -166,18 +166,49 @@ export interface RepairOptions {
   config?: HealthConfig;
 }
 
-// stage4LLM is implemented in task 2.8. This stub exists so the type checker
-// is happy in this task.
-async function stage4LLM(
+// stage4LLM: real implementation. Checks cacheGet(repairCacheKey(prompt)) first;
+// on miss, calls llm.complete() and cacheSet() the response. On throw, returns
+// ok:false without rethrowing.
+export async function stage4LLM(
   db: Database.Database,
-  _llm: LLMClient,
-  _prompt: string
+  llm: LLMClient,
+  prompt: string
 ): Promise<RepairStageResult & { cost: RepairCost }> {
-  return {
-    ok: false,
-    actions: ['llm stage not implemented'],
-    cost: { prompt: 0, completion: 0 },
-  };
+  const key = repairCacheKey(prompt);
+  const hit = cacheGet(db, key);
+  if (hit) {
+    let parsed: { content: string; cost: RepairCost };
+    try {
+      parsed = JSON.parse(hit.content);
+    } catch {
+      parsed = { content: hit.content, cost: { prompt: 0, completion: 0 } };
+    }
+    return {
+      ok: true,
+      actions: [`llm cache hit; saved ${parsed.cost.completion} completion tokens`],
+      cost: parsed.cost,
+    };
+  }
+  try {
+    const result = await llm.complete(prompt);
+    const cost: RepairCost = {
+      prompt: result.usage.prompt_tokens,
+      completion: result.usage.completion_tokens,
+    };
+    cacheSet(db, key, JSON.stringify({ content: result.content, cost }), {});
+    return {
+      ok: true,
+      actions: [`llm call succeeded; ${cost.prompt + cost.completion} tokens`],
+      cost,
+    };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return {
+      ok: false,
+      actions: [`llm call failed: ${message}`],
+      cost: { prompt: 0, completion: 0 },
+    };
+  }
 }
 
 export interface LLMClient {
