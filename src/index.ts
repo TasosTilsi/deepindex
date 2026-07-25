@@ -10,6 +10,7 @@ export {
   getSignals,
   DEFAULT_HEALTH_CONFIG,
 } from './health.js';
+export { tokenize, tfidf, retrieve, DEFAULT_TOP_K } from './retrieve.js';
 export { parseVitestJson, parseEslintJson, parseCoverageJson } from './reflect.js';
 export type {
   Fingerprint,
@@ -22,4 +23,6 @@ export type {
   HealthReport,
   HealthIssue,
   HealthConfig,
+  RetrieveHit,
+  RetrieveSymbol,
 } from './types.js';
