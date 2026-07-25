@@ -10,6 +10,7 @@ import {
   loadConfig,
   DEFAULT_HEALTH_CONFIG,
 } from '../src/health.js';
+import { parseVitestJson, parseCoverageJson } from '../src/reflect.js';
 import { buildGraph } from '../src/graph/build.js';
 
 const FIXTURE = resolve(process.cwd(), 'fixtures/sample-repo');
@@ -116,6 +117,63 @@ describe('health', () => {
       );
       const cfg = loadConfig(dir);
       expect(cfg).toEqual({ ...DEFAULT_HEALTH_CONFIG });
+    });
+  });
+
+  describe('reflect -> health integration', () => {
+    it('vitest signal drives coverage dim', () => {
+      const dir = mkdtempSync(join(tmpdir(), 'ctx-integ-vitest-'));
+      const db = initDb(join(dir, 'test.db'));
+      const v = parseVitestJson({
+        numTotalTests: 10,
+        numPassedTests: 9,
+        numFailedTests: 1,
+        numPendingTests: 0,
+        testResults: [{ startTime: 0, endTime: 100 }],
+      });
+      recordSignal(db, 'tests_pass', v.pass / v.total, 'vitest');
+      recordSignal(db, 'tests_total', 1.0, 'vitest');
+      const r = getHealth(db);
+      // coverage = tests_rate * lint_factor = 0.9 * 0.5 = 0.45
+      expect(r.dimensions.coverage).toBeGreaterThanOrEqual(0.4);
+      expect(r.dimensions.coverage).toBeLessThanOrEqual(0.5);
+      db.close();
+      rmSync(dir, { recursive: true, force: true });
+    });
+
+    it('eslint signal increases coverage when errors are low', () => {
+      const dir = mkdtempSync(join(tmpdir(), 'ctx-integ-eslint-'));
+      const db = initDb(join(dir, 'test.db'));
+      const before = getHealth(db);
+      recordSignal(db, 'lint_errors', 0.0, 'eslint');
+      recordSignal(db, 'lint_total', 1.0, 'eslint');
+      const after = getHealth(db);
+      expect(after.dimensions.coverage).toBeGreaterThan(before.dimensions.coverage);
+      db.close();
+      rmSync(dir, { recursive: true, force: true });
+    });
+
+    it('coverage parser linesPct flows into coverage via tests_* signals', () => {
+      const dir = mkdtempSync(join(tmpdir(), 'ctx-integ-cov-'));
+      const db = initDb(join(dir, 'test.db'));
+      const c = parseCoverageJson({
+        'a.ts': {
+          statementMap: { s1: { start: { line: 1 } }, s2: { start: { line: 2 } } },
+          s: { s1: 1, s2: 0 },
+          branchMap: {},
+          b: {},
+          fnMap: {},
+          f: {},
+        },
+      });
+      recordSignal(db, 'coverage_lines', c.linesPct, 'coverage');
+      recordSignal(db, 'tests_pass', 0.8, 'coverage');
+      recordSignal(db, 'tests_total', 1.0, 'coverage');
+      const r = getHealth(db);
+      // tests_rate = 0.8, lint_factor = 0.5 (missing lint_*); coverage = 0.4
+      expect(r.dimensions.coverage).toBeCloseTo(0.4, 5);
+      db.close();
+      rmSync(dir, { recursive: true, force: true });
     });
   });
 });

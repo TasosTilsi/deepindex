@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { parseVitestJson, parseEslintJson, parseCoverageJson } from '../src/reflect.js';
+import { initDb } from '../src/graph/db.js';
+import { recordSignal, getSignals } from '../src/health.js';
 
 describe('reflect', () => {
   describe('parseVitestJson', () => {
@@ -109,6 +114,28 @@ describe('reflect', () => {
       expect(() => parseCoverageJson(null)).toThrow(TypeError);
       expect(() => parseCoverageJson('nope')).toThrow(TypeError);
       expect(() => parseCoverageJson([])).toThrow(TypeError);
+    });
+  });
+
+  describe('glue with health signals', () => {
+    it('parseCoverageJson.linesPct is retrievable via getSignals after recordSignal', () => {
+      const dir = mkdtempSync(join(tmpdir(), 'ctx-reflect-glue-'));
+      const db = initDb(join(dir, 'test.db'));
+      const c = parseCoverageJson({
+        'a.ts': {
+          statementMap: { s1: { start: { line: 1 } } },
+          s: { s1: 1 },
+          branchMap: {},
+          b: {},
+          fnMap: {},
+          f: {},
+        },
+      });
+      recordSignal(db, 'coverage_lines', c.linesPct, 'coverage');
+      const sigs = getSignals(db);
+      expect(sigs.coverage_lines).toBe(c.linesPct);
+      db.close();
+      rmSync(dir, { recursive: true, force: true });
     });
   });
 });
