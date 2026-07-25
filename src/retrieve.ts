@@ -1,6 +1,7 @@
 // Phase 2: Retrieval — tokenize, tfidf, retrieve. Hybrid ranking = 0.6*tfidf + 0.4*graphProximity.
 
 import type Database from 'better-sqlite3';
+import { readFileSync, existsSync } from 'node:fs';
 import { getSymbolByName, getDependents } from './graph/query.js';
 import type { RetrieveHit, RetrieveSymbol } from './types.js';
 
@@ -65,7 +66,7 @@ interface SymbolLite {
 export function retrieve(
   db: Database.Database,
   query: string,
-  opts: { topK?: number } = {}
+  opts: { topK?: number; repoPath?: string } = {}
 ): RetrieveHit[] {
   const topK = opts.topK ?? DEFAULT_TOP_K;
   const tokens = tokenize(query);
@@ -73,14 +74,12 @@ export function retrieve(
 
   // 1) Find seed symbols. Combine exact-match (case-insensitive) with LIKE substring match.
   const seedSymbolIds = new Set<number>();
-  const seedFileIds = new Set<number>();
   const allSeedRows: SymbolLite[] = [];
   for (const t of tokens) {
     const exact = getSymbolByName(db, t);
     for (const r of exact) {
       if (seedSymbolIds.has(r.id)) continue;
       seedSymbolIds.add(r.id);
-      seedFileIds.add(r.file_id);
       allSeedRows.push({
         id: r.id,
         fileId: r.file_id,
@@ -108,7 +107,6 @@ export function retrieve(
     for (const r of like) {
       if (seedSymbolIds.has(r.id)) continue;
       seedSymbolIds.add(r.id);
-      seedFileIds.add(r.file_id);
       allSeedRows.push({
         id: r.id,
         fileId: r.file_id,
@@ -200,10 +198,48 @@ export function retrieve(
   ranked.sort((a, b) => b.score - a.score);
   const top = ranked.slice(0, topK);
 
-  return top.map((r) => ({
-    path: filePathById.get(r.fileId) ?? '',
-    score: r.score,
-    symbols: r.symbols,
-    summary: '',
-  }));
+  return top.map((r) => {
+    const path = filePathById.get(r.fileId) ?? '';
+    const summary = buildSummary(opts.repoPath, path, r.symbols);
+    return {
+      path,
+      score: r.score,
+      symbols: r.symbols,
+      summary,
+    };
+  });
+}
+
+function buildSummary(
+  repoPath: string | undefined,
+  relPath: string,
+  symbols: RetrieveSymbol[]
+): string {
+  if (!repoPath || !relPath) return '';
+  const absPath = `${repoPath.replace(/\/+$/, '')}/${relPath}`;
+  if (!existsSync(absPath)) return '';
+  let text: string;
+  try {
+    text = readFileSync(absPath, 'utf8');
+  } catch {
+    return '';
+  }
+  const lines = text.split('\n');
+  const excerpts: string[] = [];
+  for (const s of symbols) {
+    if (s.startLine < 1 || s.endLine < s.startLine) {
+      excerpts.push(s.name);
+      continue;
+    }
+    const start = s.startLine - 1;
+    const end = Math.min(s.endLine, lines.length);
+    const slice = lines.slice(start, end);
+    const found = slice.find(
+      (l) => /^\s*([^/\s#*].*)$/.test(l) && !/^\s*(\/\/|\/\*|\*|#)/.test(l)
+    );
+    excerpts.push(found ? found.trim() : s.name);
+  }
+  let summary = excerpts.join(' | ');
+  if (summary.length > 200) summary = summary.slice(0, 197) + '...';
+  return summary;
 }

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { initDb, closeDb } from '../src/graph/db.js';
 import { tokenize, tfidf, retrieve, DEFAULT_TOP_K } from '../src/retrieve.js';
 import type Database from 'better-sqlite3';
@@ -201,6 +201,44 @@ describe('retrieve', () => {
       expect(r.length).toBeGreaterThan(0);
       expect(r[0].path).toBe('unrelated_seed.ts');
       expect(r[0].score).toBeGreaterThan(0);
+      db.close();
+      rmSync(dir, { recursive: true, force: true });
+    });
+  });
+
+  describe('payload summary (RTRV-03)', () => {
+    it('summary skips leading comment lines and uses the real function body', () => {
+      const dir = mkdtempSync(join(tmpdir(), 'ctx-summary-'));
+      const dbPath = join(dir, 'test.db');
+      const db = initDb(dbPath);
+      // The fixture file is at fixtures/sample-repo/src/with-comments.ts.
+      // We register it with startLine=3 (where 'export function auth' begins).
+      const rel = 'src/with-comments.ts';
+      db.exec(
+        `INSERT INTO files (path, hash, mtime, size, language, parsed_at) VALUES ('${rel}', 'h', 1, 1, 'ts', 1)`
+      );
+      const fid = (db.prepare(`SELECT id FROM files WHERE path = ?`).get(rel) as { id: number }).id;
+      db.prepare(
+        `INSERT INTO symbols (file_id, name, kind, start_line, end_line, exported) VALUES (?, 'auth', 'function', 3, 5, 1)`
+      ).run(fid);
+      const r = retrieve(db, 'auth', { repoPath: resolve(process.cwd(), 'fixtures/sample-repo') });
+      expect(r.length).toBeGreaterThan(0);
+      const hit = r[0];
+      expect(hit.summary).not.toMatch(/^\/\/ header comment/);
+      expect(hit.summary).toMatch(/export function auth/);
+      db.close();
+      rmSync(dir, { recursive: true, force: true });
+    });
+
+    it('payload keys are exactly path, score, symbols, summary', () => {
+      const dir = mkdtempSync(join(tmpdir(), 'ctx-payload-'));
+      const db = initDb(join(dir, 'test.db'));
+      db.exec(`INSERT INTO files (path, hash, mtime, size, language, parsed_at) VALUES ('x.ts','h',1,1,'ts',1)`);
+      const fid = (db.prepare(`SELECT id FROM files WHERE path='x.ts'`).get() as { id: number }).id;
+      db.prepare(`INSERT INTO symbols (file_id, name, kind, start_line, end_line, exported) VALUES (?, 'auth', 'function', 1, 2, 1)`).run(fid);
+      const r = retrieve(db, 'auth');
+      expect(r.length).toBeGreaterThan(0);
+      expect(Object.keys(r[0]).sort().join(',')).toBe('path,score,summary,symbols');
       db.close();
       rmSync(dir, { recursive: true, force: true });
     });
