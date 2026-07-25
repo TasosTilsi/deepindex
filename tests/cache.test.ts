@@ -71,6 +71,25 @@ describe('cache layer', () => {
       });
   });
 
+  // CACH-02: eviction is logged, never silent
+  it('eviction emits a log line to stdout', async () => {
+    const small = initDb2(join(tmpDir, 'log.db'), 50);
+    const logs: string[] = [];
+    const originalLog = console.log;
+    console.log = (...args: unknown[]) => {
+      logs.push(args.map(String).join(' '));
+    };
+    try {
+      cacheSet(small, 'k1', 'a'.repeat(30), { capacityBytes: 50 });
+      await new Promise((r) => setTimeout(r, 2));
+      cacheSet(small, 'k2', 'b'.repeat(30), { capacityBytes: 50 });
+      // k1 should be evicted, logged
+      expect(logs.some((l) => l.includes('evicted') && l.includes('k1'))).toBe(true);
+    } finally {
+      console.log = originalLog;
+    }
+  });
+
   it('stats reports entry count and total size', () => {
     const stats = cacheStats(db);
     expect(stats.entryCount).toBeGreaterThan(0);

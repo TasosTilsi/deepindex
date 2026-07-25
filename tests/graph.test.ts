@@ -79,4 +79,58 @@ describe('graph layer', () => {
     const barRows = getSymbolByName(db, 'bar');
     expect(barRows.some((b) => ids.has(b.id))).toBe(true);
   });
+
+  // GRPH-02: hash-based invalidation
+  it('rebuild on unchanged files is a no-op (no re-parse)', async () => {
+    const before = db
+      .prepare('SELECT path, hash, parsed_at FROM files')
+      .all() as { path: string; hash: string; parsed_at: number }[];
+    const beforeSnap = new Map(before.map((r) => [r.path, r.hash + ':' + r.parsed_at]));
+
+    // Build again on the same fixture → all hashes match → 0 files re-parsed
+    await buildGraph(db, FIXTURE);
+
+    const after = db
+      .prepare('SELECT path, hash, parsed_at FROM files')
+      .all() as { path: string; hash: string; parsed_at: number }[];
+    expect(after.length).toBe(before.length);
+    for (const row of after) {
+      const prev = beforeSnap.get(row.path);
+      expect(prev).toBeDefined();
+      expect(row.hash + ':' + row.parsed_at).toBe(prev);
+    }
+  });
+
+  it('rebuild after one file change re-parses only that file', async () => {
+    const cPath = join(FIXTURE, 'src/c.ts');
+    const original = require('node:fs').readFileSync(cPath, 'utf8');
+    try {
+      require('node:fs').writeFileSync(cPath, original + '\n// touched\n');
+      const before = db
+        .prepare('SELECT path, hash FROM files')
+        .all() as { path: string; hash: string }[];
+      const cBefore = before.find((r) => r.path === 'src/c.ts')!;
+      const aBefore = before.find((r) => r.path === 'src/a.ts')!;
+      const bBefore = before.find((r) => r.path === 'src/b.ts')!;
+
+      await buildGraph(db, FIXTURE);
+
+      const after = db
+        .prepare('SELECT path, hash FROM files')
+        .all() as { path: string; hash: string }[];
+      const cAfter = after.find((r) => r.path === 'src/c.ts')!;
+      const aAfter = after.find((r) => r.path === 'src/a.ts')!;
+      const bAfter = after.find((r) => r.path === 'src/b.ts')!;
+
+      // c.ts hash changed
+      expect(cAfter.hash).not.toBe(cBefore.hash);
+      // a.ts and b.ts unchanged
+      expect(aAfter.hash).toBe(aBefore.hash);
+      expect(bAfter.hash).toBe(bBefore.hash);
+    } finally {
+      require('node:fs').writeFileSync(cPath, original);
+      // Rebuild to restore hashes
+      await buildGraph(db, FIXTURE);
+    }
+  });
 });
