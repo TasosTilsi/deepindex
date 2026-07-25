@@ -11,6 +11,15 @@ export {
   DEFAULT_HEALTH_CONFIG,
 } from './health.js';
 export { tokenize, tfidf, retrieve, DEFAULT_TOP_K } from './retrieve.js';
+export {
+  repair,
+  stage1Rebuild,
+  stage2CacheInvalidate,
+  stage3GitHistory,
+  OpenAICompatibleClient,
+  repairCacheKey,
+  REPAIR_CACHE_PREFIX,
+} from './repair.js';
 export { parseVitestJson, parseEslintJson, parseCoverageJson } from './reflect.js';
 export type {
   Fingerprint,
@@ -25,4 +34,6 @@ export type {
   HealthConfig,
   RetrieveHit,
   RetrieveSymbol,
+  RepairStageResult,
+  RepairCost,
 } from './types.js';
