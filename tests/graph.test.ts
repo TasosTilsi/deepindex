@@ -26,16 +26,26 @@ describe('graph layer', () => {
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it('parses all 3 fixture files', () => {
+  it('parses all fixture files', () => {
     const rows = db.prepare('SELECT COUNT(*) as c FROM files').get() as { c: number };
-    expect(rows.c).toBe(3);
+    // Phase 2 added: src/with-comments.ts, src/thread-counter.ts, and
+    // outdated-doc.ts at the repo root. Original 3 (a/b/c.ts) + 3 new = 6.
+    expect(rows.c).toBe(6);
   });
 
-  it('extracts 4 exported symbols (foo, bar, baz, ANSWER)', () => {
+  it('extracts exported symbols including the phase 2 additions', () => {
     const rows = db.prepare(
       "SELECT name FROM symbols WHERE exported = 1 ORDER BY name"
     ).all() as { name: string }[];
-    expect(rows.map((r) => r.name)).toEqual(['ANSWER', 'bar', 'baz', 'foo']);
+    const names = rows.map((r) => r.name);
+    expect(names).toContain('ANSWER');
+    expect(names).toContain('bar');
+    expect(names).toContain('baz');
+    expect(names).toContain('foo');
+    // Phase 2 additions:
+    expect(names).toContain('WORKER_THREADS');
+    expect(names).toContain('auth');
+    expect(names).toContain('countThreads');
   });
 
   it('detects broken import (c.ts imports ./missing)', () => {

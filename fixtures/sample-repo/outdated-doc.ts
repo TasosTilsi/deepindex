@@ -1,2 +1,2 @@
-// CLAIM: there are 12 worker threads
+// CLAIM: there are 4 worker threads
 export const WORKER_THREADS = 4;

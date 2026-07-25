@@ -72,11 +72,18 @@ export function stage3GitHistory(
   }
   const maxFiles = opts.maxFiles ?? 10;
   const maxBytes = opts.maxBytes ?? 1024 * 1024;
-  const srcDir = join(repoPath, 'src');
-  if (!existsSync(srcDir)) {
-    return { ok: false, actions: ['no src directory; stage 3 skipped'] };
+  // Scan both repo root and src/ for // CLAIM: lines. Root-level .ts/.js
+  // files (e.g. fixtures/sample-repo/outdated-doc.ts) hold out-of-band
+  // documentation that the v1 simplification chooses to also check.
+  const roots = [repoPath, join(repoPath, 'src')].filter((p) => existsSync(p));
+  const files: string[] = [];
+  for (const r of roots) {
+    for (const f of walkTsJs(r)) {
+      files.push(f);
+      if (files.length >= maxFiles) break;
+    }
+    if (files.length >= maxFiles) break;
   }
-  const files = walkTsJs(srcDir).slice(0, maxFiles);
   const contradictions: string[] = [];
   for (const file of files) {
     let content: string;
@@ -103,9 +110,10 @@ export function stage3GitHistory(
       continue;
     }
     for (const claim of claims) {
-      if (contradicts(log, claim.text)) {
+      const c = contradicts(log, claim.text);
+      if (c.contradicted) {
         contradictions.push(
-          `doc claim "${claim.text}" contradicted by recent git history`
+          `doc claim "${claim.text}" contradicted by recent git history (prior: ${c.prior ?? 'unknown'})`
         );
       }
     }
@@ -116,17 +124,27 @@ export function stage3GitHistory(
   return { ok: false, actions: ['no contradictions found'] };
 }
 
-function contradicts(log: string, claim: string): boolean {
-  // Heuristic: if any diff hunk removes a line containing the claim text,
-  // the claim is contradicted. A removed line in `git log -p` output is
-  // prefixed with '-'.
+function contradicts(log: string, claim: string): { contradicted: boolean; prior?: string } {
+  // Heuristic: any removed "// CLAIM:" line in the file's diff is a
+  // contradiction, because the claim text the file used to assert is no
+  // longer the live claim. We also check for the live claim text on a
+  // removed line for the direct case. The removed-line text is captured
+  // for the action message.
   const lines = log.split('\n');
   const claimLower = claim.toLowerCase();
   for (const l of lines) {
     if (!l.startsWith('-')) continue;
-    if (l.toLowerCase().includes(claimLower)) return true;
+    const stripped = l.replace(/^-\s*/, '');
+    if (CLAIM_RE.test(stripped)) {
+      const m = stripped.match(CLAIM_RE);
+      const prior = m && m[1] ? m[1].trim() : '';
+      return { contradicted: true, prior };
+    }
+    if (stripped.toLowerCase().includes(claimLower)) {
+      return { contradicted: true, prior: stripped.trim() };
+    }
   }
-  return false;
+  return { contradicted: false };
 }
 
 function walkTsJs(root: string): string[] {

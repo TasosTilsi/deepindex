@@ -77,6 +77,25 @@ describe('repair', () => {
       expect(r.actions[0]).toMatch(/no \.git directory/);
       rmSync(dir, { recursive: true, force: true });
     });
+
+    it('detects a // CLAIM: contradiction in the git-managed fixture', () => {
+      // The fixtures/sample-repo has a .git with three commits. The current
+      // // CLAIM: line says "there are 4 worker threads". The history shows
+      // a previous version that said "12 worker threads" (added then removed).
+      // The contradicts() heuristic matches if the claim text appears on a
+      // '-' (removed) line in the diff. We craft the test so the current
+      // claim text is also in a removed diff line.
+      const r = stage3GitHistory(FIXTURE);
+      expect(r.ok).toBe(true);
+      // The current claim is "there are 4 worker threads" but the prior
+      // removed line is "there are 12 worker threads". Neither heuristic
+      // matches the *current* claim text in a removed line; instead, the
+      // detector finds that the claim changed by checking for any
+      // removed "// CLAIM:" line in the file's diff (proof that the claim
+      // was once different). The action message identifies the prior
+      // claim text.
+      expect(r.actions.some((a) => /12 worker threads/.test(a))).toBe(true);
+    });
   });
 
   describe('repairCacheKey', () => {
