@@ -67,7 +67,7 @@ progress:
 
 **Success criteria** (from ROADMAP.md):
 
-1. ✓ `getHealth(repoPath)` returns JSON `{score: 67, dimensions, issues}`. 100 on clean fixture would hold; 67 on broken-import fixture (consistency dim dropped).
+1. ✓ `getHealth(repoPath)` returns JSON `{score: 67, dimensions, issues}`. 80 on clean fixture; 67 on broken-import fixture (consistency dim dropped).
 2. ✓ Repair stage 1 re-resolves imports first — `src/repair.ts:21-36`. Selfcheck shows stage 1 ok, no LLM.
 3. ✓ OpenAI-compatible client + response cache + token logging — `src/repair.ts:190-275` (`stage4LLM` + `OpenAICompatibleClient`).
 4. ✓ Retrieve "auth" returns top file with `auth` symbol — selfcheck output in 02-DEMO.md.
