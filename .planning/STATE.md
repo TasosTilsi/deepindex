@@ -1,16 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.0
-milestone_name: milestone
+milestone: v2.0
+milestone_name: merge
 status: in_progress
-stopped_at: Phase 3 context gathered
-last_updated: "2026-07-25T22:10:35.179Z"
+stopped_at: Merge phases 4-6 created, decisions captured
+last_updated: "2026-08-09T00:00:00.000Z"
 progress:
-  total_phases: 3
-  completed_phases: 1
+  total_phases: 6
+  completed_phases: 3
   total_plans: 2
   completed_plans: 1
-  percent: 33
+  percent: 50
 ---
 
 # State
@@ -19,16 +19,18 @@ progress:
 
 - **Name**: ContextKit
 - **Type**: TypeScript / Node 20+ / ESM
-- **Status**: Phase 1 + Phase 2 complete, Phase 3 pending
+- **Status**: v1 (phases 1-3) implemented; v2 merge (phases 4-6) in planning
 - **Mode**: yolo
 - **Granularity**: coarse
-- **Phases**: 3
+- **Phases**: 6
 
 ## Current Position
 
 - Phase 1 (Foundation) — DONE, 9 commits, 21 tests
 - Phase 2 (Health + Retrieve + Repair + Reflect) — DONE, 11 commits, 76 tests total
-- Next: discuss + plan + execute phase 3 (Watcher + Adapter + CLI + Tests)
+- Phase 3 (Watcher + Adapter + CLI + Tests) — DONE, 88 tests pass, `tsc --noEmit` clean, `pnpm run smoke` green. Loose ends closed 2026-08-09 (quick task 260809-mm4). Watch CLI test fixed (absolute cli path + onReady signal).
+- **v2 merge (phases 4-6) — created, decisions captured in CONTEXT.md, NOT planned/implemented**
+- Next: resolve open questions in 04/05/06-CONTEXT.md, then plan phase 4
 
 ## Decisions Log
 
@@ -40,6 +42,14 @@ progress:
 - 2026-07-25: Skipped `gsd-execute-phase` subagent (no leverage over direct writes)
 - 2026-07-25: **Swapped native `tree-sitter` for `web-tree-sitter` (WASM)** — native 0.25 doesn't compile on Node 24 (V8 API drift), no prebuilt for abi 137, WASM is lazy-correct
 - 2026-07-25: **Two-pass build** — first pass inserts all file rows, second pass parses. Fixes import-resolution race when source file processed before target file
+- 2026-08-09: **Merge decision — home = this repo.** ContextKit is the idea; cobi/Recall capabilities absorbed, not separate products. Do not name the merged project "cobi".
+- 2026-08-09: **Merge decision — stack = TypeScript.** cobi + Recall are Python references; port ideas, not code.
+- 2026-08-09: **Merge decision — cobi is code indexing, not only data.** Absorb full indexing: multi-language symbols, complexity, data-flow, graph, impact, requirements.
+- 2026-08-09: **Merge decision — discuss before implement.** Merge is milestone-scale; decisions locked before any code.
+- 2026-08-09: **Created merge phases 4-6** (data-flow/multi-lang, git-history KG, unified interfaces) with CONTEXT.md decisions. Open questions pending resolution.
+- 2026-08-09: **Fixed phase-3 watch CLI test** — relative `src/cli.ts` + cwd=watchDir → ERR_MODULE_NOT_FOUND; 500ms sleep raced chokidar. Fixed: absolute cli path + `onReady` signal (`watching` line).
+- 2026-08-09: **One database** — single SQLite store (schema v3) for symbol/import graph + data-flow graph + temporal KG. User: "I want to have one database". Resolves 04 OQ-1; cobi's two-file split (`index.db` + `cobi_graph.db`) not ported.
+- 2026-08-09: **LLM optional** — all retrieval/indexing deterministic and LLM-free by default; LLM summarization/extraction is configurable enrichment (`llm.enabled` gate), never required. User: "context can be retrieved without llms". Reshapes phase 5 (Recall was LLM-only → deterministic-first extraction + optional LLM batch).
 
 ## Phase 1 Results
 
@@ -75,15 +85,20 @@ progress:
 
 ## Open Questions
 
-- None blocking
+- Merge OQ-1..3 remaining in 04/05/06-CONTEXT.md (multi-language scope, requirements sync, entity types, semantic search, commit rows, MCP SDK, hooks scope, UI). Resolved 2026-08-09: 04 OQ-1 (one database → locked D-05), LLM-optional (→ locked D-06).
+
+## Quick Tasks Completed
+
+| Date | Slug | Description | Status |
+|------|------|-------------|--------|
+| 2026-08-09 | 260809-mm4-fix-phase-3-loose-ends | Fix tsc strict-mode errors + add smoke test | complete ✓ |
 
 ## Next Action
 
-Phase 3: Watcher (WTCH-01..03) + Adapter (ADPT-01) + CLI (CMD-01..06) + Tests (TEST-01..03).
-First: `/gsd-discuss-phase 3` to capture design decisions (chokidar debounce, serve port, adapter payload shape, test fixtures).
+Resolve the remaining merge open questions (04 OQ-1/2, 05 OQ-1..3, 06 OQ-1..3), then plan phase 4 (Data-Flow & Multi-Language Indexing). Two decisions locked 2026-08-09: **one database** (single `.db`, schema v3) and **LLM optional** (deterministic-first everywhere, LLM enrichment gated on config). Deep-dive reports on cobi + Recall internals feed the plans. Phase-3 loose ends closed (quick task 260809-mm4) — v1 is clean, ready for the merge.
 
 ## Session
 
-**Last session:** 2026-07-25T22:10:35.171Z
-**Stopped at:** Phase 3 context gathered
-**Resume file:** .planning/phases/03-watcher-adapter-cli-tests/03-CONTEXT.md
+**Last session:** 2026-08-09
+**Stopped at:** Merge phases 4-6 created, decisions captured
+**Resume file:** .planning/phases/04-merge-dataflow-multilang/04-CONTEXT.md
