@@ -7,5 +7,13 @@ export default defineConfig({
     // vitest suite — keep it out of the test runner.
     exclude: ['tests/smoke.test.ts'],
     environment: 'node',
+    coverage: {
+      provider: 'v8',
+      include: ['src/**/*.ts'],
+      exclude: ['src/**/*.test.ts', 'src/types.ts'],
+      enabled: process.env.CI === '1',
+      reporter: ['text'],
+      thresholds: { lines: 70 },
+    },
   },
 });
