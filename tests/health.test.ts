@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { initDb } from '../src/graph/db.js';
@@ -81,6 +81,23 @@ describe('health', () => {
       expect(r.issues.some((i) => i.type === 'broken_import')).toBe(true);
       const broken = r.issues.find((i) => i.type === 'broken_import')!;
       expect(broken.message).toContain('./missing');
+      localDb.close();
+      rmSync(dir, { recursive: true, force: true });
+    });
+
+    it('on a clean fixture (no broken imports, no signals): score = 80, consistency = 1', async () => {
+      const dir = mkdtempSync(join(tmpdir(), 'ctx-health-clean-'));
+      const dbPath = join(dir, 'test.db');
+      const localDb = initDb(dbPath);
+      mkdirSync(join(dir, 'src'), { recursive: true });
+      writeFileSync(join(dir, 'src', 'a.ts'), "import { b } from './b';\nexport function a() { return b(); }\n");
+      writeFileSync(join(dir, 'src', 'b.ts'), 'export function b() { return 1; }\n');
+      await buildGraph(localDb, dir);
+      const r = getHealth(localDb);
+      // freshness 1.0, consistency 1.0, coverage 0.25 (0.5*0.5), confidence 0.75
+      // -> composite 0.3+0.3+0.05+0.15 = 0.8 -> score 80
+      expect(r.score).toBe(80);
+      expect(r.dimensions.consistency).toBe(1);
       localDb.close();
       rmSync(dir, { recursive: true, force: true });
     });
