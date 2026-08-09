@@ -27,8 +27,8 @@ progress:
 ## Current Position
 
 - Phase 1 (Foundation) — DONE, 9 commits, 21 tests
-- Phase 2 (Health + Retrieve + Repair + Reflect) — DONE, 11 commits, 76 tests total
-- Phase 3 (Watcher + Adapter + CLI + Tests) — DONE, 88 tests pass, `tsc --noEmit` clean, `pnpm run smoke` green. Loose ends closed 2026-08-09 (quick task 260809-mm4). Watch CLI test fixed (absolute cli path + onReady signal).
+- Phase 2 (Health + Retrieve + Repair + Reflect) — DONE, 11 commits, 76 tests total. Verifier-clean 2026-08-09 (quick task 260809-ops): SC1 reworded to "Score = 80 on clean fixture" + pinned by test; SC3 reworded to "LLM consulted, cached, logged".
+- Phase 3 (Watcher + Adapter + CLI + Tests) — DONE, 89 tests pass, `tsc --noEmit` clean, `pnpm run smoke` green, CI-gated coverage gate (≥70% lines on src/, 72.14% today). Loose ends closed 2026-08-09 (quick tasks 260809-mm4 + 260809-ops). Watch CLI test fixed (absolute cli path + onReady signal).
 - **v2 merge (phases 4-6) — created, decisions captured in CONTEXT.md, NOT planned/implemented**
 - Next: resolve open questions in 04/05/06-CONTEXT.md, then plan phase 4
 
@@ -92,6 +92,7 @@ progress:
 | Date | Slug | Description | Status |
 |------|------|-------------|--------|
 | 2026-08-09 | 260809-mm4-fix-phase-3-loose-ends | Fix tsc strict-mode errors + add smoke test | complete ✓ |
+| 2026-08-09 | 260809-ops-fix-verification-blockers | Reword phase-2 SC1/SC3, pin clean-fixture score, add CI coverage gate | complete ✓ |
 
 ## Next Action
 
