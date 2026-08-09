@@ -10,7 +10,7 @@ import { buildGraph } from './graph/build.js';
 import { cacheDelete, cacheGet, cacheSet } from './cache.js';
 import { getHealth, loadConfig, DEFAULT_HEALTH_CONFIG } from './health.js';
 import { sha256 } from './fingerprint.js';
-import type { HealthConfig, RepairCost, RepairStageResult } from './types.js';
+import type { HealthConfig, HealthReport, RepairCost, RepairStageResult } from './types.js';
 
 export const REPAIR_CACHE_PREFIX = 'repair:';
 
@@ -304,7 +304,7 @@ export async function repair(
   return { stages };
 }
 
-function buildLLMPrompt(report: { score: number; dimensions: Record<string, number>; issues: { type: string; message: string; location?: string }[] }): string {
+function buildLLMPrompt(report: HealthReport): string {
   return (
     'ContextKit repair request. Repo state:\n' +
     JSON.stringify(report, null, 2) +

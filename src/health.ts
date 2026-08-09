@@ -58,13 +58,13 @@ export function loadConfig(repoPath: string): HealthConfig {
   }
   const sectionMatch = text.match(/\[health\]([\s\S]*?)(?=\n\[|$)/);
   if (!sectionMatch) return { ...DEFAULT_HEALTH_CONFIG };
-  const block = sectionMatch[1];
+  const block = sectionMatch[1] ?? '';
   const valueMatch = block.match(/repair_below\s*=\s*(\d+)/);
   if (!valueMatch) return { ...DEFAULT_HEALTH_CONFIG };
   // The regex above guarantees digits, but the contract says we throw on
   // non-numeric values — handle a malformed TOML where someone wrote
   // `repair_below = "eighty"` by attempting parseInt and validating.
-  const raw = valueMatch[1];
+  const raw = valueMatch[1] ?? '';
   const n = Number.parseInt(raw, 10);
   if (!Number.isFinite(n)) {
     throw new TypeError(`loadConfig: non-numeric repair_below value: ${raw}`);

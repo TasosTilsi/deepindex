@@ -103,8 +103,7 @@ program
         );
       } else {
         console.log(`before: ${before.score}`);
-        for (let i = 0; i < result.stages.length; i++) {
-          const s = result.stages[i];
+        for (const [i, s] of result.stages.entries()) {
           console.log(`stage ${i + 1}: ${s.ok ? 'ok' : 'fail'} — ${s.actions.join('; ')}`);
         }
         console.log(`after: ${after.score}`);
@@ -201,7 +200,13 @@ program
     const ignored = opts.ignore === false ? null : undefined;
     let handle: ReturnType<typeof createWatcher> | null = null;
     try {
-      handle = createWatcher({ dbPath, roots: [process.cwd()], debounceMs: debounce, ignored });
+      handle = createWatcher({
+        dbPath,
+        roots: [process.cwd()],
+        debounceMs: debounce,
+        ignored,
+        onReady: () => console.log('watching'),
+      });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       console.error(`ctx watch: ${message}`);
