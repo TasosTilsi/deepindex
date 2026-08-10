@@ -9,7 +9,8 @@ import { repair } from './repair.js';
 import { createWatcher } from './watcher.js';
 import { serve } from './serve.js';
 import { adaptClaudeCode } from './adapter-claude-code.js';
-import { projectSqlImpact, resolveQueryFile } from './graph/projection.js';
+import { projectFullGraph } from './graph/projection.js';
+import { getImpact, findParallelStorage } from './graph/queries.js';
 import { resolve } from 'node:path';
 import { existsSync } from 'node:fs';
 
@@ -155,10 +156,13 @@ program
 
   program
     .command('impact')
-    .description('Find files containing queries that touch a specific table')
+    .description('Find impact chain for a specific table (Table -> Query -> File -> Service)')
     .argument('<table_name>', 'name of the database table')
     .option('-d, --db <path>', 'SQLite database path', '.ctx.db')
-    .action((tableName: string, opts: { db: string }) => {
+    .option('--domain <domain>', 'filter by domain')
+    .option('--region <region>', 'filter by region')
+    .option('--system <system>', 'filter by system')
+    .action((tableName: string, opts: { db: string; domain?: string; region?: string; system?: string }) => {
       const dbPath = resolve(opts.db);
       if (!existsSync(dbPath)) {
         console.error('ctx impact: no index — run `ctx build <repo>` first');
@@ -166,25 +170,28 @@ program
       }
       const db = initDb(dbPath);
       try {
-        const projection = projectSqlImpact(db);
-        const queryIds = projection[tableName];
-        if (!queryIds || queryIds.size === 0) {
-          console.log(`no queries found touching table: ${tableName}`);
+        const graph = projectFullGraph(db);
+        const impact = getImpact(graph, tableName, {
+          domain: opts.domain,
+          region: opts.region,
+          system: opts.system,
+        });
+
+        if (impact.affectedQueries.length === 0) {
+          console.log(`no queries found touching table: ${tableName} (or filtered out by context tags)`);
           process.exit(0);
         }
-        const files = new Set<string>();
-        for (const qId of queryIds) {
-          const path = resolveQueryFile(db, qId);
-          if (path) files.add(path);
+
+        console.log(`Impact report for table: ${tableName}`);
+        console.log('--------------------------------------------------');
+
+        for (const q of impact.affectedQueries) {
+          const service = graph.files.get(q.file) || 'unknown service';
+          console.log(`Query ${q.id} in ${q.file} -> ${service}`);
         }
-        if (files.size === 0) {
-          console.log(`table ${tableName} referenced but no source files found`);
-        } else {
-          console.log(`files touching ${tableName}:`);
-          for (const f of files) {
-            console.log(`- ${f}`);
-          }
-        }
+
+        console.log('--------------------------------------------------');
+        console.log(`Summary: ${impact.affectedFiles.length} files, ${impact.affectedServices.length} services affected.`);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         console.error(`ctx impact: ${message}`);
@@ -193,7 +200,43 @@ program
     });
 
   program
-    .command('serve')
+    .command('parallel-storage')
+    .description('Identify tables found in multiple storage systems')
+    .option('-d, --db <path>', 'SQLite database path', '.ctx.db')
+    .option('--domain <domain>', 'filter by domain')
+    .option('--region <region>', 'filter by region')
+    .option('--system <system>', 'filter by system')
+    .action((opts: { db: string; domain?: string; region?: string; system?: string }) => {
+      const dbPath = resolve(opts.db);
+      if (!existsSync(dbPath)) {
+        console.error('ctx parallel-storage: no index — run `ctx build <repo>` first');
+        process.exit(2);
+      }
+      const db = initDb(dbPath);
+      try {
+        const graph = projectFullGraph(db);
+        const parallel = findParallelStorage(graph, {
+          domain: opts.domain,
+          region: opts.region,
+          system: opts.system,
+        });
+
+        if (parallel.length === 0) {
+          console.log('no parallel storage detected');
+          process.exit(0);
+        }
+
+        console.log('Parallel Storage Report:');
+        console.log('--------------------------------------------------');
+        for (const item of parallel) {
+          console.log(`Table [${item.tableName}] found in: ${item.systems.join(', ')}`);
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error(`ctx parallel-storage: ${message}`);
+        process.exit(1);
+      }
+    });
   .description('Start the POST /context HTTP server')
   .option('-p, --port <n>', 'port number', '7331')
   .option('-d, --db <path>', 'SQLite database path', '.ctx.db')
