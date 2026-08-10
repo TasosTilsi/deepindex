@@ -5,6 +5,7 @@ import { createHash } from 'node:crypto';
 import type { BuildStats } from './build.js';
 import { parseFile } from './parse.js';
 import { resolveImport } from './resolve.js';
+import { extractSql } from '../parser/sql-extractor.js';
 
 const IGNORED_DIRS = new Set([
   'node_modules',
@@ -24,7 +25,7 @@ const IGNORED_DIRS = new Set([
   '.cache',
 ]);
 
-const SUPPORTED_EXTS = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs']);
+const SUPPORTED_EXTS = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.sql']);
 
 export async function buildGraph(
   db: Database.Database,
@@ -116,6 +117,19 @@ export async function buildGraph(
       } else {
         insertImport.run(fileId, imp.source, null, 0);
         brokenImportCount++;
+      }
+    }
+
+    // SQL Extraction pass
+    const { queries } = extractSql(content);
+    const insertQuery = db.prepare('INSERT INTO sql_queries (query_text, file_id) VALUES (?, ?)');
+    const insertQueryTable = db.prepare('INSERT INTO query_tables (query_id, table_name) VALUES (?, ?)');
+
+    for (const q of queries) {
+      const info = insertQuery.run(q.text, fileId);
+      const queryId = info.lastInsertRowid;
+      for (const table of q.tables) {
+        insertQueryTable.run(queryId, table);
       }
     }
   }

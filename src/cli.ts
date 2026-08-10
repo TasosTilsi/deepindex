@@ -9,6 +9,7 @@ import { repair } from './repair.js';
 import { createWatcher } from './watcher.js';
 import { serve } from './serve.js';
 import { adaptClaudeCode } from './adapter-claude-code.js';
+import { projectSqlImpact, resolveQueryFile } from './graph/projection.js';
 import { resolve } from 'node:path';
 import { existsSync } from 'node:fs';
 
@@ -16,7 +17,7 @@ const program = new Command();
 
 program
   .name('ctx')
-  .description('ContextKit — self-healing context engineering framework')
+  .description('DeepIndex — self-healing context engineering framework')
   .version('0.1.0');
 
 program
@@ -152,8 +153,47 @@ program
     }
   });
 
-program
-  .command('serve')
+  program
+    .command('impact')
+    .description('Find files containing queries that touch a specific table')
+    .argument('<table_name>', 'name of the database table')
+    .option('-d, --db <path>', 'SQLite database path', '.ctx.db')
+    .action((tableName: string, opts: { db: string }) => {
+      const dbPath = resolve(opts.db);
+      if (!existsSync(dbPath)) {
+        console.error('ctx impact: no index — run `ctx build <repo>` first');
+        process.exit(2);
+      }
+      const db = initDb(dbPath);
+      try {
+        const projection = projectSqlImpact(db);
+        const queryIds = projection[tableName];
+        if (!queryIds || queryIds.size === 0) {
+          console.log(`no queries found touching table: ${tableName}`);
+          process.exit(0);
+        }
+        const files = new Set<string>();
+        for (const qId of queryIds) {
+          const path = resolveQueryFile(db, qId);
+          if (path) files.add(path);
+        }
+        if (files.size === 0) {
+          console.log(`table ${tableName} referenced but no source files found`);
+        } else {
+          console.log(`files touching ${tableName}:`);
+          for (const f of files) {
+            console.log(`- ${f}`);
+          }
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error(`ctx impact: ${message}`);
+        process.exit(1);
+      }
+    });
+
+  program
+    .command('serve')
   .description('Start the POST /context HTTP server')
   .option('-p, --port <n>', 'port number', '7331')
   .option('-d, --db <path>', 'SQLite database path', '.ctx.db')
