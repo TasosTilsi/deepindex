@@ -13,12 +13,12 @@ date: 2026-08-10
 
 ## Phase Boundary
 
-Absorb cobi-tool's code-indexing capabilities into ContextKit. cobi is a Python codebase-indexing CLI + Claude plugin: multi-language tree-sitter symbol extraction, SQL/data-flow extraction, an embedded knowledge graph (Table↔Query↔Service↔File), impact analysis, parallel-storage detection, context tagging, and Jira/Confluence requirements traceability.
+Absorb cobi-tool's code-indexing capabilities into DeepIndex. cobi is a Python codebase-indexing CLI + Claude plugin: multi-language tree-sitter symbol extraction, SQL/data-flow extraction, an embedded knowledge graph (Table↔Query↔Service↔File), impact analysis, parallel-storage detection, context tagging, and Jira/Confluence requirements traceability.
 
 The user's framing: **cobi is a code indexing tool, not only for data.**
 The merge absorbs its full indexing capability — symbols, complexity, data-flow, graph, impact, requirements — not just the data-flow slice.
 
-This phase ports those ideas to TypeScript on top of ContextKit's existing symbol/import graph. Adds: multi-language parsing (java/c/go/rust), SQL/query/ORM/config extraction, data-flow graph, impact + parallel-storage queries, context tagging, requirements tables.
+This phase ports those ideas to TypeScript on top of DeepIndex's existing symbol/import graph. Adds: multi-language parsing (java/c/go/rust), SQL/query/ORM/config extraction, data-flow graph, impact + parallel-storage queries, context tagging, requirements tables.
 
 </domain>
 
@@ -67,7 +67,7 @@ This phase ports those ideas to TypeScript on top of ContextKit's existing symbo
 - `/home/tasostilsi/Development/Projects/cobi-tool/cobi/core/context_analyzer.py` — domain/region/system tagging
 - `/home/tasostilsi/Development/Projects/cobi-tool/cobi/requirements/` — requirement indexer + extractor
 
-### Existing ContextKit code to extend
+### Existing DeepIndex code to extend
 - `src/graph/db.ts` — schema v2 → v3 (add data-flow tables)
 - `src/graph/build.ts` — add data-flow extraction pass
 - `src/parser.ts` (or `src/graph/parser.ts`) — add language grammars
