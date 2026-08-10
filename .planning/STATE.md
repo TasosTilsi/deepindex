@@ -3,21 +3,20 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: merge
 status: in_progress
-stopped_at: Merge phases 4-6 created, decisions captured
-last_updated: "2026-08-09T00:00:00.000Z"
+stopped_at: Completed 04-05-PLAN.md
+last_updated: "2026-08-10T21:51:15.592Z"
 progress:
   total_phases: 6
-  completed_phases: 3
-  total_plans: 2
-  completed_plans: 1
-  percent: 50
+  completed_phases: 2
+  total_plans: 8
+  completed_plans: 5
 ---
 
 # State
 
 ## Project
 
-- **Name**: ContextKit
+- **Name**: DeepIndex
 - **Type**: TypeScript / Node 20+ / ESM
 - **Status**: v1 (phases 1-3) implemented; v2 merge (phases 4-6) in planning
 - **Mode**: yolo
@@ -42,7 +41,7 @@ progress:
 - 2026-07-25: Skipped `gsd-execute-phase` subagent (no leverage over direct writes)
 - 2026-07-25: **Swapped native `tree-sitter` for `web-tree-sitter` (WASM)** — native 0.25 doesn't compile on Node 24 (V8 API drift), no prebuilt for abi 137, WASM is lazy-correct
 - 2026-07-25: **Two-pass build** — first pass inserts all file rows, second pass parses. Fixes import-resolution race when source file processed before target file
-- 2026-08-09: **Merge decision — home = this repo.** ContextKit is the idea; cobi/Recall capabilities absorbed, not separate products. Do not name the merged project "cobi".
+- 2026-08-09: **Merge decision — home = this repo.** DeepIndex is the idea; cobi/Recall capabilities absorbed, not separate products. Do not name the merged project "cobi".
 - 2026-08-09: **Merge decision — stack = TypeScript.** cobi + Recall are Python references; port ideas, not code.
 - 2026-08-09: **Merge decision — cobi is code indexing, not only data.** Absorb full indexing: multi-language symbols, complexity, data-flow, graph, impact, requirements.
 - 2026-08-09: **Merge decision — discuss before implement.** Merge is milestone-scale; decisions locked before any code.
@@ -100,6 +99,18 @@ Resolve the remaining merge open questions (04 OQ-1/2, 05 OQ-1..3, 06 OQ-1..3), 
 
 ## Session
 
-**Last session:** 2026-08-09
-**Stopped at:** Merge phases 4-6 created, decisions captured
-**Resume file:** .planning/phases/04-merge-dataflow-multilang/04-CONTEXT.md
+**Last session:** 2026-08-10T21:51:15.581Z
+**Stopped at:** Completed 04-05-PLAN.md
+**Resume file:** None
+
+## Performance Metrics
+
+| Plan | Duration | Tasks | Files |
+|------|----------|-------|-------|
+| Phase 04-merge-dataflow-multilang P01 | 720 | 1 tasks | 5 files |
+| Phase 04-merge-dataflow-multilang P04 | 1500 | 3 tasks | 3 files |
+
+## Decisions
+
+- [Phase ?]: Use minimal regex for SQL extraction to prove the pipeline (Tracer)
+- [Phase ?]: Add .sql to supported extensions to enable SQL file indexing
