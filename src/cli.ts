@@ -11,6 +11,9 @@ import { serve } from './serve.js';
 import { adaptClaudeCode } from './adapter-claude-code.js';
 import { projectFullGraph } from './graph/projection.js';
 import { getImpact, findParallelStorage } from './graph/queries.js';
+import { syncRequirements } from './requirements/sync.js';
+import { calculateReqCoverage } from './requirements/coverage.js';
+import { initRequirementsDb } from './requirements/setup.js';
 import { resolve } from 'node:path';
 import { existsSync } from 'node:fs';
 
@@ -153,6 +156,63 @@ program
       process.exit(1);
     }
   });
+
+  program
+    .command('index-requirements')
+    .description('Index requirements from a JSON file')
+    .argument('<file>', 'path to requirements JSON file')
+    .option('-d, --db <path>', 'SQLite database path', '.ctx.db')
+    .action(async (file: string, opts: { db: string }) => {
+      const dbPath = resolve(opts.db);
+      if (!existsSync(dbPath)) {
+        console.error('ctx index-requirements: no index — run `ctx build <repo>` first');
+        process.exit(2);
+      }
+      const db = initDb(dbPath);
+      initRequirementsDb(db);
+      try {
+        const { imported, atomic } = syncRequirements(db, file);
+        console.log(`Indexed ${imported} requirements and ${atomic} atomic statements.`);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error(`ctx index-requirements: ${message}`);
+        process.exit(1);
+      }
+    });
+
+  program
+    .command('req-coverage')
+    .description('Generate requirements traceability and coverage report')
+    .option('-d, --db <path>', 'SQLite database path', '.ctx.db')
+    .action((opts: { db: string }) => {
+      const dbPath = resolve(opts.db);
+      if (!existsSync(dbPath)) {
+        console.error('ctx req-coverage: no index — run `ctx build <repo>` first');
+        process.exit(2);
+      }
+      const db = initDb(dbPath);
+      try {
+        const report = calculateReqCoverage(db);
+        console.log('Requirements Coverage Report');
+        console.log('==================================================');
+
+        console.log(`\\nOrphan Requirements (no linked code): ${report.orphanRequirements.length}`);
+        for (const req of report.orphanRequirements) {
+          console.log(`- [${req.id}] ${req.title}`);
+        }
+
+        console.log(`\\nUntracked Code (no linked requirement): ${report.untrackedCode.length}`);
+        for (const code of report.untrackedCode) {
+          console.log(`- ${code.filePath} [${code.symbol}]`);
+        }
+
+        console.log('==================================================');
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error(`ctx req-coverage: ${message}`);
+        process.exit(1);
+      }
+    });
 
   program
     .command('impact')
