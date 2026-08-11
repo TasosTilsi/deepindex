@@ -148,13 +148,14 @@ export function extractTablesFormal(sql: string): string[] {
   try {
     const cst = parse(sql, { dialect: 'sqlite' });
     const tables = new Set<string>();
+    // ponytail: FROM/JOIN intentionally NOT visited formally — collectIdentifiers
+    // recurses the whole subtree and captures table aliases + ON-condition column
+    // names (u, o, id, user_id) alongside real tables, polluting query_tables and
+    // corrupting analyze-impact/find-table-usage/check-parallel-storage. The regex
+    // path (TABLE_PATTERNS: FROM/JOIN/INTO/UPDATE/TABLE) already covers SELECT/JOIN
+    // and subqueries cleanly via the coordinator's union merge, so the formal path
+    // only needs to handle statements the regex misses: CREATE/INSERT/UPDATE/DELETE.
     const visit = cstVisitor({
-      from_clause: (n) => collectIdentifiers((n as { expr: unknown }).expr, tables),
-      join_expr: (n) => {
-        const node = n as { left: unknown; right: unknown };
-        collectIdentifiers(node.left, tables);
-        collectIdentifiers(node.right, tables);
-      },
       create_table_stmt: (n) => collectIdentifiers((n as { name: unknown }).name, tables),
       insert_clause: (n) => collectIdentifiers((n as { table: unknown }).table, tables),
       update_clause: (n) => collectIdentifiers((n as { tables: unknown }).tables, tables),

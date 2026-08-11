@@ -105,30 +105,36 @@ describe('extractTables ORM + Mongo extensions', () => {
   });
 });
 
-describe('extractTablesFormal (Formal Path)', () => {
-  it('extracts tables from a complex SELECT with JOINs (Case 4)', () => {
+describe('extractSql (Coordinator — regex + formal union)', () => {
+  it('extracts ONLY real tables from a complex SELECT with JOINs (no aliases/columns)', () => {
+    // CR-01 regression guard: aliases (u, o) and ON-condition columns (id,
+    // user_id) must NOT appear in the merged table set.
     const sql =
       'SELECT u.name, o.amount FROM users u JOIN orders o ON u.id = o.user_id WHERE u.status = "active"';
-    const tables = extractTablesFormal(sql);
-    expect(tables).toContain('users');
-    expect(tables).toContain('orders');
+    const tables = extractSql(sql).queries[0].tables.slice().sort();
+    expect(tables).toEqual(['orders', 'users']);
   });
 
-  it('extracts tables from nested subqueries that regex can miss', () => {
+  it('extracts real tables from nested subqueries (no alias/column pollution)', () => {
     const sql =
       'SELECT * FROM (SELECT id FROM users WHERE id IN (SELECT user_id FROM logs)) as sub';
-    const tables = extractTablesFormal(sql);
-    expect(tables).toContain('users');
-    expect(tables).toContain('logs');
+    const tables = extractSql(sql).queries[0].tables.slice().sort();
+    expect(tables).toEqual(['logs', 'users']);
   });
 
   it('returns an empty array for unparseable SQL without throwing', () => {
     expect(extractTablesFormal('not actually sql at all !!')).toEqual([]);
   });
 
-  it('extracts the table name from a CREATE TABLE statement', () => {
+  it('extracts the table name from a CREATE TABLE statement (formal path)', () => {
     const sql = 'CREATE TABLE users (id INT, meta JSON(10,2))';
     expect(extractTablesFormal(sql)).toContain('users');
+  });
+
+  it('extracts the table from INSERT/UPDATE/DELETE statements (formal path)', () => {
+    expect(extractTablesFormal('INSERT INTO orders (a, b) VALUES (1, 2)').sort()).toEqual(['orders']);
+    expect(extractTablesFormal('UPDATE users SET x=1 WHERE id=5').sort()).toEqual(['users']);
+    expect(extractTablesFormal('DELETE FROM logs WHERE id=5').sort()).toEqual(['logs']);
   });
 });
 
