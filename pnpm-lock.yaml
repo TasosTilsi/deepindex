@@ -17,6 +17,9 @@ importers:
       commander:
         specifier: ^12.1.0
         version: 12.1.0
+      sql-parser-cst:
+        specifier: ^0.42.1
+        version: 0.42.1
       web-tree-sitter:
         specifier: ^0.26.11
         version: 0.26.11
@@ -922,6 +925,9 @@ packages:
     resolution: {integrity: sha512-UXWMKhLOwVKb728IUtQPXxfYU+usdybtUrK/8uGE8CQMvrhOpwvzDBwj0QhSL7MQc7vIsISBG8VQ8+IDQxpfQA==}
     engines: {node: '>=0.10.0'}
 
+  sql-parser-cst@0.42.1:
+    resolution: {integrity: sha512-lfpuhl60s2IRIxWCARthbBvXb2NBLOsVZxzaQLBDDgEZAmT8QYzRWD3qfFX2egZ5y0BYVur7DAQEJSrXxs1WKQ==}
+
   stackback@0.0.2:
     resolution: {integrity: sha512-1XMJE5fQo1jGH6Y/7ebnwPOBEkIEnT4QF32d5R1+VXdXveM0IBMJt8zfaxX1P3QhVwrYe+576+jkANtSS2mBbw==}
 
@@ -1820,6 +1826,8 @@ snapshots:
       simple-concat: 1.0.1
 
   source-map-js@1.2.1: {}
+
+  sql-parser-cst@0.42.1: {}
 
   stackback@0.0.2: {}
 

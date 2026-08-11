@@ -31,6 +31,7 @@
     "better-sqlite3": "^11.5.0",
     "chokidar": "^4.0.0",
     "commander": "^12.1.0",
+    "sql-parser-cst": "^0.42.1",
     "web-tree-sitter": "^0.26.11",
     "zod": "^4.4.3"
   },
