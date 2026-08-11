@@ -86,3 +86,20 @@ export const LANGUAGE_CONFIGS: Record<string, LanguageConfig> = {
     nameFields: ['declarator', 'name'],
   }
 };
+
+/**
+ * Single source of truth for extension -> language key. Built once from
+ * LANGUAGE_CONFIGS so adding a language there auto-wires it into the build
+ * walker (build.ts) and the parser (parse.ts) — no second Set to drift.
+ * All extensions are lower-case; callers should lower-case the ext before
+ * lookup.
+ */
+export const EXT_TO_LANG: Map<string, string> = new Map();
+for (const [langKey, cfg] of Object.entries(LANGUAGE_CONFIGS)) {
+  for (const ext of cfg.extensions) EXT_TO_LANG.set(ext.toLowerCase(), langKey);
+}
+
+/** Resolve a file extension to its language key, or undefined if unsupported. */
+export function langForExt(ext: string): string | undefined {
+  return EXT_TO_LANG.get(ext.toLowerCase());
+}

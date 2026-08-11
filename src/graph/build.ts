@@ -5,6 +5,7 @@ import { createHash } from 'node:crypto';
 import { parseFile } from './parse.js';
 import { resolveImport } from './resolve.js';
 import { extractSql } from '../parser/sql-extractor.js';
+import { EXT_TO_LANG, langForExt } from '../parser/languages.js';
 
 export interface BuildStats {
   fileCount: number;
@@ -35,7 +36,11 @@ const IGNORED_DIRS = new Set([
   '.cache',
 ]);
 
-const SUPPORTED_EXTS = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.sql']);
+// Supported extensions = every tree-sitter language (single source:
+// EXT_TO_LANG from languages.ts) + '.sql' (handled by extractSql, not a
+// tree-sitter grammar). Adding a language to LANGUAGE_CONFIGS auto-wires
+// it here — no second list to drift.
+const SUPPORTED_EXTS = new Set<string>([...EXT_TO_LANG.keys(), '.sql']);
 
 export async function buildGraph(
   db: Database.Database,
@@ -246,7 +251,5 @@ function extname(name: string): string {
 }
 
 function extToLang(ext: string): string {
-  if (ext === '.ts' || ext === '.tsx') return 'typescript';
-  if (ext === '.js' || ext === '.jsx' || ext === '.mjs' || ext === '.cjs') return 'javascript';
-  return 'unknown';
+  return langForExt(ext) ?? 'unknown';
 }

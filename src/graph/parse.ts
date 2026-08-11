@@ -2,7 +2,7 @@ import { Parser, Language, type Node as SyntaxNode } from 'web-tree-sitter';
 import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { LANGUAGE_CONFIGS, type NormalizedKind } from '../parser/languages.js';
+import { LANGUAGE_CONFIGS, langForExt, type NormalizedKind } from '../parser/languages.js';
 
 export interface ParsedSymbol {
   name: string;
@@ -53,12 +53,8 @@ async function getLanguage(langKey: string): Promise<Language> {
 
 const parserCache = new Map<Language, Parser>();
 
-// Built once at module load so parseFile resolves a language by extension in
-// O(1) instead of scanning LANGUAGE_CONFIGS per file.
-const EXT_TO_LANG = new Map<string, string>();
-for (const [langKey, cfg] of Object.entries(LANGUAGE_CONFIGS)) {
-  for (const ext of cfg.extensions) EXT_TO_LANG.set(ext, langKey);
-}
+// Extension -> language resolution uses the single source of truth exported
+// from languages.ts (EXT_TO_LANG / langForExt), shared with build.ts.
 
 async function getParser(lang: Language): Promise<Parser> {
   let p = parserCache.get(lang);
@@ -77,7 +73,7 @@ export async function parseFile(
 ): Promise<ParseResult> {
   const ext = extHint ?? filePath.slice(filePath.lastIndexOf('.'));
 
-  const langKey = EXT_TO_LANG.get(ext);
+  const langKey = langForExt(ext);
   if (!langKey) return { symbols: [], imports: [] };
 
   try {
