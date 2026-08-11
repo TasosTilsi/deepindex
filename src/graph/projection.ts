@@ -56,3 +56,52 @@ export function projectFullGraph(db: Database.Database): ProjectedGraph {
 
   return graph;
 }
+
+/** Validation report for a projected data-flow graph. `build-graph` surfaces
+ *  this so users can confirm the SQL/data-flow index is consistent before
+ *  running impact/usage queries. */
+export interface ProjectionValidation {
+  tableCount: number;
+  queryCount: number;
+  serviceCount: number;
+  /** sql_queries rows with no matching query_tables entry — extraction gaps. */
+  queriesWithoutTables: number[];
+  /** Files containing SQL queries but with no Service/Controller/Repository
+   *  name — these won't appear in `find-table-usage` service output. */
+  filesWithSqlNoService: string[];
+}
+
+/** Validate the projected graph against the underlying SQLite tables.
+ *  Detects orphan queries (in sql_queries but not in query_tables) and files
+ *  that contain SQL but have no service-name mapping. */
+export function validateProjection(
+  db: Database.Database,
+  graph: ProjectedGraph
+): ProjectionValidation {
+  const orphanRows = db
+    .prepare(
+      `SELECT sq.id FROM sql_queries sq
+       LEFT JOIN query_tables qt ON qt.query_id = sq.id
+       WHERE qt.query_id IS NULL`
+    )
+    .all() as { id: number }[];
+  const queriesWithoutTables = orphanRows.map((r) => r.id);
+
+  const filesWithSql = db
+    .prepare(
+      `SELECT DISTINCT f.path FROM files f
+       JOIN sql_queries sq ON sq.file_id = f.id`
+    )
+    .all() as { path: string }[];
+  const filesWithSqlNoService = filesWithSql
+    .map((r) => r.path)
+    .filter((p) => !graph.files.has(p));
+
+  return {
+    tableCount: graph.tables.size,
+    queryCount: graph.queries.size,
+    serviceCount: graph.files.size,
+    queriesWithoutTables,
+    filesWithSqlNoService,
+  };
+}

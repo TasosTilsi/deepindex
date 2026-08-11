@@ -9,7 +9,7 @@ import { repair } from './repair.js';
 import { createWatcher } from './watcher.js';
 import { serve } from './serve.js';
 import { adaptClaudeCode } from './adapter-claude-code.js';
-import { projectFullGraph } from './graph/projection.js';
+import { projectFullGraph, validateProjection } from './graph/projection.js';
 import { getImpact, findParallelStorage } from './graph/sql-impact.js';
 import { syncRequirements } from './requirements/sync.js';
 import { calculateReqCoverage } from './requirements/coverage.js';
@@ -404,6 +404,35 @@ program
       withDb('summarize-graph', opts, (db) => {
         const graph = projectFullGraph(db);
         console.log(`Projection built: ${graph.tables.size} tables, ${graph.queries.size} queries, ${graph.files.size} services.`);
+      });
+    });
+
+  program
+    .command('build-graph')
+    .description('Build and validate the data-flow projection from indexed SQL/data-flow tables')
+    .option('-d, --db <path>', 'SQLite database path', '.ctx.db')
+    .option('--json', 'emit JSON to stdout', false)
+    .action((opts: { db: string; json: boolean }) => {
+      withDb('build-graph', opts, (db) => {
+        const graph = projectFullGraph(db);
+        const v = validateProjection(db, graph);
+        if (opts.json) {
+          console.log(JSON.stringify(v, null, 2));
+        } else {
+          console.log(`Data-flow graph: ${v.tableCount} tables, ${v.queryCount} queries, ${v.serviceCount} services.`);
+          const issues = v.queriesWithoutTables.length + v.filesWithSqlNoService.length;
+          if (issues === 0) {
+            console.log('Validation: OK');
+          } else {
+            console.log(`Validation: ${issues} issue(s)`);
+            for (const qid of v.queriesWithoutTables) {
+              console.log(`- query ${qid} has no table references`);
+            }
+            for (const f of v.filesWithSqlNoService) {
+              console.log(`- file ${f} has SQL but no service mapping`);
+            }
+          }
+        }
       });
     });
 
