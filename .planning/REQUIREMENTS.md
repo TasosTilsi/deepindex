@@ -86,9 +86,9 @@ enrichment, gated on config, never a dependency.
 
 ### Multi-Language (MLNG)
 
-- [ ] **MLNG-01**: Extend tree-sitter parsing to java, c/c++, go, rust (web-tree-sitter WASM grammars). Same symbol extraction walker, per-language node-type→normalized-type tables.
-- [ ] **MLNG-02**: Language detection by extension; unknown languages skipped with a count.
-- [ ] **MLNG-03**: Complexity heuristic per file (keyword-count) for the new languages, matching existing py/ts/js.
+- [x] **MLNG-01**: Extend tree-sitter parsing to java, c/c++, go, rust (web-tree-sitter WASM grammars). Same symbol extraction walker, per-language node-type→normalized-type tables.
+- [x] **MLNG-02**: Language detection by extension; unknown languages skipped with a count.
+- [x] **MLNG-03**: Complexity heuristic per file (keyword-count) for the new languages, matching existing py/ts/js.
 
 ### Data-Flow (DFLW)
 
@@ -100,28 +100,28 @@ enrichment, gated on config, never a dependency.
 ### Data-Flow Graph (DGRPH)
 
 - [x] **DGRPH-01**: Project index → data-flow graph: Table/Query/Service/File nodes + READS_FROM/WRITES_TO/CONTAINS/MAPS_TO edges. Tiny adjacency map + BFS (no NetworkX).
-- [ ] **DGRPH-02**: Service detection from file paths (%Service%, %Controller%, %Repository%) with service_type.
-- [ ] **DGRPH-03**: Graph persisted in SQLite (graph_nodes/graph_edges) alongside the symbol graph.
+- [x] **DGRPH-02**: Service detection from file paths (%Service%, %Controller%, %Repository%) with service_type.
+- [x] **DGRPH-03**: Graph persisted in SQLite (graph_nodes/graph_edges) alongside the symbol graph.
 
 ### Impact (IMPT)
 
 - [x] **IMPT-01**: `impact <table>` — walk in-edges: queries reading/writing the table, files containing those queries, services affected. No hardcoded counts.
-- [ ] **IMPT-02**: Change-type awareness (add_column/modify/delete) reflected in the impact report.
+- [x] **IMPT-02**: Change-type awareness (add_column/modify/delete) reflected in the impact report.
 
 ### Parallel Storage (PSTR)
 
-- [ ] **PSTR-01**: `parallel-storage` — group tables by domain tag, flag domains with >1 storage system (e.g. DB2 + MongoDB).
+- [x] **PSTR-01**: `parallel-storage` — group tables by domain tag, flag domains with >1 storage system (e.g. DB2 + MongoDB).
 
 ### Context Tagging (CTXT)
 
-- [ ] **CTXT-01**: Auto-tag tables/queries/files with domain/region/system by keyword + regex. Generic dictionaries (not cobi's insurance/tax-specific ones).
-- [ ] **CTXT-02**: Every data-flow/graph query accepts --domain/--region/--system filters.
+- [x] **CTXT-01**: Auto-tag tables/queries/files with domain/region/system by keyword + regex. Generic dictionaries (not cobi's insurance/tax-specific ones).
+- [x] **CTXT-02**: Every data-flow/graph query accepts --domain/--region/--system filters.
 
 ### Requirements (REQ)
 
-- [ ] **REQ-01**: Requirements tables (requirements, atomic_requirements, requirement_code_links) in the same SQLite store.
-- [ ] **REQ-02**: `index-requirements` ingests JSON (from external Jira/Confluence sync); atomic-statement extraction + classification.
-- [ ] **REQ-03**: `req-coverage` — traceability report: requirements without code, code without requirements.
+- [x] **REQ-01**: Requirements tables (requirements, atomic_requirements, requirement_code_links) in the same SQLite store.
+- [x] **REQ-02**: `index-requirements` ingests JSON (from external Jira/Confluence sync); atomic-statement extraction + classification.
+- [x] **REQ-03**: `req-coverage` — traceability report: requirements without code, code without requirements.
 
 ### Git Extractor (GITX)
 

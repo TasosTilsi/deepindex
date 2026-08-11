@@ -3,13 +3,14 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: merge
 status: in_progress
-stopped_at: Completed 04-03-PLAN.md
-last_updated: "2026-08-11T14:12:35.611Z"
+stopped_at: Phase 04 complete (5/5 SC verified)
+last_updated: "2026-08-11T15:02:04.876Z"
 progress:
   total_phases: 6
-  completed_phases: 2
+  completed_phases: 4
   total_plans: 11
-  completed_plans: 9
+  completed_plans: 11
+current_phase_name: "Merge: Git-History Knowledge Graph"
 ---
 
 # State
@@ -28,8 +29,8 @@ progress:
 - Phase 1 (Foundation) — DONE, 9 commits, 21 tests
 - Phase 2 (Health + Retrieve + Repair + Reflect) — DONE, 11 commits, 76 tests total. **VERIFICATION PASSED 2026-08-09** (5/5 ROADMAP criteria): SC1 reworded to "Score = 80 on clean fixture" + pinned by test; SC3 reworded to "LLM consulted, cached, logged". Summary renamed to 02-01-SUMMARY.md.
 - Phase 3 (Watcher + Adapter + CLI + Tests) — DONE, 89 tests pass, `tsc --noEmit` clean, `pnpm run smoke` green, CI-gated coverage gate (≥70% lines on src/, 72.14% today). **VERIFICATION PASSED 2026-08-09** (8/8 must-haves). Loose ends closed 2026-08-09 (quick tasks 260809-mm4 + 260809-ops). Watch CLI test fixed (absolute cli path + onReady signal).
-- **v2 merge (phases 4-6) — created, decisions captured in CONTEXT.md, NOT planned/implemented**
-- Next: resolve open questions in 04/05/06-CONTEXT.md, then plan phase 4
+- Phase 4 (Merge: Data-Flow & Multi-Language Indexing) — DONE, 8/8 plans executed. **VERIFICATION PASSED 2026-08-11** (5/5 SC). Multi-language tree-sitter symbols (java/cpp/go/rust/c) wired into build walker via single-source EXT_TO_LANG; SQL/data-flow extraction (dual-path regex + sql-parser-cst); data-flow graph projection + impact analysis; parallel-storage detection; `@req` code-annotation traceability (requirement_code_links, SCHEMA v4). CLI rebranded ctx→deepinit. Verify gate: tsc clean, 138 passed, CI coverage 73.87%. Gap-closure commits: ca23292 (SC1 walker), 330befa (SC5 traceability), 348d012 (CR-01 formal SQL alias pollution).
+- **v2 merge phases 5-6 — not yet planned** (Git-History Knowledge Graph, Unified Interfaces)
 
 ## Decisions Log
 
@@ -95,12 +96,12 @@ progress:
 
 ## Next Action
 
-Resolve the remaining merge open questions (04 OQ-1/2, 05 OQ-1..3, 06 OQ-1..3), then plan phase 4 (Data-Flow & Multi-Language Indexing). Two decisions locked 2026-08-09: **one database** (single `.db`, schema v3) and **LLM optional** (deterministic-first everywhere, LLM enrichment gated on config). Deep-dive reports on cobi + Recall internals feed the plans. Phase-3 loose ends closed (quick task 260809-mm4) — v1 is clean, ready for the merge.
+Phase 4 complete (5/5 SC verified 2026-08-11). Next: plan phase 5 (Merge: Git-History Knowledge Graph) — git walker, deterministic-first entity extraction (LLM optional), typed entities + bidirectional backlinks, FTS5 search, incremental sync. Run `/gsd-plan-phase 5` to begin.
 
 ## Session
 
-**Last session:** 2026-08-11T14:12:35.591Z
-**Stopped at:** Completed 04-03-PLAN.md
+**Last session:** 2026-08-11T15:02:04.876Z
+**Stopped at:** Phase 04 complete (5/5 SC verified)
 **Resume file:** None
 
 ## Performance Metrics
@@ -110,6 +111,7 @@ Resolve the remaining merge open questions (04 OQ-1/2, 05 OQ-1..3, 06 OQ-1..3), 
 | Phase 04-merge-dataflow-multilang P01 | 720 | 1 tasks | 5 files |
 | Phase 04-merge-dataflow-multilang P04 | 1500 | 3 tasks | 3 files |
 | Phase 04 P03 | 167 | 1 tasks | 2 files |
+| Phase 04 P08 | 9 | 1 tasks | 4 files |
 
 ## Decisions
 
@@ -117,3 +119,6 @@ Resolve the remaining merge open questions (04 OQ-1/2, 05 OQ-1..3, 06 OQ-1..3), 
 - [Phase ?]: Add .sql to supported extensions to enable SQL file indexing
 - [Phase ?]: sql-parser-cst sqlite dialect as permissive formal-path default (04-03)
 - [Phase ?]: XML/YAML config mappings kept in separate extractConfigMappings to avoid false positives on plain code (04-03)
+- [Phase ?]: 04-08: build-graph validates+reports projection (no persistence) — read commands already project live from SQLite; persisted copy would duplicate state (YAGNI)
+- [Phase ?]: 04-08: validateProjection is a pure(db,graph) helper so it is unit-testable without spawning CLI; build-graph is thin wiring
+- [Phase ?]: 04-08: SQL extractor must-haves (nested parens, ORM, Mongo, config mappings) already met by 04-03 — confirmed green, not reimplemented
