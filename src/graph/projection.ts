@@ -1,32 +1,58 @@
 import type Database from 'better-sqlite3';
 
-export interface TableProjection {
-  [tableName: string]: Set<number>;
+export interface ProjectedGraph {
+  tables: Map<string, Set<number>>; // table -> queryIds
+  queries: Map<number, string>;      // queryId -> filePath
+  files: Map<string, string>;        // filePath -> serviceName
 }
 
-export function projectSqlImpact(db: Database.Database): TableProjection {
-  const projection: TableProjection = {};
+const SERVICE_RE = /(Service|Controller|Repository)[^/]*\.[^/]*$/i;
 
-  const rows = db.prepare(
-    `SELECT table_name, query_id FROM query_tables`
-  ).all() as { table_name: string; query_id: number }[];
+/** Derive a service name from a file path by taking the basename without
+ *  extension, when the path looks like a service/controller/repository file. */
+export function detectServiceName(path: string): string | null {
+  const p = path.replace(/\\/g, '/');
+  if (!SERVICE_RE.test(p)) return null;
+  return p.split('/').pop()?.split('.')[0] ?? null;
+}
 
-  for (const { table_name, query_id } of rows) {
-    if (!projection[table_name]) {
-      projection[table_name] = new Set();
+export function projectFullGraph(db: Database.Database): ProjectedGraph {
+  const graph: ProjectedGraph = {
+    tables: new Map(),
+    queries: new Map(),
+    files: new Map(),
+  };
+
+  // 1. Table -> Query
+  const tableRows = db
+    .prepare('SELECT table_name, query_id FROM query_tables')
+    .all() as { table_name: string; query_id: number }[];
+  for (const { table_name, query_id } of tableRows) {
+    let set = graph.tables.get(table_name);
+    if (!set) {
+      set = new Set();
+      graph.tables.set(table_name, set);
     }
-    projection[table_name].add(query_id);
+    set.add(query_id);
   }
 
-  return projection;
-}
+  // 2. Query -> File
+  const queryRows = db
+    .prepare(
+      `SELECT sq.id, f.path FROM sql_queries sq
+       JOIN files f ON sq.file_id = f.id`
+    )
+    .all() as { id: number; path: string }[];
+  for (const { id, path } of queryRows) {
+    graph.queries.set(id, path);
+  }
 
-export function resolveQueryFile(db: Database.Database, queryId: number): string | null {
-  const row = db.prepare(
-    `SELECT f.path FROM sql_queries sq
-     JOIN files f ON sq.file_id = f.id
-     WHERE sq.id = ?`
-  ).get(queryId) as { path: string } | undefined;
+  // 3. File -> Service (path-based detection)
+  const fileRows = db.prepare('SELECT path FROM files').all() as { path: string }[];
+  for (const { path } of fileRows) {
+    const service = detectServiceName(path);
+    if (service) graph.files.set(path, service);
+  }
 
-  return row?.path ?? null;
+  return graph;
 }

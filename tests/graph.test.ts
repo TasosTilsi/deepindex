@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { initDb, closeDb } from '../src/graph/db.js';
 import { buildGraph } from '../src/graph/build.js';
-import { getSymbolByName, getDependencies, getDependents } from '../src/graph/query.js';
+import { getSymbolByName, getDependencies, getDependents } from '../src/graph/symbol-graph.js';
 import type Database from 'better-sqlite3';
 
 const FIXTURE = resolve(process.cwd(), 'fixtures/sample-repo');

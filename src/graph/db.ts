@@ -25,7 +25,8 @@ CREATE TABLE IF NOT EXISTS query_tables (
   PRIMARY KEY (query_id, table_name)
 );
 CREATE INDEX IF NOT EXISTS idx_query_tables_name ON query_tables(table_name);
-`;;
+CREATE INDEX IF NOT EXISTS idx_sql_queries_file ON sql_queries(file_id);
+`;
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS files (
@@ -44,7 +45,8 @@ CREATE TABLE IF NOT EXISTS symbols (
   kind TEXT NOT NULL,
   start_line INTEGER NOT NULL,
   end_line INTEGER NOT NULL,
-  exported INTEGER NOT NULL
+  exported INTEGER NOT NULL,
+  complexity INTEGER DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_symbols_name ON symbols(name);
 CREATE INDEX IF NOT EXISTS idx_symbols_file ON symbols(file_id);
@@ -87,6 +89,15 @@ export function initDb(dbPath: string): Database.Database {
   db.exec(SCHEMA);
   db.exec(SCHEMA_V2);
   db.exec(SCHEMA_V3);
+  // Idempotent column migration: `complexity` was added to the base CREATE
+  // TABLE, but CREATE TABLE IF NOT EXISTS is a no-op on existing DBs, so a
+  // pre-existing .ctx.db lacks the column. Add it if missing. This is the
+  // seed of a versioned migration ladder — extend per-version below as the
+  // schema grows.
+  const cols = db.pragma('table_info(symbols)') as { name: string }[];
+  if (!cols.some((c) => c.name === 'complexity')) {
+    db.exec('ALTER TABLE symbols ADD COLUMN complexity INTEGER DEFAULT 0');
+  }
   const v = db.pragma('user_version', { simple: true }) as number;
   if (v < SCHEMA_VERSION) {
     db.pragma(`user_version = ${SCHEMA_VERSION}`);

@@ -306,7 +306,7 @@ export async function repair(
 
 function buildLLMPrompt(report: HealthReport): string {
   return (
-    'ContextKit repair request. Repo state:\n' +
+    'DeepIndex repair request. Repo state:\n' +
     JSON.stringify(report, null, 2) +
     '\nRecent issues:\n' +
     JSON.stringify(report.issues, null, 2) +

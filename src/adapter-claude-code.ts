@@ -5,7 +5,7 @@
 import { initDb } from './graph/db.js';
 import { retrieve, DEFAULT_TOP_K } from './retrieve.js';
 import { getHealth, loadConfig, DEFAULT_HEALTH_CONFIG } from './health.js';
-import { getDependents, getDependencies } from './graph/query.js';
+import { getDependents, getDependencies } from './graph/symbol-graph.js';
 import { resolve as pathResolve } from 'node:path';
 import type {
   HealthConfig,

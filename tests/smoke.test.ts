@@ -35,13 +35,13 @@ async function main(): Promise<void> {
   const dir = mkdtempSync(join(tmpdir(), 'ctx-smoke-'));
   const dbPath = join(dir, 'smoke.db');
   try {
-    // 1. build
-    const build = await run(['build', FIXTURE, '--db', dbPath]);
-    if (build.code !== 0) fail('build', build.stderr);
+    // 1. index
+    const build = await run(['index', FIXTURE, '--db', dbPath]);
+    if (build.code !== 0) fail('index', build.stderr);
 
-    // 2. status → print health JSON
-    const status = await run(['status', FIXTURE, '--db', dbPath]);
-    if (status.code !== 0 && status.code !== 1) fail('status', status.stderr);
+    // 2. health → print health JSON
+    const status = await run(['health', FIXTURE, '--db', dbPath]);
+    if (status.code !== 0 && status.code !== 1) fail('health', status.stderr);
     let health: { score?: number };
     try {
       health = JSON.parse(status.stdout.trim()) as { score?: number };

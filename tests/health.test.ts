@@ -17,12 +17,12 @@ const FIXTURE = resolve(process.cwd(), 'fixtures/sample-repo');
 
 describe('health', () => {
   describe('schema migration', () => {
-    it('bumps user_version to 2 and creates health_signals table', () => {
+    it('bumps user_version to 3 and creates health_signals table', () => {
       const tmp = mkdtempSync(join(tmpdir(), 'ctx-schema-'));
       const dbPath = join(tmp, 'test.db');
       const db = initDb(dbPath);
       const v = db.pragma('user_version', { simple: true }) as number;
-      expect(v).toBe(2);
+      expect(v).toBe(3);
       const row = db
         .prepare(
           "SELECT name FROM sqlite_master WHERE type='table' AND name='health_signals'"

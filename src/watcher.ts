@@ -15,6 +15,8 @@ export interface WatcherOptions {
   ignored?: string[] | null;
   dbPath: string;
   onInvalidate?: (relPath: string) => void;
+  /** Called once chokidar has finished its initial scan (ready event). */
+  onReady?: () => void;
 }
 
 export interface WatcherHandle {
@@ -85,6 +87,9 @@ export function createWatcher(opts: WatcherOptions): WatcherHandle {
   watcher.on('add', onEvent);
   watcher.on('change', onEvent);
   watcher.on('unlink', onEvent);
+  watcher.on('ready', () => {
+    if (opts.onReady) opts.onReady();
+  });
 
   return {
     async close(): Promise<void> {

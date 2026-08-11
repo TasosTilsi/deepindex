@@ -1,4 +1,4 @@
-// ContextKit public API entry point.
+// DeepIndex public API entry point.
 export { initDb, getDb } from './graph/db.js';
 export { buildGraph } from './graph/build.js';
 export { fingerprint } from './fingerprint.js';

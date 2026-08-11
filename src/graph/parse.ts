@@ -2,7 +2,7 @@ import { Parser, Language, type Node as SyntaxNode } from 'web-tree-sitter';
 import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { LANGUAGE_CONFIGS, type NormalizedKind } from '../parser/languages/index.js';
+import { LANGUAGE_CONFIGS, type NormalizedKind } from '../parser/languages.js';
 
 export interface ParsedSymbol {
   name: string;
@@ -53,6 +53,13 @@ async function getLanguage(langKey: string): Promise<Language> {
 
 const parserCache = new Map<Language, Parser>();
 
+// Built once at module load so parseFile resolves a language by extension in
+// O(1) instead of scanning LANGUAGE_CONFIGS per file.
+const EXT_TO_LANG = new Map<string, string>();
+for (const [langKey, cfg] of Object.entries(LANGUAGE_CONFIGS)) {
+  for (const ext of cfg.extensions) EXT_TO_LANG.set(ext, langKey);
+}
+
 async function getParser(lang: Language): Promise<Parser> {
   let p = parserCache.get(lang);
   if (!p) {
@@ -70,10 +77,7 @@ export async function parseFile(
 ): Promise<ParseResult> {
   const ext = extHint ?? filePath.slice(filePath.lastIndexOf('.'));
 
-  const langKey = Object.entries(LANGUAGE_CONFIGS).find(([_, cfg]) =>
-    cfg.extensions.includes(ext)
-  )?.[0];
-
+  const langKey = EXT_TO_LANG.get(ext);
   if (!langKey) return { symbols: [], imports: [] };
 
   try {
@@ -97,8 +101,8 @@ export async function parseFile(
 
 function collectSymbols(node: SyntaxNode, out: ParsedSymbol[], langKey: string): void {
   const config = LANGUAGE_CONFIGS[langKey];
+  if (!config) return;
   const kind = node.type;
-  // console.log('Visiting node:', kind);
 
   if (kind === 'export_statement') {
     const child = node.firstNamedChild;
@@ -121,6 +125,7 @@ function collectSymbols(node: SyntaxNode, out: ParsedSymbol[], langKey: string):
               startLine: child.startPosition.row,
               endLine: child.endPosition.row,
               exported: true,
+              complexity: 0,
             });
           }
         }
@@ -144,6 +149,7 @@ function collectSymbols(node: SyntaxNode, out: ParsedSymbol[], langKey: string):
           startLine: node.startPosition.row,
           endLine: node.endPosition.row,
           exported: false,
+          complexity: 0,
         });
       }
     }
@@ -169,11 +175,22 @@ function calculateComplexity(node: SyntaxNode): number {
 
 function nodeToSymbol(node: SyntaxNode, langKey: string): ParsedSymbol | null {
   const config = LANGUAGE_CONFIGS[langKey];
+  if (!config) return null;
   let name: string | null = null;
 
   for (const field of config.nameFields) {
     const n = node.childForFieldName(field);
     if (n) {
+      // C/C++: declarator field yields a function_declarator whose .text
+      // includes the parameter list (e.g. "my_func()"). Descend to the
+      // inner declarator identifier to get the bare name.
+      if (n.type === 'function_declarator') {
+        const inner = n.childForFieldName('declarator');
+        if (inner) {
+          name = inner.text;
+          break;
+        }
+      }
       name = n.text;
       break;
     }
@@ -200,7 +217,6 @@ function nodeToSymbol(node: SyntaxNode, langKey: string): ParsedSymbol | null {
     complexity: calculateComplexity(node),
   };
 }
-
 
 function collectImports(node: SyntaxNode, out: ParsedImport[]): void {
   if (node.type === 'import_statement') {

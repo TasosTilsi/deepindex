@@ -10,14 +10,40 @@ import { createWatcher } from './watcher.js';
 import { serve } from './serve.js';
 import { adaptClaudeCode } from './adapter-claude-code.js';
 import { projectFullGraph } from './graph/projection.js';
-import { getImpact, findParallelStorage } from './graph/queries.js';
+import { getImpact, findParallelStorage } from './graph/sql-impact.js';
 import { syncRequirements } from './requirements/sync.js';
 import { calculateReqCoverage } from './requirements/coverage.js';
 import { initRequirementsDb } from './requirements/setup.js';
 import { resolve } from 'node:path';
 import { existsSync } from 'node:fs';
+import type Database from 'better-sqlite3';
 
 const program = new Command();
+
+/** Shared preamble for read-only DB verbs: resolve --db, require an existing
+ *  index, open the DB, run the action, format+exit on error. Centralizes the
+ *  resolve/existsSync/initDb/try-catch boilerplate so each verb is its logic. */
+function withDb<T>(
+  verb: string,
+  opts: { db: string },
+  fn: (db: Database.Database) => T
+): void {
+  const dbPath = resolve(opts.db);
+  if (!existsSync(dbPath)) {
+    console.error(`deepinit ${verb}: no index — run \`deepinit index <repo>\` first`);
+    process.exit(2);
+  }
+  const db = initDb(dbPath);
+  try {
+    fn(db);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`deepinit ${verb}: ${message}`);
+    process.exit(1);
+  } finally {
+    db.close();
+  }
+}
 
 program
   .name('deepinit')
@@ -191,6 +217,7 @@ program
         process.exit(2);
       }
       const db = initDb(dbPath);
+      initRequirementsDb(db);
       try {
         const report = calculateReqCoverage(db);
         console.log('Requirements Coverage Report');
@@ -327,6 +354,57 @@ program
       };
       process.on('SIGINT', shutdown);
       process.on('SIGTERM', shutdown);
+    });
+
+  program
+    .command('list-tables')
+    .description('List all discovered database tables')
+    .option('-d, --db <path>', 'SQLite database path', '.ctx.db')
+    .action((opts: { db: string }) => {
+      withDb('list-tables', opts, (db) => {
+        const tables = db.prepare('SELECT DISTINCT table_name FROM query_tables ORDER BY table_name').all() as { table_name: string }[];
+        if (tables.length === 0) {
+          console.log('no tables discovered');
+        } else {
+          console.log('Discovered Tables:');
+          for (const t of tables) {
+            console.log(`- ${t.table_name}`);
+          }
+        }
+      });
+    });
+
+  program
+    .command('find-table-usage')
+    .description('Find code reading/writing a specific table')
+    .argument('<table_name>', 'name of the database table')
+    .option('-d, --db <path>', 'SQLite database path', '.ctx.db')
+    .action((tableName: string, opts: { db: string }) => {
+      withDb('find-table-usage', opts, (db) => {
+        const graph = projectFullGraph(db);
+        const impact = getImpact(graph, tableName);
+        if (impact.affectedQueries.length === 0) {
+          console.log(`table ${tableName} not found in index`);
+          return;
+        }
+        console.log(`Usage of table ${tableName}:`);
+        for (const q of impact.affectedQueries) {
+          const service = graph.files.get(q.file);
+          const svc = service ? ` (${service})` : '';
+          console.log(`- ${q.file}${svc}`);
+        }
+      });
+    });
+
+  program
+    .command('summarize-graph')
+    .description('Print a summary of the indexed SQL-impact projection')
+    .option('-d, --db <path>', 'SQLite database path', '.ctx.db')
+    .action((opts: { db: string }) => {
+      withDb('summarize-graph', opts, (db) => {
+        const graph = projectFullGraph(db);
+        console.log(`Projection built: ${graph.tables.size} tables, ${graph.queries.size} queries, ${graph.files.size} services.`);
+      });
     });
 
   program

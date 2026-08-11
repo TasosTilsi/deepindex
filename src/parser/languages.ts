@@ -70,7 +70,8 @@ export const LANGUAGE_CONFIGS: Record<string, LanguageConfig> = {
     wasmFile: 'tree-sitter-rust.wasm',
     extensions: ['.rs'],
     nodeMap: {
-      'struct_declaration': 'class',
+      'struct_item': 'class',
+      'enum_item': 'enum',
       'function_item': 'method',
       'impl_item': 'method',
     },

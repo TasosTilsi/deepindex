@@ -2,7 +2,7 @@
 
 import type Database from 'better-sqlite3';
 import { readFileSync, existsSync } from 'node:fs';
-import { getSymbolByName, getDependents } from './graph/query.js';
+import { getSymbolByName, getDependents } from './graph/symbol-graph.js';
 import type { RetrieveHit, RetrieveSymbol } from './types.js';
 
 export const DEFAULT_TOP_K = 10;
