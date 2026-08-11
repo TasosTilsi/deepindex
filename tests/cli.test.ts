@@ -125,6 +125,25 @@ describe('cli', { timeout: 30_000 }, () => {
     }
   );
 
+  it('build-graph prints a data-flow projection summary after a build', async () => {
+    await run(['index', FIXTURE, '--db', dbPath]);
+    const r = await run(['build-graph', '--db', dbPath]);
+    expect(r.code).toBe(0);
+    expect(r.stdout).toContain('Data-flow graph:');
+  });
+
+  it('build-graph --json emits a valid projection JSON object', async () => {
+    await run(['index', FIXTURE, '--db', dbPath]);
+    const r = await run(['build-graph', '--db', dbPath, '--json']);
+    expect(r.code).toBe(0);
+    const parsed = JSON.parse(r.stdout.trim()) as Record<string, unknown>;
+    expect(parsed).toHaveProperty('tableCount');
+    expect(parsed).toHaveProperty('queryCount');
+    expect(parsed).toHaveProperty('serviceCount');
+    expect(parsed).toHaveProperty('queriesWithoutTables');
+    expect(parsed).toHaveProperty('filesWithSqlNoService');
+  });
+
   it('watch prints "invalidated: <relpath>" and exits 0 on SIGTERM', async () => {
     const watchDir = mkdtempSync(join(tmpdir(), 'deepinit-cli-watch-'));
     const watchDb = join(watchDir, 'watch.db');
