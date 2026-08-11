@@ -17,12 +17,12 @@ const FIXTURE = resolve(process.cwd(), 'fixtures/sample-repo');
 
 describe('health', () => {
   describe('schema migration', () => {
-    it('bumps user_version to 3 and creates health_signals table', () => {
+    it('bumps user_version to 4 and creates health_signals + requirement_code_links tables', () => {
       const tmp = mkdtempSync(join(tmpdir(), 'ctx-schema-'));
       const dbPath = join(tmp, 'test.db');
       const db = initDb(dbPath);
       const v = db.pragma('user_version', { simple: true }) as number;
-      expect(v).toBe(3);
+      expect(v).toBe(4);
       const row = db
         .prepare(
           "SELECT name FROM sqlite_master WHERE type='table' AND name='health_signals'"
@@ -30,6 +30,13 @@ describe('health', () => {
         .get() as { name: string } | undefined;
       expect(row).toBeDefined();
       expect(row!.name).toBe('health_signals');
+      const linkRow = db
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE type='table' AND name='requirement_code_links'"
+        )
+        .get() as { name: string } | undefined;
+      expect(linkRow).toBeDefined();
+      expect(linkRow!.name).toBe('requirement_code_links');
       db.close();
     });
   });

@@ -2,7 +2,7 @@ import Database from 'better-sqlite3';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 
 const SCHEMA_V2 = `
 CREATE TABLE IF NOT EXISTS health_signals (
@@ -66,6 +66,12 @@ CREATE TABLE IF NOT EXISTS edges (
 );
 CREATE INDEX IF NOT EXISTS idx_edges_from ON edges(from_symbol_id);
 CREATE INDEX IF NOT EXISTS idx_edges_to ON edges(to_symbol_id);
+CREATE TABLE IF NOT EXISTS requirement_code_links (
+  symbol_id INTEGER NOT NULL REFERENCES symbols(id) ON DELETE CASCADE,
+  req_id TEXT NOT NULL,
+  PRIMARY KEY (symbol_id, req_id)
+);
+CREATE INDEX IF NOT EXISTS idx_req_links_req ON requirement_code_links(req_id);
 CREATE TABLE IF NOT EXISTS cache (
   key TEXT PRIMARY KEY,
   content TEXT NOT NULL,

@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import Database from 'better-sqlite3';
 import { initDb } from '../src/graph/db.js';
+import { buildGraph } from '../src/graph/build.js';
 import { initRequirementsDb } from '../src/requirements/setup.js';
 import { extractAtomicStatements } from '../src/requirements/extractor.js';
 import { syncRequirements } from '../src/requirements/sync.js';
@@ -108,7 +109,7 @@ describe('requirements', () => {
   });
 
   describe('calculateReqCoverage', () => {
-    it('reports all requirements as orphans when no requirement_links table exists', () => {
+    it('reports all requirements as orphans when no @req annotations link code', () => {
       const jsonPath = join(dir, 'reqs.json');
       writeFileSync(
         jsonPath,
@@ -123,7 +124,7 @@ describe('requirements', () => {
       expect(r.orphanRequirements.map((o) => o.id)).toEqual(['R1', 'R2']);
     });
 
-    it('reports untracked symbols when no requirement_links table exists', () => {
+    it('reports untracked symbols when no @req annotation covers them', () => {
       // Seed a file + symbol into the graph schema.
       const f = db
         .prepare('INSERT INTO files (path, hash, mtime, size) VALUES (?, ?, ?, ?)')
@@ -140,6 +141,40 @@ describe('requirements', () => {
       const r = calculateReqCoverage(db);
       expect(r.orphanRequirements).toEqual([]);
       expect(r.untrackedCode).toEqual([]);
+    });
+
+    it('links @req annotations to symbols during build (SC5 traceability)', async () => {
+      // Source file: AnnotatedService carries `@req R1`; PlainService has none.
+      mkdirSync(join(dir, 'src'), { recursive: true });
+      writeFileSync(
+        join(dir, 'src', 'svc.ts'),
+        [
+          '// @req R1',
+          'export class AnnotatedService { doThing() {} }',
+          '',
+          'export class PlainService { doOther() {} }',
+        ].join('\n'),
+      );
+      // Build the graph — the walker extracts @req and inserts links.
+      await buildGraph(db, dir);
+
+      // Sync requirements R1 (covered) + R2 (orphan).
+      const jsonPath = join(dir, 'reqs.json');
+      writeFileSync(
+        jsonPath,
+        JSON.stringify([
+          { id: 'R1', title: 'one', description: 'must', source: 's', status: 'draft' },
+          { id: 'R2', title: 'two', description: 'shall', source: 's', status: 'draft' },
+        ]),
+      );
+      syncRequirements(db, jsonPath);
+
+      const r = calculateReqCoverage(db);
+      // R1 has a code link -> not orphan; R2 has none -> orphan.
+      expect(r.orphanRequirements.map((o) => o.id)).toEqual(['R2']);
+      // AnnotatedService is linked -> not untracked; PlainService is not.
+      expect(r.untrackedCode.some((u) => u.symbol === 'AnnotatedService')).toBe(false);
+      expect(r.untrackedCode.some((u) => u.symbol === 'PlainService')).toBe(true);
     });
   });
 

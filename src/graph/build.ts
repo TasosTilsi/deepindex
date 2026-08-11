@@ -86,6 +86,12 @@ export async function buildGraph(
   const insertQueryTable = db.prepare(
     'INSERT INTO query_tables (query_id, table_name) VALUES (?, ?)'
   );
+  // requirement_code_links: INSERT OR IGNORE — PK (symbol_id, req_id) dedups
+  // across re-extraction; re-parse deletes symbols (CASCADE clears links)
+  // then re-inserts, so rebuilds stay idempotent.
+  const insertReqLink = db.prepare(
+    'INSERT OR IGNORE INTO requirement_code_links (symbol_id, req_id) VALUES (?, ?)'
+  );
 
   let fileCount = 0;
   let symbolCount = 0;
@@ -121,9 +127,25 @@ export async function buildGraph(
     deleteQueriesForFile.run(fileId);
 
     const { symbols, imports } = await parseFile(absPath, content, ext);
+    // Capture inserted symbol ids so @req annotations can link to them.
+    const insertedSymbols: { id: number; startLine: number }[] = [];
     for (const s of symbols) {
-      insertSymbol.run(fileId, s.name, s.kind, s.startLine, s.endLine, s.exported ? 1 : 0, s.complexity);
+      const info = insertSymbol.run(
+        fileId, s.name, s.kind, s.startLine, s.endLine, s.exported ? 1 : 0, s.complexity,
+      );
+      insertedSymbols.push({ id: Number(info.lastInsertRowid), startLine: s.startLine });
       symbolCount++;
+    }
+
+    // Link `@req REQ-XX` annotations to the nearest following symbol
+    // (the declaration the comment/JSDoc precedes). Annotations with no
+    // following symbol are skipped — links are symbol-level only.
+    if (insertedSymbols.length > 0) {
+      const sorted = [...insertedSymbols].sort((a, b) => a.startLine - b.startLine);
+      for (const ann of extractReqAnnotations(content)) {
+        const sym = sorted.find((s) => s.startLine >= ann.line);
+        if (sym) insertReqLink.run(sym.id, ann.reqId);
+      }
     }
 
     for (const imp of imports) {
@@ -252,4 +274,25 @@ function extname(name: string): string {
 
 function extToLang(ext: string): string {
   return langForExt(ext) ?? 'unknown';
+}
+
+/** Extract `@req <id>` annotations from source comments/JSDoc, returning
+ *  the 1-based line number each annotation sits on so the build can link it
+ *  to the nearest following symbol declaration. The id is project-defined —
+ *  accepts whatever token follows `@req` (REQ-01, R1, FOO-12, …) so this
+ *  isn't coupled to one requirement-id scheme. */
+export function extractReqAnnotations(content: string): { line: number; reqId: string }[] {
+  const out: { line: number; reqId: string }[] = [];
+  const lines = content.split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (line === undefined) continue;
+    const re = /@req\s+([\w-]+)/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(line)) !== null) {
+      const reqId = m[1];
+      if (reqId) out.push({ line: i + 1, reqId });
+    }
+  }
+  return out;
 }
