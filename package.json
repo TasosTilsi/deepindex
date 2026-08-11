@@ -1,11 +1,11 @@
 {
-  "name": "contextkit",
+  "name": "deepindex",
   "version": "0.1.0",
   "description": "Self-healing, token-efficient context engineering framework for AI coding harnesses",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
-    "ctx": "dist/cli.js"
+    "deepinit": "dist/cli.js"
   },
   "scripts": {
     "build": "tsc",
@@ -31,7 +31,9 @@
     "better-sqlite3": "^11.5.0",
     "chokidar": "^4.0.0",
     "commander": "^12.1.0",
-    "web-tree-sitter": "^0.26.11"
+    "sql-parser-cst": "^0.42.1",
+    "web-tree-sitter": "^0.26.11",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.12",

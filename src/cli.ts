@@ -20,12 +20,12 @@ import { existsSync } from 'node:fs';
 const program = new Command();
 
 program
-  .name('ctx')
+  .name('deepinit')
   .description('DeepIndex — self-healing context engineering framework')
   .version('0.1.0');
 
 program
-  .command('build')
+  .command('index')
   .description('Index a repository: parse files, build graph, populate SQLite')
   .argument('<repo>', 'path to repository root')
   .option('-d, --db <path>', 'SQLite database path', '.ctx.db')
@@ -33,7 +33,7 @@ program
   .action(async (repo: string, opts: { db: string; rebuild: boolean }) => {
     const repoPath = resolve(repo);
     if (!existsSync(repoPath)) {
-      console.error(`ctx build: repository not found: ${repoPath}`);
+      console.error(`deepinit index: repository not found: ${repoPath}`);
       process.exit(2);
     }
     const dbPath = resolve(opts.db);
@@ -45,13 +45,13 @@ program
       );
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      console.error(`ctx build: ${message}`);
+      console.error(`deepinit index: ${message}`);
       process.exit(1);
     }
   });
 
 program
-  .command('status')
+  .command('health')
   .description('Print JSON health report for a repository index')
   .argument('<repo>', 'path to repository root')
   .option('-d, --db <path>', 'SQLite database path', '.ctx.db')
@@ -59,11 +59,11 @@ program
     const repoPath = resolve(repo);
     const dbPath = resolve(opts.db);
     if (!existsSync(dbPath)) {
-      console.log('no index — run `ctx build <repo>` first');
+      console.log('no index — run `deepinit index <repo>` first');
       process.exit(2);
     }
     if (!existsSync(repoPath)) {
-      console.error(`ctx status: repository not found: ${repoPath}`);
+      console.error(`deepinit health: repository not found: ${repoPath}`);
       process.exit(2);
     }
     const config = loadConfig(repoPath) ?? DEFAULT_HEALTH_CONFIG;
@@ -74,7 +74,7 @@ program
       process.exit(report.score >= config.repairBelow ? 0 : 1);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      console.error(`ctx status: ${message}`);
+      console.error(`deepinit health: ${message}`);
       process.exit(2);
     }
   });
@@ -158,14 +158,14 @@ program
   });
 
   program
-    .command('index-requirements')
+    .command('sync-requirements')
     .description('Index requirements from a JSON file')
     .argument('<file>', 'path to requirements JSON file')
     .option('-d, --db <path>', 'SQLite database path', '.ctx.db')
     .action(async (file: string, opts: { db: string }) => {
       const dbPath = resolve(opts.db);
       if (!existsSync(dbPath)) {
-        console.error('ctx index-requirements: no index — run `ctx build <repo>` first');
+        console.error('deepinit sync-requirements: no index — run `deepinit index <repo>` first');
         process.exit(2);
       }
       const db = initDb(dbPath);
@@ -175,19 +175,19 @@ program
         console.log(`Indexed ${imported} requirements and ${atomic} atomic statements.`);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        console.error(`ctx index-requirements: ${message}`);
+        console.error(`deepinit sync-requirements: ${message}`);
         process.exit(1);
       }
     });
 
   program
-    .command('req-coverage')
+    .command('check-req-coverage')
     .description('Generate requirements traceability and coverage report')
     .option('-d, --db <path>', 'SQLite database path', '.ctx.db')
     .action((opts: { db: string }) => {
       const dbPath = resolve(opts.db);
       if (!existsSync(dbPath)) {
-        console.error('ctx req-coverage: no index — run `ctx build <repo>` first');
+        console.error('deepinit check-req-coverage: no index — run `deepinit index <repo>` first');
         process.exit(2);
       }
       const db = initDb(dbPath);
@@ -209,13 +209,13 @@ program
         console.log('==================================================');
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        console.error(`ctx req-coverage: ${message}`);
+        console.error(`deepinit check-req-coverage: ${message}`);
         process.exit(1);
       }
     });
 
   program
-    .command('impact')
+    .command('analyze-impact')
     .description('Find impact chain for a specific table (Table -> Query -> File -> Service)')
     .argument('<table_name>', 'name of the database table')
     .option('-d, --db <path>', 'SQLite database path', '.ctx.db')
@@ -225,7 +225,7 @@ program
     .action((tableName: string, opts: { db: string; domain?: string; region?: string; system?: string }) => {
       const dbPath = resolve(opts.db);
       if (!existsSync(dbPath)) {
-        console.error('ctx impact: no index — run `ctx build <repo>` first');
+        console.error('deepinit analyze-impact: no index — run `deepinit index <repo>` first');
         process.exit(2);
       }
       const db = initDb(dbPath);
@@ -254,13 +254,13 @@ program
         console.log(`Summary: ${impact.affectedFiles.length} files, ${impact.affectedServices.length} services affected.`);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        console.error(`ctx impact: ${message}`);
+        console.error(`deepinit analyze-impact: ${message}`);
         process.exit(1);
       }
     });
 
   program
-    .command('parallel-storage')
+    .command('check-parallel-storage')
     .description('Identify tables found in multiple storage systems')
     .option('-d, --db <path>', 'SQLite database path', '.ctx.db')
     .option('--domain <domain>', 'filter by domain')
@@ -269,7 +269,7 @@ program
     .action((opts: { db: string; domain?: string; region?: string; system?: string }) => {
       const dbPath = resolve(opts.db);
       if (!existsSync(dbPath)) {
-        console.error('ctx parallel-storage: no index — run `ctx build <repo>` first');
+        console.error('deepinit check-parallel-storage: no index — run `deepinit index <repo>` first');
         process.exit(2);
       }
       const db = initDb(dbPath);
@@ -293,78 +293,80 @@ program
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        console.error(`ctx parallel-storage: ${message}`);
+        console.error(`deepinit check-parallel-storage: ${message}`);
         process.exit(1);
       }
     });
-  .description('Start the POST /context HTTP server')
-  .option('-p, --port <n>', 'port number', '7331')
-  .option('-d, --db <path>', 'SQLite database path', '.ctx.db')
-  .action(async (opts: { port: string; db: string }) => {
-    const port = Number.parseInt(opts.port, 10);
-    if (!Number.isFinite(port) || port <= 0) {
-      console.error(`ctx serve: invalid --port: ${opts.port}`);
-      process.exit(2);
-    }
-    const dbPath = resolve(opts.db);
-    let handle: Awaited<ReturnType<typeof serve>> | null = null;
-    try {
-      handle = await serve({ port, dbPath });
-      console.log(`ctx serve: listening on 127.0.0.1:${handle.port}`);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      console.error(`ctx serve: ${message}`);
-      process.exit(2);
-    }
-    const shutdown = async () => {
-      if (handle) {
-        await handle.close();
-        handle = null;
+  program
+    .command('serve')
+    .description('Start the POST /context HTTP server')
+    .option('-p, --port <n>', 'port number', '7331')
+    .option('-d, --db <path>', 'SQLite database path', '.ctx.db')
+    .action(async (opts: { port: string; db: string }) => {
+      const port = Number.parseInt(opts.port, 10);
+      if (!Number.isFinite(port) || port <= 0) {
+        console.error(`deepinit serve: invalid --port: ${opts.port}`);
+        process.exit(2);
       }
-      process.exit(0);
-    };
-    process.on('SIGINT', shutdown);
-    process.on('SIGTERM', shutdown);
-  });
+      const dbPath = resolve(opts.db);
+      let handle: Awaited<ReturnType<typeof serve>> | null = null;
+      try {
+        handle = await serve({ port, dbPath });
+        console.log(`deepinit serve: listening on 127.0.0.1:${handle.port}`);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error(`deepinit serve: ${message}`);
+        process.exit(2);
+      }
+      const shutdown = async () => {
+        if (handle) {
+          await handle.close();
+          handle = null;
+        }
+        process.exit(0);
+      };
+      process.on('SIGINT', shutdown);
+      process.on('SIGTERM', shutdown);
+    });
 
-program
-  .command('watch')
-  .description('Watch files for changes and invalidate summary cache')
-  .option('-d, --db <path>', 'SQLite database path', '.ctx.db')
-  .option('--no-ignore', 'disable .gitignore and other default ignores')
-  .option('--debounce <ms>', 'debounce window in ms', '250')
-  .action((opts: { db: string; ignore: boolean; debounce: string }) => {
-    const dbPath = resolve(opts.db);
-    const debounce = Number.parseInt(opts.debounce, 10);
-    if (!Number.isFinite(debounce) || debounce < 0) {
-      console.error(`ctx watch: invalid --debounce: ${opts.debounce}`);
-      process.exit(2);
-    }
-    const ignored = opts.ignore === false ? null : undefined;
-    let handle: ReturnType<typeof createWatcher> | null = null;
-    try {
-      handle = createWatcher({
-        dbPath,
-        roots: [process.cwd()],
-        debounceMs: debounce,
-        ignored,
-        onReady: () => console.log('watching'),
-      });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      console.error(`ctx watch: ${message}`);
-      process.exit(1);
-    }
-    const shutdown = async () => {
-      if (handle) {
-        await handle.close();
-        handle = null;
+  program
+    .command('watch')
+    .description('Watch files for changes and invalidate summary cache')
+    .option('-d, --db <path>', 'SQLite database path', '.ctx.db')
+    .option('--no-ignore', 'disable .gitignore and other default ignores')
+    .option('--debounce <ms>', 'debounce window in ms', '250')
+    .action((opts: { db: string; ignore: boolean; debounce: string }) => {
+      const dbPath = resolve(opts.db);
+      const debounce = Number.parseInt(opts.debounce, 10);
+      if (!Number.isFinite(debounce) || debounce < 0) {
+        console.error(`deepinit watch: invalid --debounce: ${opts.debounce}`);
+        process.exit(2);
       }
-      process.exit(0);
-    };
-    process.on('SIGINT', shutdown);
-    process.on('SIGTERM', shutdown);
-  });
+      const ignored = opts.ignore === false ? null : undefined;
+      let handle: ReturnType<typeof createWatcher> | null = null;
+      try {
+        handle = createWatcher({
+          dbPath,
+          roots: [process.cwd()],
+          debounceMs: debounce,
+          ignored,
+          onReady: () => console.log('watching'),
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error(`deepinit watch: ${message}`);
+        process.exit(1);
+      }
+      const shutdown = async () => {
+        if (handle) {
+          await handle.close();
+          handle = null;
+        }
+        process.exit(0);
+      };
+      process.on('SIGINT', shutdown);
+      process.on('SIGTERM', shutdown);
+    });
 
 program.parseAsync(process.argv).catch((err) => {
   console.error(err);
