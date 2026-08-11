@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: merge
 status: in_progress
-stopped_at: Completed 04-07-PLAN.md
-last_updated: "2026-08-11T06:05:31.082Z"
+stopped_at: Completed 04-03-PLAN.md
+last_updated: "2026-08-11T14:12:35.611Z"
 progress:
   total_phases: 6
   completed_phases: 2
   total_plans: 11
-  completed_plans: 5
+  completed_plans: 9
 ---
 
 # State
@@ -99,8 +99,8 @@ Resolve the remaining merge open questions (04 OQ-1/2, 05 OQ-1..3, 06 OQ-1..3), 
 
 ## Session
 
-**Last session:** 2026-08-11T06:05:31.059Z
-**Stopped at:** Completed 04-07-PLAN.md
+**Last session:** 2026-08-11T14:12:35.591Z
+**Stopped at:** Completed 04-03-PLAN.md
 **Resume file:** None
 
 ## Performance Metrics
@@ -109,8 +109,11 @@ Resolve the remaining merge open questions (04 OQ-1/2, 05 OQ-1..3, 06 OQ-1..3), 
 |------|----------|-------|-------|
 | Phase 04-merge-dataflow-multilang P01 | 720 | 1 tasks | 5 files |
 | Phase 04-merge-dataflow-multilang P04 | 1500 | 3 tasks | 3 files |
+| Phase 04 P03 | 167 | 1 tasks | 2 files |
 
 ## Decisions
 
 - [Phase ?]: Use minimal regex for SQL extraction to prove the pipeline (Tracer)
 - [Phase ?]: Add .sql to supported extensions to enable SQL file indexing
+- [Phase ?]: sql-parser-cst sqlite dialect as permissive formal-path default (04-03)
+- [Phase ?]: XML/YAML config mappings kept in separate extractConfigMappings to avoid false positives on plain code (04-03)

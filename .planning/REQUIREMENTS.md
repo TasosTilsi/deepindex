@@ -93,9 +93,9 @@ enrichment, gated on config, never a dependency.
 ### Data-Flow (DFLW)
 
 - [x] **DFLW-01**: Extract SQL statements (SELECT/INSERT/UPDATE/DELETE/CREATE TABLE/ALTER/DROP) from code + XML/YAML configs. Store query text + referenced tables (JSON array).
-- [ ] **DFLW-02**: Extract CREATE TABLE column schemas (paren-depth comma splitter). One row per column.
-- [ ] **DFLW-03**: Extract ORM annotations (@Table, @Entity, __tablename__) and MongoDB collections (@Document, db.collection, getCollection).
-- [ ] **DFLW-04**: Extract config mappings (MyBatis resultMap, PropertyNameMapper) and data constants (hardcoded rates/IDs/keys from .properties/JSON).
+- [x] **DFLW-02**: Extract CREATE TABLE column schemas (paren-depth comma splitter). One row per column.
+- [x] **DFLW-03**: Extract ORM annotations (@Table, @Entity, __tablename__) and MongoDB collections (@Document, db.collection, getCollection).
+- [x] **DFLW-04**: Extract config mappings (MyBatis resultMap, PropertyNameMapper) and data constants (hardcoded rates/IDs/keys from .properties/JSON).
 
 ### Data-Flow Graph (DGRPH)
 
