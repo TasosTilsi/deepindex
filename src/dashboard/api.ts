@@ -4,6 +4,12 @@
 import type Database from 'better-sqlite3';
 import { searchEntities, getRelatedRecursive } from '../git/search.js';
 import { projectFullGraph } from '../graph/projection.js';
+import { listProjects, type ProjectEntry } from '../registry.js';
+
+/** List all registered projects (for the multi-project dashboard). */
+export function apiProjects(registryPath?: string): { projects: ProjectEntry[] } {
+  return { projects: listProjects(registryPath) };
+}
 
 /** Overview counts across the merged store. */
 export function apiOverview(db: Database.Database) {
@@ -65,11 +71,12 @@ export function apiSymbols(db: Database.Database, limit = 500) {
 }
 
 /** Route a GET /api/* path to its handler. Returns {status, body}. */
-export function handleApi(db: Database.Database, url: string): { status: number; body: unknown } {
+export function handleApi(db: Database.Database, url: string, registryPath?: string): { status: number; body: unknown } {
   const u = new URL(url, 'http://localhost');
   const path = u.pathname;
   const q = u.searchParams;
 
+  if (path === '/api/projects') return { status: 200, body: apiProjects(registryPath) };
   if (path === '/api/overview') return { status: 200, body: apiOverview(db) };
   if (path === '/api/entities') {
     const limit = Number(q.get('limit') ?? 200);

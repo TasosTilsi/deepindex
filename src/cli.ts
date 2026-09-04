@@ -19,11 +19,12 @@ import { searchEntities } from './git/search.js';
 import { serveMcp } from './mcp/server.js';
 import { installClaudeSettings } from './mcp/install.js';
 import { installInteractive, installHarness, type Harness } from './install.js';
+import { registerProject } from './registry.js';
 import { sessionStart } from './hooks/session-start.js';
 import { userPromptSubmit } from './hooks/user-prompt-submit.js';
 import { postToolUse } from './hooks/post-tool-use.js';
 import { sessionEnd } from './hooks/session-end.js';
-import { resolve } from 'node:path';
+import { resolve, basename } from 'node:path';
 import { existsSync } from 'node:fs';
 import type Database from 'better-sqlite3';
 
@@ -75,6 +76,13 @@ program
     const db = initDb(dbPath);
     try {
       const stats = await buildGraph(db, repoPath, { force: opts.rebuild });
+      // Register the project so the multi-project dashboard can show it.
+      // Non-fatal: indexing succeeds even if the registry can't be written.
+      try {
+        registerProject({ name: basename(repoPath), path: repoPath, dbPath });
+      } catch {
+        // registry write failed — ignore
+      }
       console.log(
         `indexed ${stats.fileCount} files, ${stats.symbolCount} symbols, ${stats.brokenImportCount} broken imports`
       );

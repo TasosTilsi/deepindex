@@ -64,6 +64,17 @@ body {
 .nav-link:hover { background: var(--bg); color: var(--text); }
 .nav-link.active { background: var(--accent); color: #fff; }
 
+.project-select {
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  font-size: 14px;
+  color: var(--text);
+  cursor: pointer;
+}
+.project-select:focus { outline: none; border-color: var(--text); }
+
 .content { max-width: 1200px; margin: 0 auto; padding: 48px 32px; }
 
 h1 {

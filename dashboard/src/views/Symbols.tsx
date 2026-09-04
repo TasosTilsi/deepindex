@@ -4,8 +4,8 @@ interface File { id: number; path: string; language: string | null; }
 interface Symbol { id: number; name: string; kind: string; file_id: number; path: string; }
 interface SymbolsData { files: File[]; symbols: Symbol[]; }
 
-export default function Symbols() {
-  const { data, loading, error } = useApi<SymbolsData>('/api/symbols?limit=500');
+export default function Symbols({ qs = '' }: { qs?: string }) {
+  const { data, loading, error } = useApi<SymbolsData>(`/api/symbols?limit=500${qs}`);
   return (
     <State loading={loading} error={error}>
       <h1>Symbols</h1>

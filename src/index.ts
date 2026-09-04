@@ -34,8 +34,19 @@ export {
   apiDataflow,
   apiSearch,
   apiSymbols,
+  apiProjects,
   handleApi,
 } from './dashboard/api.js';
+export {
+  loadRegistry,
+  saveRegistry,
+  registerProject,
+  listProjects,
+  getProject,
+  defaultRegistryPath,
+  type ProjectEntry,
+  type Registry,
+} from './registry.js';
 export {
   adaptClaudeCode,
   type AdapterResult,

@@ -3,7 +3,7 @@ import { useState } from 'react';
 interface Related { id: string; name: string; type: string; relationship: string; }
 interface Hit { id: string; type: string; name: string; content: string; related: Related[]; }
 
-export default function Search() {
+export default function Search({ qs = '' }: { qs?: string }) {
   const [q, setQ] = useState('');
   const [results, setResults] = useState<Hit[] | null>(null);
   const [loading, setLoading] = useState(false);
@@ -14,7 +14,7 @@ export default function Search() {
     setLoading(true);
     setError(null);
     try {
-      const r = await fetch(`/api/search?q=${encodeURIComponent(q)}&limit=20`);
+      const r = await fetch(`/api/search?q=${encodeURIComponent(q)}&limit=20${qs}`);
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       setResults(await r.json());
     } catch (e) {

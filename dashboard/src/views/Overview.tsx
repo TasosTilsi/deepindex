@@ -10,8 +10,8 @@ interface Overview {
   entityTypes: { type: string; c: number }[];
 }
 
-export default function Overview() {
-  const { data, loading, error } = useApi<Overview>('/api/overview');
+export default function Overview({ qs = '' }: { qs?: string }) {
+  const { data, loading, error } = useApi<Overview>(`/api/overview${qs}`);
   return (
     <State loading={loading} error={error}>
       {data && (

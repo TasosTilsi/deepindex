@@ -7,12 +7,14 @@ import { join, extname, resolve } from 'node:path';
 import { adaptClaudeCode } from './adapter-claude-code.js';
 import { initDb } from './graph/db.js';
 import { handleApi } from './dashboard/api.js';
+import { getProject, defaultRegistryPath } from './registry.js';
 
 export interface ServeOptions {
   port?: number;
   host?: string;
   dbPath?: string;
   dashboardDir?: string;
+  registryPath?: string;
 }
 
 export interface ServeHandle {
@@ -72,15 +74,25 @@ export function serve(opts: ServeOptions = {}): Promise<ServeHandle> {
     const host = opts.host ?? DEFAULT_HOST;
     const dbPath = opts.dbPath ?? DEFAULT_DB;
     const dashboardDir = opts.dashboardDir ?? DEFAULT_DASHBOARD;
+    const registryPath = opts.registryPath ?? defaultRegistryPath();
 
     const server = createServer(async (req, res) => {
       const url = req.url ?? '/';
 
       // Dashboard read-only API.
       if (req.method === 'GET' && url.startsWith('/api/')) {
-        const db = initDb(dbPath);
+        // Resolve the project's db: ?project=<name> selects a registered
+        // project; otherwise use the default dbPath.
+        const u = new URL(url, 'http://localhost');
+        const projectKey = u.searchParams.get('project');
+        let dbForApi = dbPath;
+        if (projectKey) {
+          const proj = getProject(projectKey, registryPath);
+          if (proj) dbForApi = proj.dbPath;
+        }
+        const db = initDb(dbForApi);
         try {
-          const r = handleApi(db, url);
+          const r = handleApi(db, url, registryPath);
           sendJson(res, r.status, r.body);
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);

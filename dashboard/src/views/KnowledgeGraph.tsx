@@ -17,8 +17,8 @@ const TYPE_COLOR: Record<string, string> = {
   concept: '#787774',
 };
 
-export default function KnowledgeGraph() {
-  const { data, loading, error } = useApi<EntitiesData>('/api/entities?limit=200');
+export default function KnowledgeGraph({ qs = '' }: { qs?: string }) {
+  const { data, loading, error } = useApi<EntitiesData>(`/api/entities?limit=200${qs ? `&${qs.slice(1)}` : ''}`);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {

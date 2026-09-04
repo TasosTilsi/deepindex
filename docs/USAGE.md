@@ -82,21 +82,22 @@ deepindex check-req-coverage
 ```bash
 # Start the server (POST /context + GET /api/* + GET / dashboard)
 deepindex serve --port 7331
-
-# POST /context — retrieve context for a task
-curl -X POST http://127.0.0.1:7331/context \
-  -H 'content-type: application/json' \
-  -d '{"task": "how does auth work", "repoPath": "/path/to/repo"}'
-
-# Dashboard API
-curl http://127.0.0.1:7331/api/overview
-curl http://127.0.0.1:7331/api/entities
-curl http://127.0.0.1:7331/api/dataflow
-curl "http://127.0.0.1:7331/api/search?q=auth"
-curl http://127.0.0.1:7331/api/symbols
 ```
 
-Open `http://127.0.0.1:7331/` in a browser for the read-only dashboard (Overview, Knowledge Graph, Data Flow, Search, Symbols).
+`deepindex serve` reads the **project registry** (`~/.deepindex/projects.json`) and serves a **multi-project dashboard** on localhost. Every `deepindex index <repo>` registers the project, so the dashboard shows all indexed projects with a project selector.
+
+```bash
+# Dashboard API
+curl http://127.0.0.1:7331/api/projects          # list all projects
+curl http://127.0.0.1:7331/api/overview          # default project
+curl http://127.0.0.1:7331/api/overview?project=myrepo   # specific project
+curl http://127.0.0.1:7331/api/entities?project=myrepo
+curl http://127.0.0.1:7331/api/dataflow?project=myrepo
+curl "http://127.0.0.1:7331/api/search?q=auth&project=myrepo"
+curl http://127.0.0.1:7331/api/symbols?project=myrepo
+```
+
+Open `http://127.0.0.1:7331/` in a browser for the read-only dashboard (Overview, Knowledge Graph, Data Flow, Search, Symbols) with a project selector in the nav.
 
 ## MCP Server
 

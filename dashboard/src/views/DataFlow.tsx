@@ -7,8 +7,8 @@ interface Query { id: number; file: string; }
 interface Service { file: string; service: string; }
 interface DataflowData { tables: Table[]; queries: Query[]; services: Service[]; }
 
-export default function DataFlow() {
-  const { data, loading, error } = useApi<DataflowData>('/api/dataflow');
+export default function DataFlow({ qs = '' }: { qs?: string }) {
+  const { data, loading, error } = useApi<DataflowData>(`/api/dataflow${qs}`);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {

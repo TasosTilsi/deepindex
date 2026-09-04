@@ -11,8 +11,10 @@ import {
   apiDataflow,
   apiSearch,
   apiSymbols,
+  apiProjects,
   handleApi,
 } from '../src/dashboard/api.js';
+import { registerProject } from '../src/registry.js';
 import { createGitFixture } from './helpers/git-fixture.js';
 import type Database from 'better-sqlite3';
 
@@ -80,5 +82,13 @@ describe('dashboard api', () => {
     expect(ov.body).toHaveProperty('entities');
     const nf = handleApi(db, '/api/nope');
     expect(nf.status).toBe(404);
+  });
+
+  it('apiProjects lists registered projects', () => {
+    const regPath = join(tmpDir, 'projects.json');
+    registerProject({ name: 'p1', path: '/x/p1', dbPath: join(tmpDir, 'test.db') }, regPath);
+    const r = apiProjects(regPath);
+    expect(r.projects.length).toBeGreaterThan(0);
+    expect(r.projects[0].name).toBe('p1');
   });
 });
