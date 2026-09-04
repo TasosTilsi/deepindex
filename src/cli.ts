@@ -223,7 +223,7 @@ program
   });
 
   program
-    .command('sync-requirements')
+    .command('sync-requirements', { hidden: true })
     .description('Index requirements from a JSON file')
     .argument('<file>', 'path to requirements JSON file')
     .option('-d, --db <path>', 'SQLite database path', '.deepindex.db')
@@ -246,7 +246,7 @@ program
     });
 
   program
-    .command('check-req-coverage')
+    .command('check-req-coverage', { hidden: true })
     .description('Generate requirements traceability and coverage report')
     .option('-d, --db <path>', 'SQLite database path', '.deepindex.db')
     .action((opts: { db: string }) => {
@@ -281,7 +281,7 @@ program
     });
 
   program
-    .command('analyze-impact')
+    .command('analyze-impact', { hidden: true })
     .description('Find impact chain for a specific table (Table -> Query -> File -> Service)')
     .argument('<table_name>', 'name of the database table')
     .option('-d, --db <path>', 'SQLite database path', '.deepindex.db')
@@ -326,7 +326,7 @@ program
     });
 
   program
-    .command('check-parallel-storage')
+    .command('check-parallel-storage', { hidden: true })
     .description('Identify tables found in multiple storage systems')
     .option('-d, --db <path>', 'SQLite database path', '.deepindex.db')
     .option('--domain <domain>', 'filter by domain')
@@ -396,7 +396,7 @@ program
     });
 
   program
-    .command('list-tables')
+    .command('list-tables', { hidden: true })
     .description('List all discovered database tables')
     .option('-d, --db <path>', 'SQLite database path', '.deepindex.db')
     .action((opts: { db: string }) => {
@@ -414,7 +414,7 @@ program
     });
 
   program
-    .command('find-table-usage')
+    .command('find-table-usage', { hidden: true })
     .description('Find code reading/writing a specific table')
     .argument('<table_name>', 'name of the database table')
     .option('-d, --db <path>', 'SQLite database path', '.deepindex.db')
@@ -436,7 +436,7 @@ program
     });
 
   program
-    .command('summarize-graph')
+    .command('summarize-graph', { hidden: true })
     .description('Print a summary of the indexed SQL-impact projection')
     .option('-d, --db <path>', 'SQLite database path', '.deepindex.db')
     .action((opts: { db: string }) => {
@@ -447,7 +447,7 @@ program
     });
 
   program
-    .command('build-graph')
+    .command('build-graph', { hidden: true })
     .description('Build and validate the data-flow projection from indexed SQL/data-flow tables')
     .option('-d, --db <path>', 'SQLite database path', '.deepindex.db')
     .option('--json', 'emit JSON to stdout', false)
@@ -515,7 +515,7 @@ program
     });
 
   program
-    .command('git-index')
+    .command('git-index', { hidden: true })
     .description('Index full git history into the knowledge graph (entities, backlinks, FTS5)')
     .argument('<repo>', 'path to git repository root')
     .option('-d, --db <path>', 'SQLite database path', '.deepindex.db')
@@ -542,7 +542,7 @@ program
     });
 
   program
-    .command('git-sync')
+    .command('git-sync', { hidden: true })
     .description('Incrementally index commits since last_indexed_sha')
     .argument('<repo>', 'path to git repository root')
     .option('-d, --db <path>', 'SQLite database path', '.deepindex.db')
@@ -674,7 +674,7 @@ program
     });
 
   program
-    .command('hook')
+    .command('hook', { hidden: true })
     .description('Claude Code hook entry points')
     .argument('<name>', 'session-start | user-prompt-submit | post-tool-use | session-end')
     .option('-d, --db <path>', 'SQLite database path', '.deepindex.db')
@@ -710,6 +710,14 @@ program
         process.exit(1);
       }
     });
+
+program.addHelpText('after', `
+Additional advanced commands (hidden from this list) are available:
+  data-flow:   build-graph, list-tables, find-table-usage, summarize-graph,
+               analyze-impact, check-parallel-storage
+  requirements: sync-requirements, check-req-coverage
+  internal:    git-index, git-sync, hook
+See docs/USAGE.md 'Advanced commands' for how to use them.`);
 
 program.parseAsync(process.argv).catch((err) => {
   console.error(err);

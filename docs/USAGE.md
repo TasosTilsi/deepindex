@@ -79,6 +79,36 @@ deepindex sync-requirements <file>
 deepindex check-req-coverage
 ```
 
+## Advanced Commands
+
+The following commands are hidden from `deepindex --help` (they're niche or internal), but remain functional. Run `deepindex <command> --help` for each one's full usage.
+
+### Data-flow analysis
+
+| Command | Purpose |
+|---------|---------|
+| `deepindex build-graph` | Build + validate the data-flow projection (Table↔Query↔Service). |
+| `deepindex list-tables` | List every discovered database table/collection (from SQL, ORM, config mappings). |
+| `deepindex find-table-usage <table>` | Find code that reads/writes a specific table. |
+| `deepindex summarize-graph` | Print a summary of the SQL-impact projection (table/query/service counts). |
+| `deepindex analyze-impact <table>` | Impact chain: which queries/files/services touch a table. `--domain/--region/--system` filter by context tags. |
+| `deepindex check-parallel-storage` | Flag tables stored in more than one storage system (e.g. DB2 + MongoDB). `--domain/--region/--system` filters supported. |
+
+### Requirements traceability
+
+| Command | Purpose |
+|---------|---------|
+| `deepindex sync-requirements <file>` | Index requirements from a JSON file. |
+| `deepindex check-req-coverage` | Report requirements without code and code without requirements (uses `@req` annotations). |
+
+### Internal (automatic)
+
+| Command | Purpose |
+|---------|---------|
+| `deepindex git-index <repo>` | Walk full git history into the knowledge graph. **Automatic** — run inside `deepindex index`. Only needed for manual full re-index. |
+| `deepindex git-sync <repo>` | Incrementally sync commits since the last index. **Automatic** — run before `search`/`retrieve`. `--full` forces a full re-index. |
+| `deepindex hook <name>` | Claude Code / Codex / OpenCode hook entry points. **Called by the harness** — not for manual use. |
+
 ## HTTP Server & Dashboard
 
 ```bash
