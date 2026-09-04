@@ -1,6 +1,6 @@
 // Phase 3: Watcher. chokidar-based, debounced cache invalidation.
 // No auto-repair (D-04): on file change, drop the affected summary cache
-// entry; the user invokes `ctx repair` explicitly.
+// entry; the user invokes `deepindex repair` explicitly.
 
 import chokidar from 'chokidar';
 import Database from 'better-sqlite3';
@@ -46,8 +46,8 @@ export function createWatcher(opts: WatcherOptions): WatcherHandle {
 
   const ignored =
     opts.ignored === null
-      ? ['**/.ctx/**', '**/node_modules/**', '**/.git/**']
-      : [...(opts.ignored ?? []), '**/.ctx/**', '**/node_modules/**', '**/.git/**'];
+      ? ['**/.deepindex/**', '**/node_modules/**', '**/.git/**']
+      : [...(opts.ignored ?? []), '**/.deepindex/**', '**/node_modules/**', '**/.git/**'];
 
   const timers = new Map<string, NodeJS.Timeout>();
 
@@ -71,7 +71,7 @@ export function createWatcher(opts: WatcherOptions): WatcherHandle {
           cacheDelete(db, key);
         } catch (err) {
           // The cache table may not exist yet (e.g. watcher created before
-          // `ctx build` ran, or in tests). Treat "no such table" as a quiet
+          // `deepindex build` ran, or in tests). Treat "no such table" as a quiet
           // no-op so stderr stays clean; surface other errors.
           const msg = err instanceof Error ? err.message : String(err);
           if (!/no such table/i.test(msg)) {

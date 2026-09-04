@@ -15,7 +15,7 @@ describe('graph layer', () => {
   let dbPath: string;
 
   beforeAll(async () => {
-    tmpDir = mkdtempSync(join(tmpdir(), 'ctx-test-'));
+    tmpDir = mkdtempSync(join(tmpdir(), 'deepindex-test-'));
     dbPath = join(tmpDir, 'test.db');
     db = initDb(dbPath);
     await buildGraph(db, FIXTURE);

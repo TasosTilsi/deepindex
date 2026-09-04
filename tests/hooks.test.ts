@@ -19,7 +19,7 @@ describe('hooks', () => {
   let FIXTURE: string;
 
   beforeAll(() => {
-    tmpDir = mkdtempSync(join(tmpdir(), 'ctx-hooks-'));
+    tmpDir = mkdtempSync(join(tmpdir(), 'deepindex-hooks-'));
     dbPath = join(tmpDir, 'test.db');
     db = initDb(dbPath);
     FIXTURE = createGitFixture();

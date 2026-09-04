@@ -12,7 +12,7 @@ Vitest unit suites. One test file per src module, exercising parse/build/query, 
 | `graph.test.ts` | Graph subsystem: build stats, symbols/imports/edges, resolution, BFS |
 | `cache.test.ts` | cacheSet/Get/Delete/Stats, version bumping, eviction |
 | `fingerprint.test.ts` | sha256 + fingerprint confidence computation |
-| `health.test.ts` | getHealth scoring, signals, `.ctx.toml` config loader |
+| `health.test.ts` | getHealth scoring, signals, `.deepindex.toml` config loader |
 | `retrieve.test.ts` | tokenize/tfidf + full retrieve ranking against fixture |
 | `repair.test.ts` | 4-stage pipeline, git-history contradiction detection, LLM stage caching |
 | `reflect.test.ts` | vitest/eslint/istanbul JSON parsers incl. malformed input |

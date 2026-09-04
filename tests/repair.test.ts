@@ -22,7 +22,7 @@ const FIXTURE = resolve(process.cwd(), 'fixtures/sample-repo');
 describe('repair', () => {
   describe('stage1Rebuild', () => {
     it('rebuild on already-built fixture returns ok: true with a non-zero action', async () => {
-      const dir = mkdtempSync(join(tmpdir(), 'ctx-s1-'));
+      const dir = mkdtempSync(join(tmpdir(), 'deepindex-s1-'));
       const db = initDb(join(dir, 'test.db'));
       const r = await stage1Rebuild(db, FIXTURE);
       // First build inserts files, so fileCount > 0 → ok true.
@@ -33,7 +33,7 @@ describe('repair', () => {
     });
 
     it('rebuild after one file change re-parses that file', async () => {
-      const dir = mkdtempSync(join(tmpdir(), 'ctx-s1-change-'));
+      const dir = mkdtempSync(join(tmpdir(), 'deepindex-s1-change-'));
       const db = initDb(join(dir, 'test.db'));
       await stage1Rebuild(db, FIXTURE);
       // No changes; second rebuild should be a no-op.
@@ -46,7 +46,7 @@ describe('repair', () => {
 
   describe('stage2CacheInvalidate', () => {
     it('on an empty cache: ok: true, invalidated 0', () => {
-      const dir = mkdtempSync(join(tmpdir(), 'ctx-s2-empty-'));
+      const dir = mkdtempSync(join(tmpdir(), 'deepindex-s2-empty-'));
       const db = initDb(join(dir, 'test.db'));
       const r = stage2CacheInvalidate(db);
       expect(r.ok).toBe(true);
@@ -56,7 +56,7 @@ describe('repair', () => {
     });
 
     it('removes a repair:* cache entry', () => {
-      const dir = mkdtempSync(join(tmpdir(), 'ctx-s2-repair-'));
+      const dir = mkdtempSync(join(tmpdir(), 'deepindex-s2-repair-'));
       const db = initDb(join(dir, 'test.db'));
       cacheSet(db, 'repair:abc', 'content', {});
       const r = stage2CacheInvalidate(db);
@@ -70,7 +70,7 @@ describe('repair', () => {
 
   describe('stage3GitHistory', () => {
     it('returns ok: false when .git is absent', () => {
-      const dir = mkdtempSync(join(tmpdir(), 'ctx-s3-nogit-'));
+      const dir = mkdtempSync(join(tmpdir(), 'deepindex-s3-nogit-'));
       // No .git, no src; should report no .git.
       const r = stage3GitHistory(dir);
       expect(r.ok).toBe(false);
@@ -106,7 +106,7 @@ describe('repair', () => {
 
   describe('repair pipeline', () => {
     it('runs only stage 1 on a clean fixture and short-circuits', async () => {
-      const dir = mkdtempSync(join(tmpdir(), 'ctx-repair-clean-'));
+      const dir = mkdtempSync(join(tmpdir(), 'deepindex-repair-clean-'));
       const db = initDb(join(dir, 'test.db'));
       // First build so the file rows exist.
       await buildGraph(db, FIXTURE);
@@ -121,7 +121,7 @@ describe('repair', () => {
     });
 
     it('does not invoke the LLM when opts.llm is not set, even if health stays low', async () => {
-      const dir = mkdtempSync(join(tmpdir(), 'ctx-repair-no-llm-'));
+      const dir = mkdtempSync(join(tmpdir(), 'deepindex-repair-no-llm-'));
       const db = initDb(join(dir, 'test.db'));
       await buildGraph(db, FIXTURE);
       // Force a high repairBelow so even with low health the deterministic
@@ -178,7 +178,7 @@ describe('repair', () => {
 
   describe('stage4LLM', () => {
     it('cache miss then hit: first call invokes fetch, second does not', async () => {
-      const dir = mkdtempSync(join(tmpdir(), 'ctx-s4-'));
+      const dir = mkdtempSync(join(tmpdir(), 'deepindex-s4-'));
       const db = initDb(join(dir, 'test.db'));
       const fetchSpy = vi
         .spyOn(globalThis, 'fetch')
@@ -211,7 +211,7 @@ describe('repair', () => {
     });
 
     it('returns ok:false on LLM throw and does not rethrow', async () => {
-      const dir = mkdtempSync(join(tmpdir(), 'ctx-s4-throw-'));
+      const dir = mkdtempSync(join(tmpdir(), 'deepindex-s4-throw-'));
       const db = initDb(join(dir, 'test.db'));
       const fetchSpy = vi
         .spyOn(globalThis, 'fetch')
@@ -233,7 +233,7 @@ describe('repair', () => {
 
   describe('repair with LLM', () => {
     it('runs all 4 stages and reports llmCost when score < threshold and llm is set', async () => {
-      const dir = mkdtempSync(join(tmpdir(), 'ctx-repair-llm-'));
+      const dir = mkdtempSync(join(tmpdir(), 'deepindex-repair-llm-'));
       const db = initDb(join(dir, 'test.db'));
       await buildGraph(db, FIXTURE);
       const fetchSpy = vi

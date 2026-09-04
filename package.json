@@ -13,7 +13,7 @@
     "start": "node dist/cli.js",
     "test": "vitest run",
     "test:watch": "vitest",
-    "ctx": "tsx src/cli.ts"
+    "deepindex": "tsx src/cli.ts"
   },
   "engines": {
     "node": ">=20"

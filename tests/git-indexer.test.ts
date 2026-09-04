@@ -15,7 +15,7 @@ describe('git indexer', () => {
   let FIXTURE: string;
 
   beforeAll(async () => {
-    tmpDir = mkdtempSync(join(tmpdir(), 'ctx-git-'));
+    tmpDir = mkdtempSync(join(tmpdir(), 'deepindex-git-'));
     db = initDb(join(tmpDir, 'test.db'));
     FIXTURE = createGitFixture();
     // Populate the files table so commit_files can link to it (D-16).

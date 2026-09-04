@@ -132,11 +132,11 @@ program
     const repoPath = resolve(repo);
     const dbPath = resolve(opts.db);
     if (!existsSync(dbPath)) {
-      console.error(`ctx repair: no index — run \`ctx build <repo>\` first`);
+      console.error(`deepindex repair: no index — run \`deepindex build <repo>\` first`);
       process.exit(2);
     }
     if (!existsSync(repoPath)) {
-      console.error(`ctx repair: repository not found: ${repoPath}`);
+      console.error(`deepindex repair: repository not found: ${repoPath}`);
       process.exit(2);
     }
     const config = loadConfig(repoPath) ?? DEFAULT_HEALTH_CONFIG;
@@ -159,7 +159,7 @@ program
       process.exit(after.score >= config.repairBelow ? 0 : 1);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      console.error(`ctx repair: ${message}`);
+      console.error(`deepindex repair: ${message}`);
       process.exit(2);
     }
   });
@@ -174,12 +174,12 @@ program
   .action((query: string, opts: { db: string; topK: string; json: boolean }) => {
     const dbPath = resolve(opts.db);
     if (!existsSync(dbPath)) {
-      console.error(`ctx retrieve: no index — run \`ctx build <repo>\` first`);
+      console.error(`deepindex retrieve: no index — run \`deepindex build <repo>\` first`);
       process.exit(2);
     }
     const topK = Number.parseInt(opts.topK, 10);
     if (!Number.isFinite(topK) || topK <= 0) {
-      console.error(`ctx retrieve: invalid --top-k: ${opts.topK}`);
+      console.error(`deepindex retrieve: invalid --top-k: ${opts.topK}`);
       process.exit(2);
     }
     const db = initDb(dbPath);
@@ -195,7 +195,7 @@ program
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      console.error(`ctx retrieve: ${message}`);
+      console.error(`deepindex retrieve: ${message}`);
       process.exit(1);
     }
   });

@@ -26,7 +26,7 @@ describe('dashboard api', () => {
   let GIT_FIXTURE: string;
 
   beforeAll(async () => {
-    tmpDir = mkdtempSync(join(tmpdir(), 'ctx-dash-'));
+    tmpDir = mkdtempSync(join(tmpdir(), 'deepindex-dash-'));
     db = initDb(join(tmpDir, 'test.db'));
     GIT_FIXTURE = createGitFixture();
     gitIndex(db, GIT_FIXTURE);

@@ -18,7 +18,7 @@ describe('multi-language build (walker-level e2e)', () => {
   let srcDir: string;
 
   beforeAll(async () => {
-    tmpDir = mkdtempSync(join(tmpdir(), 'ctx-mlang-'));
+    tmpDir = mkdtempSync(join(tmpdir(), 'deepindex-mlang-'));
     srcDir = join(tmpDir, 'src');
     mkdirSync(srcDir, { recursive: true });
 

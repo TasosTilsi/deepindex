@@ -16,7 +16,7 @@ describe('adapter', () => {
   let GIT_FIXTURE: string;
 
   beforeAll(async () => {
-    dir = mkdtempSync(join(tmpdir(), 'ctx-adapter-'));
+    dir = mkdtempSync(join(tmpdir(), 'deepindex-adapter-'));
     dbPath = join(dir, 'test.db');
     const db = initDb(dbPath);
     await buildGraph(db, FIXTURE);
@@ -60,8 +60,8 @@ describe('adapter', () => {
     expect(r.topFiles.length).toBeLessThanOrEqual(10);
   });
 
-  it.skipIf(!existsSync(resolve(process.cwd(), '.ctx.db')))(
-    'uses .ctx.db as the default dbPath when present',
+  it.skipIf(!existsSync(resolve(process.cwd(), '.deepindex.db')))(
+    'uses .deepindex.db as the default dbPath when present',
     async () => {
       // No topK: confirm defaults flow through; no throw on call.
       const r = await adaptClaudeCode('auth', FIXTURE);

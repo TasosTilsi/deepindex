@@ -22,7 +22,7 @@ describe('mcp', () => {
   let FIXTURE: string;
 
   beforeAll(() => {
-    tmpDir = mkdtempSync(join(tmpdir(), 'ctx-mcp-'));
+    tmpDir = mkdtempSync(join(tmpdir(), 'deepindex-mcp-'));
     db = initDb(join(tmpDir, 'test.db'));
     FIXTURE = createGitFixture();
     gitIndex(db, FIXTURE);

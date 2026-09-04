@@ -16,7 +16,7 @@ describe('project registry', () => {
   let regPath: string;
 
   beforeAll(() => {
-    dir = mkdtempSync(join(tmpdir(), 'ctx-reg-'));
+    dir = mkdtempSync(join(tmpdir(), 'deepindex-reg-'));
     regPath = join(dir, 'projects.json');
   });
 

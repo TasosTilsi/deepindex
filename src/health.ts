@@ -1,4 +1,4 @@
-// Phase 2: Health scoring + signal store + .ctx.toml config loader.
+// Phase 2: Health scoring + signal store + .deepindex.toml config loader.
 // No CLI, no env reads, no module-level singletons. Pure functions of `db` and
 // optional config.
 
@@ -48,7 +48,7 @@ export function getSignals(db: Database.Database): Record<string, number> {
 }
 
 export function loadConfig(repoPath: string): HealthConfig {
-  const tomlPath = join(repoPath, '.ctx.toml');
+  const tomlPath = join(repoPath, '.deepindex.toml');
   if (!existsSync(tomlPath)) return { ...DEFAULT_HEALTH_CONFIG };
   let text: string;
   try {

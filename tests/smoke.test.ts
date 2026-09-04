@@ -32,7 +32,7 @@ function fail(step: string, stderr: string): never {
 }
 
 async function main(): Promise<void> {
-  const dir = mkdtempSync(join(tmpdir(), 'ctx-smoke-'));
+  const dir = mkdtempSync(join(tmpdir(), 'deepindex-smoke-'));
   const dbPath = join(dir, 'smoke.db');
   try {
     // 1. index

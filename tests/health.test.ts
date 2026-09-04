@@ -18,7 +18,7 @@ const FIXTURE = resolve(process.cwd(), 'fixtures/sample-repo');
 describe('health', () => {
   describe('schema migration', () => {
     it('bumps user_version to 4 and creates health_signals + requirement_code_links tables', () => {
-      const tmp = mkdtempSync(join(tmpdir(), 'ctx-schema-'));
+      const tmp = mkdtempSync(join(tmpdir(), 'deepindex-schema-'));
       const dbPath = join(tmp, 'test.db');
       const db = initDb(dbPath);
       const v = db.pragma('user_version', { simple: true }) as number;
@@ -43,7 +43,7 @@ describe('health', () => {
 
   describe('signals', () => {
     it('recordSignal + getSignals round-trip', () => {
-      const tmp = mkdtempSync(join(tmpdir(), 'ctx-sig-'));
+      const tmp = mkdtempSync(join(tmpdir(), 'deepindex-sig-'));
       const dbPath = join(tmp, 'test.db');
       const db = initDb(dbPath);
       recordSignal(db, 'tests', 0.8, 'vitest');
@@ -53,7 +53,7 @@ describe('health', () => {
     });
 
     it('recordSignal throws on bad inputs', () => {
-      const tmp = mkdtempSync(join(tmpdir(), 'ctx-sig-bad-'));
+      const tmp = mkdtempSync(join(tmpdir(), 'deepindex-sig-bad-'));
       const dbPath = join(tmp, 'test.db');
       const db = initDb(dbPath);
       expect(() => recordSignal(db, '', 0.5, 'src')).toThrow(TypeError);
@@ -65,7 +65,7 @@ describe('health', () => {
 
   describe('getHealth', () => {
     it('on an empty DB: score in [0,100], coverage = 0.5*0.5, confidence defaults to 0.5', () => {
-      const dir = mkdtempSync(join(tmpdir(), 'ctx-health-empty-'));
+      const dir = mkdtempSync(join(tmpdir(), 'deepindex-health-empty-'));
       const dbPath = join(dir, 'test.db');
       const localDb = initDb(dbPath);
       const r = getHealth(localDb);
@@ -79,7 +79,7 @@ describe('health', () => {
     });
 
     it('after buildGraph on the sample fixture with a broken import: consistency < 1 and issues include broken_import', async () => {
-      const dir = mkdtempSync(join(tmpdir(), 'ctx-health-graph-'));
+      const dir = mkdtempSync(join(tmpdir(), 'deepindex-health-graph-'));
       const dbPath = join(dir, 'test.db');
       const localDb = initDb(dbPath);
       await buildGraph(localDb, FIXTURE);
@@ -93,7 +93,7 @@ describe('health', () => {
     });
 
     it('on a clean fixture (no broken imports, no signals): score = 80, consistency = 1', async () => {
-      const dir = mkdtempSync(join(tmpdir(), 'ctx-health-clean-'));
+      const dir = mkdtempSync(join(tmpdir(), 'deepindex-health-clean-'));
       const dbPath = join(dir, 'test.db');
       const localDb = initDb(dbPath);
       mkdirSync(join(dir, 'src'), { recursive: true });
@@ -111,32 +111,32 @@ describe('health', () => {
   });
 
   describe('loadConfig', () => {
-    it('reads repair_below = 80 from .ctx.toml', () => {
+    it('reads repair_below = 80 from .deepindex.toml', () => {
       const cfg = loadConfig(FIXTURE);
       expect(cfg.repairBelow).toBe(80);
     });
 
-    it('returns default for a missing .ctx.toml', () => {
-      const dir = mkdtempSync(join(tmpdir(), 'ctx-cfg-'));
+    it('returns default for a missing .deepindex.toml', () => {
+      const dir = mkdtempSync(join(tmpdir(), 'deepindex-cfg-'));
       const cfg = loadConfig(dir);
       expect(cfg).toEqual({ ...DEFAULT_HEALTH_CONFIG });
     });
 
-    it('returns default for a .ctx.toml with no [health] section', () => {
-      const dir = mkdtempSync(join(tmpdir(), 'ctx-cfg-'));
-      writeFileSync(join(dir, '.ctx.toml'), '[other]\nfoo = 1\n');
+    it('returns default for a .deepindex.toml with no [health] section', () => {
+      const dir = mkdtempSync(join(tmpdir(), 'deepindex-cfg-'));
+      writeFileSync(join(dir, '.deepindex.toml'), '[other]\nfoo = 1\n');
       const cfg = loadConfig(dir);
       expect(cfg).toEqual({ ...DEFAULT_HEALTH_CONFIG });
     });
 
-    it('throws on a .ctx.toml with a non-digit repair_below that matches the regex shape but is malformed', () => {
+    it('throws on a .deepindex.toml with a non-digit repair_below that matches the regex shape but is malformed', () => {
       // The regex only captures digits, so the only way a non-numeric
       // value can reach the parseInt call is impossible with the current
       // regex; verify that the value falls back to default when the
       // regex does not match (i.e. behaves correctly on unparseable input).
-      const dir = mkdtempSync(join(tmpdir(), 'ctx-cfg-bad-'));
+      const dir = mkdtempSync(join(tmpdir(), 'deepindex-cfg-bad-'));
       writeFileSync(
-        join(dir, '.ctx.toml'),
+        join(dir, '.deepindex.toml'),
         '[health]\nrepair_below = "eighty"\n'
       );
       const cfg = loadConfig(dir);
@@ -146,7 +146,7 @@ describe('health', () => {
 
   describe('reflect -> health integration', () => {
     it('vitest signal drives coverage dim', () => {
-      const dir = mkdtempSync(join(tmpdir(), 'ctx-integ-vitest-'));
+      const dir = mkdtempSync(join(tmpdir(), 'deepindex-integ-vitest-'));
       const db = initDb(join(dir, 'test.db'));
       const v = parseVitestJson({
         numTotalTests: 10,
@@ -166,7 +166,7 @@ describe('health', () => {
     });
 
     it('eslint signal increases coverage when errors are low', () => {
-      const dir = mkdtempSync(join(tmpdir(), 'ctx-integ-eslint-'));
+      const dir = mkdtempSync(join(tmpdir(), 'deepindex-integ-eslint-'));
       const db = initDb(join(dir, 'test.db'));
       const before = getHealth(db);
       recordSignal(db, 'lint_errors', 0.0, 'eslint');
@@ -178,7 +178,7 @@ describe('health', () => {
     });
 
     it('coverage parser linesPct flows into coverage via tests_* signals', () => {
-      const dir = mkdtempSync(join(tmpdir(), 'ctx-integ-cov-'));
+      const dir = mkdtempSync(join(tmpdir(), 'deepindex-integ-cov-'));
       const db = initDb(join(dir, 'test.db'));
       const c = parseCoverageJson({
         'a.ts': {

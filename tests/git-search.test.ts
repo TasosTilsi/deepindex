@@ -14,7 +14,7 @@ describe('git search', () => {
   let FIXTURE: string;
 
   beforeAll(() => {
-    tmpDir = mkdtempSync(join(tmpdir(), 'ctx-search-'));
+    tmpDir = mkdtempSync(join(tmpdir(), 'deepindex-search-'));
     db = initDb(join(tmpDir, 'test.db'));
     FIXTURE = createGitFixture();
     gitIndex(db, FIXTURE);

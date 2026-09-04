@@ -6,7 +6,7 @@ import { createWatcher } from '../src/watcher.js';
 
 describe('watcher', () => {
   it('fires onInvalidate after the debounce window when a file is appended', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'ctx-watcher-debounce-'));
+    const dir = mkdtempSync(join(tmpdir(), 'deepindex-watcher-debounce-'));
     const target = join(dir, 'a.ts');
     writeFileSync(target, 'export const x = 1;\n');
 
@@ -44,7 +44,7 @@ describe('watcher', () => {
   });
 
   it('constructs with default opts and exposes a close() handle', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'ctx-watcher-default-'));
+    const dir = mkdtempSync(join(tmpdir(), 'deepindex-watcher-default-'));
     const handle = createWatcher({ dbPath: join(dir, 'test.db'), roots: [dir] });
     try {
       expect(typeof handle.close).toBe('function');
@@ -55,7 +55,7 @@ describe('watcher', () => {
   });
 
   it('honors ignored: null (--no-ignore) and constructs without throwing', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'ctx-watcher-noignore-'));
+    const dir = mkdtempSync(join(tmpdir(), 'deepindex-watcher-noignore-'));
     const handle = createWatcher({
       dbPath: join(dir, 'test.db'),
       roots: [dir],

@@ -140,7 +140,7 @@ deepindex watch --debounce 250
 
 ## Configuration
 
-Health thresholds are configurable via a `.ctx.toml` file in the repo root:
+Health thresholds are configurable via a `.deepindex.toml` file in the repo root:
 
 ```toml
 [health]

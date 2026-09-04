@@ -48,7 +48,7 @@ describe('retrieve', () => {
     let tmpDir: string;
 
     beforeAll(() => {
-      tmpDir = mkdtempSync(join(tmpdir(), 'ctx-retrieve-'));
+      tmpDir = mkdtempSync(join(tmpdir(), 'deepindex-retrieve-'));
       const dbPath = join(tmpDir, 'test.db');
       db = initDb(dbPath);
       // Build a 3-file corpus: A (seed) imports B (depth 1) imports C (depth 2)
@@ -100,7 +100,7 @@ describe('retrieve', () => {
     });
 
     it('empty DB -> []', () => {
-      const dir = mkdtempSync(join(tmpdir(), 'ctx-retrieve-empty-'));
+      const dir = mkdtempSync(join(tmpdir(), 'deepindex-retrieve-empty-'));
       const localDb = initDb(join(dir, 'test.db'));
       expect(retrieve(localDb, 'anything')).toEqual([]);
       localDb.close();
@@ -119,7 +119,7 @@ describe('retrieve', () => {
 
   describe('graph BFS combined score', () => {
     it('seed file (depth 0) ranks higher than depth-1 and depth-2 dependents', () => {
-      const dir = mkdtempSync(join(tmpdir(), 'ctx-bfs-'));
+      const dir = mkdtempSync(join(tmpdir(), 'deepindex-bfs-'));
       const db = initDb(join(dir, 'test.db'));
       db.exec(`INSERT INTO files (path, hash, mtime, size, language, parsed_at) VALUES ('a.ts','h',1,1,'ts',1)`);
       db.exec(`INSERT INTO files (path, hash, mtime, size, language, parsed_at) VALUES ('b.ts','h',1,1,'ts',1)`);
@@ -154,7 +154,7 @@ describe('retrieve', () => {
     });
 
     it('depth-1 file with the same keyword outranks a depth-2 file', () => {
-      const dir = mkdtempSync(join(tmpdir(), 'ctx-bfs2-'));
+      const dir = mkdtempSync(join(tmpdir(), 'deepindex-bfs2-'));
       const db = initDb(join(dir, 'test.db'));
       db.exec(`INSERT INTO files (path, hash, mtime, size, language, parsed_at) VALUES ('seed.ts','h',1,1,'ts',1)`);
       db.exec(`INSERT INTO files (path, hash, mtime, size, language, parsed_at) VALUES ('near.ts','h',1,1,'ts',1)`);
@@ -187,7 +187,7 @@ describe('retrieve', () => {
     });
 
     it('seed file with no keyword match is still included (depth 0 proximity alone)', () => {
-      const dir = mkdtempSync(join(tmpdir(), 'ctx-bfs3-'));
+      const dir = mkdtempSync(join(tmpdir(), 'deepindex-bfs3-'));
       const db = initDb(join(dir, 'test.db'));
       db.exec(`INSERT INTO files (path, hash, mtime, size, language, parsed_at) VALUES ('unrelated_seed.ts','h',1,1,'ts',1)`);
       db.exec(`INSERT INTO files (path, hash, mtime, size, language, parsed_at) VALUES ('other.ts','h',1,1,'ts',1)`);
@@ -208,7 +208,7 @@ describe('retrieve', () => {
 
   describe('payload summary (RTRV-03)', () => {
     it('summary skips leading comment lines and uses the real function body', () => {
-      const dir = mkdtempSync(join(tmpdir(), 'ctx-summary-'));
+      const dir = mkdtempSync(join(tmpdir(), 'deepindex-summary-'));
       const dbPath = join(dir, 'test.db');
       const db = initDb(dbPath);
       // The fixture file is at fixtures/sample-repo/src/with-comments.ts.
@@ -231,7 +231,7 @@ describe('retrieve', () => {
     });
 
     it('payload keys are exactly path, score, symbols, summary', () => {
-      const dir = mkdtempSync(join(tmpdir(), 'ctx-payload-'));
+      const dir = mkdtempSync(join(tmpdir(), 'deepindex-payload-'));
       const db = initDb(join(dir, 'test.db'));
       db.exec(`INSERT INTO files (path, hash, mtime, size, language, parsed_at) VALUES ('x.ts','h',1,1,'ts',1)`);
       const fid = (db.prepare(`SELECT id FROM files WHERE path='x.ts'`).get() as { id: number }).id;

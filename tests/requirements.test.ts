@@ -15,7 +15,7 @@ describe('requirements', () => {
   let db: Database.Database;
 
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), 'ctx-req-'));
+    dir = mkdtempSync(join(tmpdir(), 'deepindex-req-'));
     db = initDb(join(dir, 'test.db'));
     initRequirementsDb(db);
   });

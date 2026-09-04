@@ -9,7 +9,7 @@ import { execFileSync } from 'node:child_process';
 
 /** Create a temp git repo with a known history. Returns the repo root. */
 export function createGitFixture(): string {
-  const root = mkdtempSync(join(tmpdir(), 'ctx-gitfix-'));
+  const root = mkdtempSync(join(tmpdir(), 'deepindex-gitfix-'));
   const src = join(root, 'src');
   mkdirSync(src, { recursive: true });
   git(root, ['init', '-q', '-b', 'main']);

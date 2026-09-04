@@ -119,7 +119,7 @@ describe('reflect', () => {
 
   describe('glue with health signals', () => {
     it('parseCoverageJson.linesPct is retrievable via getSignals after recordSignal', () => {
-      const dir = mkdtempSync(join(tmpdir(), 'ctx-reflect-glue-'));
+      const dir = mkdtempSync(join(tmpdir(), 'deepindex-reflect-glue-'));
       const db = initDb(join(dir, 'test.db'));
       const c = parseCoverageJson({
         'a.ts': {

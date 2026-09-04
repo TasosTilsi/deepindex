@@ -12,7 +12,7 @@ describe('cache layer', () => {
   let tmpDir: string;
 
   beforeAll(() => {
-    tmpDir = mkdtempSync(join(tmpdir(), 'ctx-cache-'));
+    tmpDir = mkdtempSync(join(tmpdir(), 'deepindex-cache-'));
     db = initDb(join(tmpDir, 'cache.db'));
   });
 

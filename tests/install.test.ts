@@ -9,7 +9,7 @@ describe('multi-harness install', () => {
   let dir: string;
 
   beforeAll(() => {
-    dir = mkdtempSync(join(tmpdir(), 'ctx-install-'));
+    dir = mkdtempSync(join(tmpdir(), 'deepindex-install-'));
   });
 
   afterAll(() => {

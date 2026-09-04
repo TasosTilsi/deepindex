@@ -10,12 +10,12 @@ Framework source. Turns a repository into an indexed, queryable, self-repairing 
 | File | Description |
 |------|-------------|
 | `index.ts` | Public API barrel — re-exports every module's surface |
-| `cli.ts` | `ctx` commander CLI: build, status, repair, retrieve, serve, watch |
+| `cli.ts` | `deepindex` commander CLI: build, status, repair, retrieve, serve, watch |
 | `types.ts` | Shared interfaces: File, Symbol, Import, Edge, Fingerprint, Health*, Retrieve*, Repair* |
 | `graph/` | SQLite schema + parse/build/query/resolve (see `graph/AGENTS.md`) |
 | `cache.ts` | Fingerprinted content cache with LRU-by-last-access eviction |
 | `fingerprint.ts` | Content hashing (sha256) + confidence-weighted fingerprint |
-| `health.ts` | Health scoring (freshness/consistency/coverage/confidence), signal store, `.ctx.toml` loader |
+| `health.ts` | Health scoring (freshness/consistency/coverage/confidence), signal store, `.deepindex.toml` loader |
 | `retrieve.ts` | Tokenize, TF-IDF, hybrid rank (0.6 tfidf + 0.4 graph proximity) |
 | `repair.ts` | 4-stage pipeline: rebuild → cache invalidate → git-history probe → optional LLM |
 | `reflect.ts` | Pure JSON parsers for vitest/eslint/istanbul-coverage output |
