@@ -10,7 +10,7 @@ import type Database from 'better-sqlite3';
  * End-to-end multi-language indexing: the build WALKER (not just parseFile)
  * must discover and index java/c/go/rust files. Regression guard for SC1 —
  * the multi-lang parser existed but was disconnected from SUPPORTED_EXTS, so
- * `deepinit index` silently skipped every non-ts/js file.
+ * `deepindex index` silently skipped every non-ts/js file.
  */
 describe('multi-language build (walker-level e2e)', () => {
   let db: Database.Database;

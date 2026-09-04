@@ -34,7 +34,7 @@ describe('cli', { timeout: 30_000 }, () => {
   let dbPath: string;
 
   beforeAll(() => {
-    dir = mkdtempSync(join(tmpdir(), 'deepinit-cli-'));
+    dir = mkdtempSync(join(tmpdir(), 'deepindex-cli-'));
     dbPath = join(dir, 'test.db');
   });
 
@@ -145,7 +145,7 @@ describe('cli', { timeout: 30_000 }, () => {
   });
 
   it('watch prints "invalidated: <relpath>" and exits 0 on SIGTERM', async () => {
-    const watchDir = mkdtempSync(join(tmpdir(), 'deepinit-cli-watch-'));
+    const watchDir = mkdtempSync(join(tmpdir(), 'deepindex-cli-watch-'));
     const watchDb = join(watchDir, 'watch.db');
     try {
       const tsxBin = resolve(process.cwd(), 'node_modules/.bin/tsx');
