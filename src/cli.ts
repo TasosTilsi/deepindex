@@ -14,6 +14,15 @@ import { getImpact, findParallelStorage } from './graph/sql-impact.js';
 import { syncRequirements } from './requirements/sync.js';
 import { calculateReqCoverage } from './requirements/coverage.js';
 import { initRequirementsDb } from './requirements/setup.js';
+import { gitIndex, gitSync } from './git/indexer.js';
+import { searchEntities } from './git/search.js';
+import { serveMcp } from './mcp/server.js';
+import { installClaudeSettings } from './mcp/install.js';
+import { installInteractive, installHarness, type Harness } from './install.js';
+import { sessionStart } from './hooks/session-start.js';
+import { userPromptSubmit } from './hooks/user-prompt-submit.js';
+import { postToolUse } from './hooks/post-tool-use.js';
+import { sessionEnd } from './hooks/session-end.js';
 import { resolve } from 'node:path';
 import { existsSync } from 'node:fs';
 import type Database from 'better-sqlite3';
@@ -30,7 +39,7 @@ function withDb<T>(
 ): void {
   const dbPath = resolve(opts.db);
   if (!existsSync(dbPath)) {
-    console.error(`deepinit ${verb}: no index — run \`deepinit index <repo>\` first`);
+    console.error(`deepindex ${verb}: no index — run \`deepindex index <repo>\` first`);
     process.exit(2);
   }
   const db = initDb(dbPath);
@@ -38,7 +47,7 @@ function withDb<T>(
     fn(db);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    console.error(`deepinit ${verb}: ${message}`);
+    console.error(`deepindex ${verb}: ${message}`);
     process.exit(1);
   } finally {
     db.close();
@@ -46,7 +55,7 @@ function withDb<T>(
 }
 
 program
-  .name('deepinit')
+  .name('deepindex')
   .description('DeepIndex — self-healing context engineering framework')
   .version('0.1.0');
 
@@ -59,7 +68,7 @@ program
   .action(async (repo: string, opts: { db: string; rebuild: boolean }) => {
     const repoPath = resolve(repo);
     if (!existsSync(repoPath)) {
-      console.error(`deepinit index: repository not found: ${repoPath}`);
+      console.error(`deepindex index: repository not found: ${repoPath}`);
       process.exit(2);
     }
     const dbPath = resolve(opts.db);
@@ -71,7 +80,7 @@ program
       );
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      console.error(`deepinit index: ${message}`);
+      console.error(`deepindex index: ${message}`);
       process.exit(1);
     }
   });
@@ -85,11 +94,11 @@ program
     const repoPath = resolve(repo);
     const dbPath = resolve(opts.db);
     if (!existsSync(dbPath)) {
-      console.log('no index — run `deepinit index <repo>` first');
+      console.log('no index — run `deepindex index <repo>` first');
       process.exit(2);
     }
     if (!existsSync(repoPath)) {
-      console.error(`deepinit health: repository not found: ${repoPath}`);
+      console.error(`deepindex health: repository not found: ${repoPath}`);
       process.exit(2);
     }
     const config = loadConfig(repoPath) ?? DEFAULT_HEALTH_CONFIG;
@@ -100,7 +109,7 @@ program
       process.exit(report.score >= config.repairBelow ? 0 : 1);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      console.error(`deepinit health: ${message}`);
+      console.error(`deepindex health: ${message}`);
       process.exit(2);
     }
   });
@@ -191,7 +200,7 @@ program
     .action(async (file: string, opts: { db: string }) => {
       const dbPath = resolve(opts.db);
       if (!existsSync(dbPath)) {
-        console.error('deepinit sync-requirements: no index — run `deepinit index <repo>` first');
+        console.error('deepindex sync-requirements: no index — run `deepindex index <repo>` first');
         process.exit(2);
       }
       const db = initDb(dbPath);
@@ -201,7 +210,7 @@ program
         console.log(`Indexed ${imported} requirements and ${atomic} atomic statements.`);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        console.error(`deepinit sync-requirements: ${message}`);
+        console.error(`deepindex sync-requirements: ${message}`);
         process.exit(1);
       }
     });
@@ -213,7 +222,7 @@ program
     .action((opts: { db: string }) => {
       const dbPath = resolve(opts.db);
       if (!existsSync(dbPath)) {
-        console.error('deepinit check-req-coverage: no index — run `deepinit index <repo>` first');
+        console.error('deepindex check-req-coverage: no index — run `deepindex index <repo>` first');
         process.exit(2);
       }
       const db = initDb(dbPath);
@@ -236,7 +245,7 @@ program
         console.log('==================================================');
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        console.error(`deepinit check-req-coverage: ${message}`);
+        console.error(`deepindex check-req-coverage: ${message}`);
         process.exit(1);
       }
     });
@@ -252,7 +261,7 @@ program
     .action((tableName: string, opts: { db: string; domain?: string; region?: string; system?: string }) => {
       const dbPath = resolve(opts.db);
       if (!existsSync(dbPath)) {
-        console.error('deepinit analyze-impact: no index — run `deepinit index <repo>` first');
+        console.error('deepindex analyze-impact: no index — run `deepindex index <repo>` first');
         process.exit(2);
       }
       const db = initDb(dbPath);
@@ -281,7 +290,7 @@ program
         console.log(`Summary: ${impact.affectedFiles.length} files, ${impact.affectedServices.length} services affected.`);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        console.error(`deepinit analyze-impact: ${message}`);
+        console.error(`deepindex analyze-impact: ${message}`);
         process.exit(1);
       }
     });
@@ -296,7 +305,7 @@ program
     .action((opts: { db: string; domain?: string; region?: string; system?: string }) => {
       const dbPath = resolve(opts.db);
       if (!existsSync(dbPath)) {
-        console.error('deepinit check-parallel-storage: no index — run `deepinit index <repo>` first');
+        console.error('deepindex check-parallel-storage: no index — run `deepindex index <repo>` first');
         process.exit(2);
       }
       const db = initDb(dbPath);
@@ -320,7 +329,7 @@ program
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        console.error(`deepinit check-parallel-storage: ${message}`);
+        console.error(`deepindex check-parallel-storage: ${message}`);
         process.exit(1);
       }
     });
@@ -332,17 +341,17 @@ program
     .action(async (opts: { port: string; db: string }) => {
       const port = Number.parseInt(opts.port, 10);
       if (!Number.isFinite(port) || port <= 0) {
-        console.error(`deepinit serve: invalid --port: ${opts.port}`);
+        console.error(`deepindex serve: invalid --port: ${opts.port}`);
         process.exit(2);
       }
       const dbPath = resolve(opts.db);
       let handle: Awaited<ReturnType<typeof serve>> | null = null;
       try {
         handle = await serve({ port, dbPath });
-        console.log(`deepinit serve: listening on 127.0.0.1:${handle.port}`);
+        console.log(`deepindex serve: listening on 127.0.0.1:${handle.port}`);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        console.error(`deepinit serve: ${message}`);
+        console.error(`deepindex serve: ${message}`);
         process.exit(2);
       }
       const shutdown = async () => {
@@ -446,7 +455,7 @@ program
       const dbPath = resolve(opts.db);
       const debounce = Number.parseInt(opts.debounce, 10);
       if (!Number.isFinite(debounce) || debounce < 0) {
-        console.error(`deepinit watch: invalid --debounce: ${opts.debounce}`);
+        console.error(`deepindex watch: invalid --debounce: ${opts.debounce}`);
         process.exit(2);
       }
       const ignored = opts.ignore === false ? null : undefined;
@@ -461,7 +470,7 @@ program
         });
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        console.error(`deepinit watch: ${message}`);
+        console.error(`deepindex watch: ${message}`);
         process.exit(1);
       }
       const shutdown = async () => {
@@ -473,6 +482,201 @@ program
       };
       process.on('SIGINT', shutdown);
       process.on('SIGTERM', shutdown);
+    });
+
+  program
+    .command('git-index')
+    .description('Index full git history into the knowledge graph (entities, backlinks, FTS5)')
+    .argument('<repo>', 'path to git repository root')
+    .option('-d, --db <path>', 'SQLite database path', '.ctx.db')
+    .action((repo: string, opts: { db: string }) => {
+      const repoPath = resolve(repo);
+      if (!existsSync(repoPath)) {
+        console.error(`deepindex git-index: repository not found: ${repoPath}`);
+        process.exit(2);
+      }
+      const db = initDb(resolve(opts.db));
+      try {
+        const r = gitIndex(db, repoPath);
+        console.log(
+          `indexed ${r.commitsProcessed} commits, ${r.entitiesInserted} entities inserted, ` +
+            `${r.entitiesUpdated} updated, ${r.relationshipsWritten} backlinks`
+        );
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error(`deepindex git-index: ${message}`);
+        process.exit(1);
+      } finally {
+        db.close();
+      }
+    });
+
+  program
+    .command('git-sync')
+    .description('Incrementally index commits since last_indexed_sha')
+    .argument('<repo>', 'path to git repository root')
+    .option('-d, --db <path>', 'SQLite database path', '.ctx.db')
+    .option('--full', 'force full reindex', false)
+    .action((repo: string, opts: { db: string; full: boolean }) => {
+      const repoPath = resolve(repo);
+      if (!existsSync(repoPath)) {
+        console.error(`deepindex git-sync: repository not found: ${repoPath}`);
+        process.exit(2);
+      }
+      const db = initDb(resolve(opts.db));
+      try {
+        const r = opts.full ? gitIndex(db, repoPath) : gitSync(db, repoPath);
+        if (r.commitsProcessed === 0) {
+          console.log('0 commits to process');
+        } else {
+          console.log(
+            `synced ${r.commitsProcessed} commits, ${r.entitiesInserted} entities inserted, ` +
+              `${r.entitiesUpdated} updated, ${r.relationshipsWritten} backlinks`
+          );
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error(`deepindex git-sync: ${message}`);
+        process.exit(1);
+      } finally {
+        db.close();
+      }
+    });
+
+  program
+    .command('search')
+    .description('Search the knowledge graph for typed entities via FTS5')
+    .argument('<query>', 'search query')
+    .option('-d, --db <path>', 'SQLite database path', '.ctx.db')
+    .option('--limit <n>', 'number of results', '10')
+    .action((query: string, opts: { db: string; limit: string }) => {
+      const dbPath = resolve(opts.db);
+      if (!existsSync(dbPath)) {
+        console.error(`deepindex search: no index — run \`deepindex git-index <repo>\` first`);
+        process.exit(2);
+      }
+      const limit = Number.parseInt(opts.limit, 10);
+      if (!Number.isFinite(limit) || limit <= 0) {
+        console.error(`deepindex search: invalid --limit: ${opts.limit}`);
+        process.exit(2);
+      }
+      const db = initDb(dbPath);
+      try {
+        const hits = searchEntities(db, query, limit);
+        if (hits.length === 0) {
+          console.log('no entities found');
+        } else {
+          for (const h of hits) {
+            console.log(`[${h.type}] ${h.name}  (rank ${h.rank.toFixed(2)})`);
+            if (h.related.length > 0) {
+              for (const r of h.related) {
+                console.log(`  -> ${r.relationship} ${r.type}:${r.name} (${r.context})`);
+              }
+            }
+          }
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error(`deepindex search: ${message}`);
+        process.exit(1);
+      } finally {
+        db.close();
+      }
+    });
+
+  program
+    .command('install')
+    .description('Install DeepIndex into an AI harness (Claude Code, Codex, OpenCode)')
+    .option('--harness <name>', 'harness to install (claude-code | codex | opencode) — omit for interactive prompt')
+    .action(async (opts: { harness?: string }) => {
+      const projectRoot = process.cwd();
+      if (opts.harness) {
+        const valid: Harness[] = ['claude-code', 'codex', 'opencode', 'deepseek-harness'];
+        if (!valid.includes(opts.harness as Harness)) {
+          console.error(`deepindex install: unknown harness: ${opts.harness} (expected ${valid.join(' | ')})`);
+          process.exit(2);
+        }
+        const r = installHarness(projectRoot, opts.harness as Harness);
+        console.log(r.message);
+        return;
+      }
+      const results = await installInteractive(projectRoot);
+      for (const r of results) {
+        console.log(r.message);
+      }
+      if (results.length === 0) {
+        console.log('no harness selected — nothing installed');
+      }
+    });
+
+  program
+    .command('mcp')
+    .description('MCP server commands')
+    .argument('<subcommand>', 'serve | install')
+    .option('-d, --db <path>', 'SQLite database path', '.ctx.db')
+    .action(async (subcommand: string, opts: { db: string }) => {
+      if (subcommand === 'install') {
+        const r = installClaudeSettings(process.cwd());
+        console.log(`installed MCP + hooks into ${r.path} (mcp: ${r.mcpAdded}, hooks: ${r.hooksAdded})`);
+        return;
+      }
+      if (subcommand !== 'serve') {
+        console.error(`deepindex mcp: unknown subcommand: ${subcommand} (expected serve | install)`);
+        process.exit(2);
+      }
+      const dbPath = resolve(opts.db);
+      if (!existsSync(dbPath)) {
+        console.error(`deepindex mcp serve: no index — run \`deepindex index <repo>\` first`);
+        process.exit(2);
+      }
+      const db = initDb(dbPath);
+      try {
+        await serveMcp(db);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error(`deepindex mcp serve: ${message}`);
+        process.exit(1);
+      } finally {
+        db.close();
+      }
+    });
+
+  program
+    .command('hook')
+    .description('Claude Code hook entry points')
+    .argument('<name>', 'session-start | user-prompt-submit | post-tool-use | session-end')
+    .option('-d, --db <path>', 'SQLite database path', '.ctx.db')
+    .option('--repo <path>', 'repository path', '.')
+    .option('--task <text>', 'task text (user-prompt-submit)')
+    .option('--tool <name>', 'tool name (post-tool-use)')
+    .option('--session <id>', 'session id')
+    .option('--summary <text>', 'session summary (session-end)')
+    .action(async (name: string, opts: { db: string; repo: string; task?: string; tool?: string; session?: string; summary?: string }) => {
+      const repo = resolve(opts.repo);
+      let result: { ok: boolean; message: string };
+      switch (name) {
+        case 'session-start':
+          result = sessionStart(repo, opts.db);
+          break;
+        case 'user-prompt-submit':
+          result = await userPromptSubmit(opts.task ?? '', repo, opts.db);
+          break;
+        case 'post-tool-use':
+          result = postToolUse(opts.tool ?? '', opts.session ?? 'unknown');
+          break;
+        case 'session-end':
+          result = sessionEnd(opts.session ?? 'unknown', opts.summary ?? '');
+          break;
+        default:
+          console.error(`deepindex hook: unknown hook: ${name}`);
+          process.exit(2);
+      }
+      if (result.ok) {
+        console.log(result.message);
+      } else {
+        console.error(`deepindex hook ${name}: ${result.message}`);
+        process.exit(1);
+      }
     });
 
 program.parseAsync(process.argv).catch((err) => {

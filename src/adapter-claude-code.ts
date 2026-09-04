@@ -6,6 +6,7 @@ import { initDb } from './graph/db.js';
 import { retrieve, DEFAULT_TOP_K } from './retrieve.js';
 import { getHealth, loadConfig, DEFAULT_HEALTH_CONFIG } from './health.js';
 import { getDependents, getDependencies } from './graph/symbol-graph.js';
+import { searchEntities } from './git/search.js';
 import { resolve as pathResolve } from 'node:path';
 import type {
   HealthConfig,
@@ -35,11 +36,19 @@ export interface AdapterNeighborhood {
   depth: number;
 }
 
+export interface AdapterEntity {
+  id: string;
+  type: string;
+  name: string;
+  content: string;
+}
+
 export interface AdapterResult {
   task: string;
   topFiles: AdapterTopFile[];
   neighborhood: AdapterNeighborhood[];
   health: HealthReport;
+  entities: AdapterEntity[];
 }
 
 export interface AdaptOptions {
@@ -73,7 +82,15 @@ export async function adaptClaudeCode(
 
     const neighborhood = buildNeighborhood(db, topFiles);
 
-    return { task, topFiles, neighborhood, health };
+    // Merged context (SC5): git-history entities relevant to the task.
+    const entities: AdapterEntity[] = searchEntities(db, task, 5).map((h) => ({
+      id: h.id,
+      type: h.type,
+      name: h.name,
+      content: h.content,
+    }));
+
+    return { task, topFiles, neighborhood, health, entities };
   } finally {
     db.close();
   }

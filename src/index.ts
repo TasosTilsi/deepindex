@@ -29,6 +29,14 @@ export {
 } from './watcher.js';
 export { serve, type ServeOptions, type ServeHandle } from './serve.js';
 export {
+  apiOverview,
+  apiEntities,
+  apiDataflow,
+  apiSearch,
+  apiSymbols,
+  handleApi,
+} from './dashboard/api.js';
+export {
   adaptClaudeCode,
   type AdapterResult,
   type AdaptOptions,
@@ -36,6 +44,61 @@ export {
   type AdapterTopFile,
   type AdapterNeighborhood,
 } from './adapter-claude-code.js';
+export {
+  walkCommits,
+  fetchDiff,
+  fetchFilesChanged,
+  batchCommits,
+  type CommitRecord,
+} from './git/walker.js';
+export {
+  extractDeterministic,
+  extractLLMBatch,
+  deriveRelationships,
+  classifyType,
+  deriveName,
+  entityId,
+  uuid5,
+  ENTITY_TYPES,
+  type EntityType,
+  type EntityRecord,
+  type RelationshipRecord,
+  type ExtractionResult,
+} from './git/extract.js';
+export { sanitizeDiff, shannonEntropy } from './git/sanitize.js';
+export { gitIndex, gitSync, deriveCommitType, type IndexResult } from './git/indexer.js';
+export {
+  searchEntities,
+  getRelated,
+  getRelatedRecursive,
+  ftsQuery,
+  type SearchHit,
+  type RelatedEntity,
+} from './git/search.js';
+export { createMcpServer, serveMcp } from './mcp/server.js';
+export {
+  searchKnowledge,
+  getEntity,
+  getBacklinks,
+  getDecisions,
+  getBugs,
+  getPatterns,
+} from './mcp/tools.js';
+export { installClaudeSettings } from './mcp/install.js';
+export {
+  installCodex,
+  installOpenCode,
+  installDsh,
+  defaultDshConfigPath,
+  installHarness,
+  installInteractive,
+  type Harness,
+  type InstallResult,
+} from './install.js';
+export { sessionStart } from './hooks/session-start.js';
+export { userPromptSubmit } from './hooks/user-prompt-submit.js';
+export { postToolUse } from './hooks/post-tool-use.js';
+export { sessionEnd } from './hooks/session-end.js';
 export type {
   Fingerprint,
   CacheStats,
