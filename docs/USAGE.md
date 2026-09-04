@@ -20,7 +20,7 @@ deepindex index <repo>
 deepindex index <repo> --rebuild
 ```
 
-`deepindex index` walks the repo, parses supported files via tree-sitter, and populates the SQLite store. Re-running skips unchanged files (hash-based invalidation).
+`deepindex index` walks the repo, parses supported files via tree-sitter, and populates the SQLite store. Re-running skips unchanged files (hash-based invalidation). **It also indexes git history** into the knowledge graph (entities + backlinks) in the same pass.
 
 **Supported languages (32):** TypeScript, JavaScript, Python, Java, C, C++, Go, Rust, PHP, Ruby, C#, Swift, Kotlin, Scala, Bash, Dart, Lua, Elixir, Objective-C, HTML, CSS, JSON, YAML, Markdown, Vue, Svelte, Perl, R, Haskell, Clojure, Erlang, Zig.
 
@@ -45,7 +45,7 @@ Entities are typed: `decision`, `bug_fix`, `pattern`, `tech_debt`, `concept`, `b
 ## Retrieval & Health
 
 ```bash
-# Retrieve top-K files for a task
+# Retrieve top-K files for a task (auto git-syncs first)
 deepindex retrieve "how does auth work" --top-k 5
 
 # Health report (JSON)
@@ -54,6 +54,8 @@ deepindex health <repo>
 # Run the 4-stage repair pipeline
 deepindex repair <repo>
 ```
+
+`deepindex retrieve` and `deepindex search` run an **incremental git-sync** (from the last indexed commit) before querying, so entities are always current.
 
 ## Data-Flow & Requirements
 

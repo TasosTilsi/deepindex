@@ -14,7 +14,7 @@ import { getImpact, findParallelStorage } from './graph/sql-impact.js';
 import { syncRequirements } from './requirements/sync.js';
 import { calculateReqCoverage } from './requirements/coverage.js';
 import { initRequirementsDb } from './requirements/setup.js';
-import { gitIndex, gitSync } from './git/indexer.js';
+import { gitIndex, gitSync, type IndexResult } from './git/indexer.js';
 import { searchEntities } from './git/search.js';
 import { serveMcp } from './mcp/server.js';
 import { installClaudeSettings } from './mcp/install.js';
@@ -33,8 +33,7 @@ const program = new Command();
 /** Shared preamble for read-only DB verbs: resolve --db, require an existing
  *  index, open the DB, run the action, format+exit on error. Centralizes the
  *  resolve/existsSync/initDb/try-catch boilerplate so each verb is its logic. */
-function withDb<T>(
-  verb: string,
+function withDb<T>(  verb: string,
   opts: { db: string },
   fn: (db: Database.Database) => T
 ): void {
@@ -52,6 +51,16 @@ function withDb<T>(
     process.exit(1);
   } finally {
     db.close();
+  }
+}
+
+/** Incremental git-sync before a query so entities are current. Non-fatal:
+ *  if the repo isn't a git repo or sync fails, the query still runs. */
+function syncBeforeQuery(db: Database.Database, repoPath: string): void {
+  try {
+    gitSync(db, repoPath);
+  } catch {
+    // not a git repo or sync failed — ignore
   }
 }
 
@@ -76,6 +85,14 @@ program
     const db = initDb(dbPath);
     try {
       const stats = await buildGraph(db, repoPath, { force: opts.rebuild });
+      // Also index git history into the knowledge graph (entities, backlinks).
+      // Non-fatal: symbol indexing succeeds even if the repo isn't a git repo.
+      let gitStats: IndexResult | null = null;
+      try {
+        gitStats = gitIndex(db, repoPath);
+      } catch {
+        gitStats = null;
+      }
       // Register the project so the multi-project dashboard can show it.
       // Non-fatal: indexing succeeds even if the registry can't be written.
       try {
@@ -83,8 +100,11 @@ program
       } catch {
         // registry write failed — ignore
       }
+      const gitPart = gitStats
+        ? `, ${gitStats.entitiesInserted} entities, ${gitStats.relationshipsWritten} backlinks`
+        : '';
       console.log(
-        `indexed ${stats.fileCount} files, ${stats.symbolCount} symbols, ${stats.brokenImportCount} broken imports`
+        `indexed ${stats.fileCount} files, ${stats.symbolCount} symbols, ${stats.brokenImportCount} broken imports${gitPart}`
       );
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -184,6 +204,8 @@ program
     }
     const db = initDb(dbPath);
     try {
+      // Incremental git-sync before querying so entities are current.
+      syncBeforeQuery(db, process.cwd());
       const hits = retrieve(db, query, { topK, repoPath: process.cwd() });
       if (opts.json) {
         console.log(JSON.stringify(hits, null, 2));
@@ -570,6 +592,8 @@ program
       }
       const db = initDb(dbPath);
       try {
+        // Incremental git-sync before searching so entities are current.
+        syncBeforeQuery(db, process.cwd());
         const hits = searchEntities(db, query, limit);
         if (hits.length === 0) {
           console.log('no entities found');
