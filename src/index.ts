@@ -35,7 +35,16 @@ export {
   apiSearch,
   apiSymbols,
   apiProjects,
+  apiHealth,
+  apiCommits,
+  apiRelations,
+  apiEntity,
+  apiActivity,
   handleApi,
+  type CommitEntry,
+  type CommitEntity,
+  type RelationEntry,
+  type ActivityWeek,
 } from './dashboard/api.js';
 export {
   loadRegistry,
