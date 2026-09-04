@@ -164,15 +164,19 @@ export async function buildGraph(
       }
     }
 
-    // SQL extraction: only store a row when the file actually references a
-    // table, so query_text doesn't bloat with whole-file copies of plain TS.
-    const { queries } = extractSql(content);
-    for (const q of queries) {
-      if (q.tables.length === 0) continue;
-      const info = insertQuery.run(q.text, fileId);
-      const queryId = info.lastInsertRowid;
-      for (const table of q.tables) {
-        insertQueryTable.run(queryId, table);
+    // SQL extraction: only run on code files (which may embed SQL strings) and
+    // .sql files. Skip markdown/data/config files — their prose often contains
+    // SQL-like examples (e.g. "SELECT", "CREATE TABLE") that would be false
+    // positives in the data-flow graph.
+    if (shouldExtractSql(ext)) {
+      const { queries } = extractSql(content);
+      for (const q of queries) {
+        if (q.tables.length === 0) continue;
+        const info = insertQuery.run(q.text, fileId);
+        const queryId = info.lastInsertRowid;
+        for (const table of q.tables) {
+          insertQueryTable.run(queryId, table);
+        }
       }
     }
   }
@@ -274,6 +278,20 @@ function extname(name: string): string {
 
 function extToLang(ext: string): string {
   return langForExt(ext) ?? 'unknown';
+}
+
+// Extensions where SQL extraction is meaningful: code files that may embed SQL
+// strings + .sql. Markdown/data/config files are excluded (their prose often
+// contains SQL-like examples that would be false positives).
+const SQL_EXTRACT_EXTS = new Set([
+  '.sql', '.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.py', '.java',
+  '.c', '.cpp', '.hpp', '.cc', '.cxx', '.go', '.rs', '.php', '.rb', '.cs',
+  '.swift', '.kt', '.kts', '.scala', '.sc', '.sh', '.bash', '.dart', '.lua',
+  '.ex', '.exs', '.m', '.mm',
+]);
+
+function shouldExtractSql(ext: string): boolean {
+  return SQL_EXTRACT_EXTS.has(ext.toLowerCase());
 }
 
 /** Extract `@req <id>` annotations from source comments/JSDoc, returning

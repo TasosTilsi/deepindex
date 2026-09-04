@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { initDb, closeDb } from '../src/graph/db.js';
@@ -57,8 +57,7 @@ describe('graph layer', () => {
     expect(rows.some((r) => r.source === './missing')).toBe(true);
   });
 
-  it('BFS: foo depends on bar (depth 1)', () => {
-    const foo = getSymbolByName(db, 'foo')[0];
+  it('BFS: foo depends on bar (depth 1)', () => {    const foo = getSymbolByName(db, 'foo')[0];
     expect(foo).toBeDefined();
     const deps = getDependencies(db, foo.id, 1);
     const depNames = deps.map((id) => getSymbolByName(db, '').length || id);
@@ -143,6 +142,22 @@ describe('graph layer', () => {
       require('node:fs').writeFileSync(cPath, original);
       // Rebuild to restore hashes
       await buildGraph(db, FIXTURE);
+    }
+  });
+
+  it('does not extract SQL from markdown files (false-positive guard)', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'deepindex-sqlskip-'));
+    const db2 = initDb(join(dir, 'test.db'));
+    try {
+      mkdirSync(join(dir, 'src'), { recursive: true });
+      // A markdown file with SQL-like prose should NOT create sql_queries.
+      writeFileSync(join(dir, 'README.md'), '# Docs\n\nUse `SELECT * FROM users` and `CREATE TABLE orders`.\n');
+      await buildGraph(db2, dir);
+      const count = db2.prepare('SELECT COUNT(*) c FROM sql_queries').get() as { c: number };
+      expect(count.c).toBe(0);
+    } finally {
+      db2.close();
+      rmSync(dir, { recursive: true, force: true });
     }
   });
 });
