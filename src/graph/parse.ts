@@ -1,5 +1,5 @@
 import { Parser, Language, type Node as SyntaxNode } from 'web-tree-sitter';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { LANGUAGE_CONFIGS, langForExt, type NormalizedKind } from '../parser/languages.js';
@@ -44,6 +44,9 @@ async function getLanguage(langKey: string): Promise<Language> {
   const promise = (async () => {
     await initOnce();
     const wasmPath = join(WASM_DIR, config.wasmFile);
+    if (!existsSync(wasmPath)) {
+      throw new GrammarUnavailableError(langKey, wasmPath);
+    }
     return Language.load(readFileSync(wasmPath));
   })();
 
@@ -90,8 +93,19 @@ export async function parseFile(
 
     return { symbols, imports };
   } catch (e) {
+    // Missing grammar (e.g. a language whose .wasm isn't vendored) is not an
+    // error — skip the file silently. Real parse errors are logged.
+    if (e instanceof GrammarUnavailableError) return { symbols: [], imports: [] };
     console.error(`Parsing error for ${filePath} (${langKey}):`, e);
     return { symbols: [], imports: [] };
+  }
+}
+
+/** Thrown when a language's tree-sitter grammar .wasm isn't vendored. */
+class GrammarUnavailableError extends Error {
+  constructor(langKey: string, wasmPath: string) {
+    super(`Grammar not available for ${langKey}: ${wasmPath}`);
+    this.name = 'GrammarUnavailableError';
   }
 }
 
