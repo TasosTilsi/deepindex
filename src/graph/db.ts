@@ -168,7 +168,7 @@ export function initDb(dbPath: string): Database.Database {
   db.exec(SCHEMA_V5);
   // Idempotent column migration: `complexity` was added to the base CREATE
   // TABLE, but CREATE TABLE IF NOT EXISTS is a no-op on existing DBs, so a
-  // pre-existing .ctx.db lacks the column. Add it if missing. This is the
+  // pre-existing .deepindex.db lacks the column. Add it if missing. This is the
   // seed of a versioned migration ladder — extend per-version below as the
   // schema grows.
   const cols = db.pragma('table_info(symbols)') as { name: string }[];

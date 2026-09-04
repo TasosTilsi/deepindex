@@ -11,7 +11,7 @@ export interface HookResult {
 }
 
 /** SessionStart: sync git history into the knowledge graph. Deterministic, no LLM. */
-export function sessionStart(repoPath: string, dbPath = '.ctx.db'): HookResult {
+export function sessionStart(repoPath: string, dbPath = '.deepindex.db'): HookResult {
   const absRepo = resolve(repoPath);
   if (!existsSync(absRepo)) return { ok: false, message: `repo not found: ${absRepo}` };
   const db = initDb(dbPath);

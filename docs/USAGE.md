@@ -8,7 +8,7 @@ npm install -g deepindex
 pnpm add -g deepindex
 ```
 
-The `deepindex` binary is the CLI. It reads/writes a single SQLite database (default `.ctx.db` in the current directory).
+The `deepindex` binary is the CLI. It reads/writes a single SQLite database (default `.deepindex.db` in the current directory).
 
 ## Indexing
 

@@ -64,7 +64,7 @@ program
   .command('index')
   .description('Index a repository: parse files, build graph, populate SQLite')
   .argument('<repo>', 'path to repository root')
-  .option('-d, --db <path>', 'SQLite database path', '.ctx.db')
+  .option('-d, --db <path>', 'SQLite database path', '.deepindex.db')
   .option('--rebuild', 'force re-parse, bypass hash cache', false)
   .action(async (repo: string, opts: { db: string; rebuild: boolean }) => {
     const repoPath = resolve(repo);
@@ -97,7 +97,7 @@ program
   .command('health')
   .description('Print JSON health report for a repository index')
   .argument('<repo>', 'path to repository root')
-  .option('-d, --db <path>', 'SQLite database path', '.ctx.db')
+  .option('-d, --db <path>', 'SQLite database path', '.deepindex.db')
   .action((repo: string, opts: { db: string }) => {
     const repoPath = resolve(repo);
     const dbPath = resolve(opts.db);
@@ -126,7 +126,7 @@ program
   .command('repair')
   .description('Run the 4-stage repair pipeline (deterministic → LLM)')
   .argument('<repo>', 'path to repository root')
-  .option('-d, --db <path>', 'SQLite database path', '.ctx.db')
+  .option('-d, --db <path>', 'SQLite database path', '.deepindex.db')
   .option('--json', 'emit JSON to stdout', false)
   .action(async (repo: string, opts: { db: string; json: boolean }) => {
     const repoPath = resolve(repo);
@@ -168,7 +168,7 @@ program
   .command('retrieve')
   .description('Retrieve top-K files for a query')
   .argument('<query>', 'search query')
-  .option('-d, --db <path>', 'SQLite database path', '.ctx.db')
+  .option('-d, --db <path>', 'SQLite database path', '.deepindex.db')
   .option('--top-k <n>', 'number of results', String(DEFAULT_TOP_K))
   .option('--json', 'emit JSON to stdout', false)
   .action((query: string, opts: { db: string; topK: string; json: boolean }) => {
@@ -204,7 +204,7 @@ program
     .command('sync-requirements')
     .description('Index requirements from a JSON file')
     .argument('<file>', 'path to requirements JSON file')
-    .option('-d, --db <path>', 'SQLite database path', '.ctx.db')
+    .option('-d, --db <path>', 'SQLite database path', '.deepindex.db')
     .action(async (file: string, opts: { db: string }) => {
       const dbPath = resolve(opts.db);
       if (!existsSync(dbPath)) {
@@ -226,7 +226,7 @@ program
   program
     .command('check-req-coverage')
     .description('Generate requirements traceability and coverage report')
-    .option('-d, --db <path>', 'SQLite database path', '.ctx.db')
+    .option('-d, --db <path>', 'SQLite database path', '.deepindex.db')
     .action((opts: { db: string }) => {
       const dbPath = resolve(opts.db);
       if (!existsSync(dbPath)) {
@@ -262,7 +262,7 @@ program
     .command('analyze-impact')
     .description('Find impact chain for a specific table (Table -> Query -> File -> Service)')
     .argument('<table_name>', 'name of the database table')
-    .option('-d, --db <path>', 'SQLite database path', '.ctx.db')
+    .option('-d, --db <path>', 'SQLite database path', '.deepindex.db')
     .option('--domain <domain>', 'filter by domain')
     .option('--region <region>', 'filter by region')
     .option('--system <system>', 'filter by system')
@@ -306,7 +306,7 @@ program
   program
     .command('check-parallel-storage')
     .description('Identify tables found in multiple storage systems')
-    .option('-d, --db <path>', 'SQLite database path', '.ctx.db')
+    .option('-d, --db <path>', 'SQLite database path', '.deepindex.db')
     .option('--domain <domain>', 'filter by domain')
     .option('--region <region>', 'filter by region')
     .option('--system <system>', 'filter by system')
@@ -345,7 +345,7 @@ program
     .command('serve')
     .description('Start the POST /context HTTP server')
     .option('-p, --port <n>', 'port number', '7331')
-    .option('-d, --db <path>', 'SQLite database path', '.ctx.db')
+    .option('-d, --db <path>', 'SQLite database path', '.deepindex.db')
     .action(async (opts: { port: string; db: string }) => {
       const port = Number.parseInt(opts.port, 10);
       if (!Number.isFinite(port) || port <= 0) {
@@ -376,7 +376,7 @@ program
   program
     .command('list-tables')
     .description('List all discovered database tables')
-    .option('-d, --db <path>', 'SQLite database path', '.ctx.db')
+    .option('-d, --db <path>', 'SQLite database path', '.deepindex.db')
     .action((opts: { db: string }) => {
       withDb('list-tables', opts, (db) => {
         const tables = db.prepare('SELECT DISTINCT table_name FROM query_tables ORDER BY table_name').all() as { table_name: string }[];
@@ -395,7 +395,7 @@ program
     .command('find-table-usage')
     .description('Find code reading/writing a specific table')
     .argument('<table_name>', 'name of the database table')
-    .option('-d, --db <path>', 'SQLite database path', '.ctx.db')
+    .option('-d, --db <path>', 'SQLite database path', '.deepindex.db')
     .action((tableName: string, opts: { db: string }) => {
       withDb('find-table-usage', opts, (db) => {
         const graph = projectFullGraph(db);
@@ -416,7 +416,7 @@ program
   program
     .command('summarize-graph')
     .description('Print a summary of the indexed SQL-impact projection')
-    .option('-d, --db <path>', 'SQLite database path', '.ctx.db')
+    .option('-d, --db <path>', 'SQLite database path', '.deepindex.db')
     .action((opts: { db: string }) => {
       withDb('summarize-graph', opts, (db) => {
         const graph = projectFullGraph(db);
@@ -427,7 +427,7 @@ program
   program
     .command('build-graph')
     .description('Build and validate the data-flow projection from indexed SQL/data-flow tables')
-    .option('-d, --db <path>', 'SQLite database path', '.ctx.db')
+    .option('-d, --db <path>', 'SQLite database path', '.deepindex.db')
     .option('--json', 'emit JSON to stdout', false)
     .action((opts: { db: string; json: boolean }) => {
       withDb('build-graph', opts, (db) => {
@@ -456,7 +456,7 @@ program
   program
     .command('watch')
     .description('Watch files for changes and invalidate summary cache')
-    .option('-d, --db <path>', 'SQLite database path', '.ctx.db')
+    .option('-d, --db <path>', 'SQLite database path', '.deepindex.db')
     .option('--no-ignore', 'disable .gitignore and other default ignores')
     .option('--debounce <ms>', 'debounce window in ms', '250')
     .action((opts: { db: string; ignore: boolean; debounce: string }) => {
@@ -496,7 +496,7 @@ program
     .command('git-index')
     .description('Index full git history into the knowledge graph (entities, backlinks, FTS5)')
     .argument('<repo>', 'path to git repository root')
-    .option('-d, --db <path>', 'SQLite database path', '.ctx.db')
+    .option('-d, --db <path>', 'SQLite database path', '.deepindex.db')
     .action((repo: string, opts: { db: string }) => {
       const repoPath = resolve(repo);
       if (!existsSync(repoPath)) {
@@ -523,7 +523,7 @@ program
     .command('git-sync')
     .description('Incrementally index commits since last_indexed_sha')
     .argument('<repo>', 'path to git repository root')
-    .option('-d, --db <path>', 'SQLite database path', '.ctx.db')
+    .option('-d, --db <path>', 'SQLite database path', '.deepindex.db')
     .option('--full', 'force full reindex', false)
     .action((repo: string, opts: { db: string; full: boolean }) => {
       const repoPath = resolve(repo);
@@ -555,7 +555,7 @@ program
     .command('search')
     .description('Search the knowledge graph for typed entities via FTS5')
     .argument('<query>', 'search query')
-    .option('-d, --db <path>', 'SQLite database path', '.ctx.db')
+    .option('-d, --db <path>', 'SQLite database path', '.deepindex.db')
     .option('--limit <n>', 'number of results', '10')
     .action((query: string, opts: { db: string; limit: string }) => {
       const dbPath = resolve(opts.db);
@@ -621,7 +621,7 @@ program
     .command('mcp')
     .description('MCP server commands')
     .argument('<subcommand>', 'serve | install')
-    .option('-d, --db <path>', 'SQLite database path', '.ctx.db')
+    .option('-d, --db <path>', 'SQLite database path', '.deepindex.db')
     .action(async (subcommand: string, opts: { db: string }) => {
       if (subcommand === 'install') {
         const r = installClaudeSettings(process.cwd());
@@ -653,7 +653,7 @@ program
     .command('hook')
     .description('Claude Code hook entry points')
     .argument('<name>', 'session-start | user-prompt-submit | post-tool-use | session-end')
-    .option('-d, --db <path>', 'SQLite database path', '.ctx.db')
+    .option('-d, --db <path>', 'SQLite database path', '.deepindex.db')
     .option('--repo <path>', 'repository path', '.')
     .option('--task <text>', 'task text (user-prompt-submit)')
     .option('--tool <name>', 'tool name (post-tool-use)')

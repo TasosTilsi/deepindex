@@ -21,7 +21,7 @@ export interface McpServeOptions {
   dbPath?: string;
 }
 
-const DEFAULT_DB = '.ctx.db';
+const DEFAULT_DB = '.deepindex.db';
 
 /** Create the MCP server with 6 read-only tools registered. */
 export function createMcpServer(db: Database.Database): McpServer {

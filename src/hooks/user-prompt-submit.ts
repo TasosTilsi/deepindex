@@ -13,7 +13,7 @@ export interface HookResult {
 export async function userPromptSubmit(
   task: string,
   repoPath: string,
-  dbPath = '.ctx.db'
+  dbPath = '.deepindex.db'
 ): Promise<HookResult> {
   const absRepo = resolve(repoPath);
   if (!existsSync(absRepo)) return { ok: false, message: `repo not found: ${absRepo}` };

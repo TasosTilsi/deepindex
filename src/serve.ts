@@ -24,7 +24,7 @@ export interface ServeHandle {
 
 const DEFAULT_PORT = 7331;
 const DEFAULT_HOST = '127.0.0.1';
-const DEFAULT_DB = '.ctx.db';
+const DEFAULT_DB = '.deepindex.db';
 const DEFAULT_DASHBOARD = resolve(process.cwd(), 'dashboard', 'dist');
 
 const MIME: Record<string, string> = {

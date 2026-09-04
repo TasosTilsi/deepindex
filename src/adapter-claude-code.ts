@@ -63,7 +63,7 @@ export async function adaptClaudeCode(
   repoPath: string,
   opts: AdaptOptions = {}
 ): Promise<AdapterResult> {
-  const dbPath = opts.dbPath ?? '.ctx.db';
+  const dbPath = opts.dbPath ?? '.deepindex.db';
   const topK = opts.topK ?? DEFAULT_TOP_K;
   const absRepo = pathResolve(repoPath);
 
