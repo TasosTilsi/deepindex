@@ -1,27 +1,29 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { initDb, closeDb } from '../src/graph/db.js';
 import { gitIndex } from '../src/git/indexer.js';
 import { searchEntities, getRelated, getRelatedRecursive } from '../src/git/search.js';
+import { createGitFixture } from './helpers/git-fixture.js';
 import type Database from 'better-sqlite3';
-
-const FIXTURE = resolve(process.cwd(), 'fixtures/git-repo');
 
 describe('git search', () => {
   let db: Database.Database;
   let tmpDir: string;
+  let FIXTURE: string;
 
   beforeAll(() => {
     tmpDir = mkdtempSync(join(tmpdir(), 'ctx-search-'));
     db = initDb(join(tmpDir, 'test.db'));
+    FIXTURE = createGitFixture();
     gitIndex(db, FIXTURE);
   });
 
   afterAll(() => {
     closeDb();
     rmSync(tmpDir, { recursive: true, force: true });
+    rmSync(FIXTURE, { recursive: true, force: true });
   });
 
   it('searchEntities returns typed entities via FTS5 (FTS-02)', () => {

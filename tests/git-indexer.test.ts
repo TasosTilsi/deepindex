@@ -1,22 +1,23 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { initDb, closeDb } from '../src/graph/db.js';
 import { buildGraph } from '../src/graph/build.js';
 import { gitIndex, gitSync, deriveCommitType } from '../src/git/indexer.js';
 import { entityId } from '../src/git/extract.js';
+import { createGitFixture } from './helpers/git-fixture.js';
 import type Database from 'better-sqlite3';
-
-const FIXTURE = resolve(process.cwd(), 'fixtures/git-repo');
 
 describe('git indexer', () => {
   let db: Database.Database;
   let tmpDir: string;
+  let FIXTURE: string;
 
   beforeAll(async () => {
     tmpDir = mkdtempSync(join(tmpdir(), 'ctx-git-'));
     db = initDb(join(tmpDir, 'test.db'));
+    FIXTURE = createGitFixture();
     // Populate the files table so commit_files can link to it (D-16).
     await buildGraph(db, FIXTURE);
   });
@@ -24,6 +25,7 @@ describe('git indexer', () => {
   afterAll(() => {
     closeDb();
     rmSync(tmpDir, { recursive: true, force: true });
+    rmSync(FIXTURE, { recursive: true, force: true });
   });
 
   it('gitIndex walks and indexes all commits', () => {

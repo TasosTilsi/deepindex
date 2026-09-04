@@ -4,13 +4,16 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { initDb } from '../src/graph/db.js';
 import { buildGraph } from '../src/graph/build.js';
+import { gitIndex } from '../src/git/indexer.js';
 import { adaptClaudeCode } from '../src/adapter-claude-code.js';
+import { createGitFixture } from './helpers/git-fixture.js';
 
 const FIXTURE = resolve(process.cwd(), 'fixtures/sample-repo');
 
 describe('adapter', () => {
   let dir: string;
   let dbPath: string;
+  let GIT_FIXTURE: string;
 
   beforeAll(async () => {
     dir = mkdtempSync(join(tmpdir(), 'ctx-adapter-'));
@@ -18,10 +21,12 @@ describe('adapter', () => {
     const db = initDb(dbPath);
     await buildGraph(db, FIXTURE);
     db.close();
+    GIT_FIXTURE = createGitFixture();
   });
 
   afterAll(() => {
     rmSync(dir, { recursive: true, force: true });
+    rmSync(GIT_FIXTURE, { recursive: true, force: true });
   });
 
   it('returns an AdapterResult with non-empty topFiles for "auth"', async () => {
@@ -36,6 +41,18 @@ describe('adapter', () => {
     expect(r.health).toHaveProperty('score');
     expect(r.health).toHaveProperty('dimensions');
     expect(Array.isArray(r.neighborhood)).toBe(true);
+    expect(Array.isArray(r.entities)).toBe(true);
+  });
+
+  it('returns git-history entities in merged context (SC5)', async () => {
+    const gitDb = join(dir, 'git.db');
+    const db = initDb(gitDb);
+    gitIndex(db, GIT_FIXTURE);
+    db.close();
+    const r = await adaptClaudeCode('counter loop', GIT_FIXTURE, { dbPath: gitDb });
+    expect(r.entities.length).toBeGreaterThan(0);
+    expect(r.entities[0]).toHaveProperty('type');
+    expect(r.entities[0]).toHaveProperty('name');
   });
 
   it('defaults topK to 10 when omitted', async () => {

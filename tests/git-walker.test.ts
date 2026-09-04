@@ -1,10 +1,18 @@
-import { describe, it, expect } from 'vitest';
-import { resolve } from 'node:path';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { rmSync } from 'node:fs';
 import { walkCommits, fetchDiff, fetchFilesChanged, batchCommits } from '../src/git/walker.js';
-
-const FIXTURE = resolve(process.cwd(), 'fixtures/git-repo');
+import { createGitFixture } from './helpers/git-fixture.js';
 
 describe('git walker', () => {
+  let FIXTURE: string;
+
+  beforeAll(() => {
+    FIXTURE = createGitFixture();
+  });
+
+  afterAll(() => {
+    rmSync(FIXTURE, { recursive: true, force: true });
+  });
   it('walks commits oldest-first', () => {
     const commits = walkCommits(FIXTURE);
     expect(commits.length).toBeGreaterThanOrEqual(4);
