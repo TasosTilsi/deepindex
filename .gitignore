@@ -10,3 +10,15 @@ coverage/
 .omc/
 fixtures/sample-repo/.git/
 .planning/
+# Tooling state (not source)
+.claude/
+.clinerules/
+.cursor/
+.opencode/
+.serena/
+.windsurf/
+.scratch/
+.github/
+.deepinit/
+context-engineering-article.txt
+.tree-sitter/

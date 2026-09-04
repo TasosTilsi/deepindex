@@ -5,7 +5,7 @@
   "type": "module",
   "main": "dist/index.js",
   "bin": {
-    "deepinit": "dist/cli.js"
+    "deepindex": "dist/cli.js"
   },
   "scripts": {
     "build": "tsc",
@@ -28,15 +28,18 @@
     ]
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "better-sqlite3": "^11.5.0",
     "chokidar": "^4.0.0",
     "commander": "^12.1.0",
+    "js-yaml": "^5.4.1",
     "sql-parser-cst": "^0.42.1",
     "web-tree-sitter": "^0.26.11",
     "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.12",
+    "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.10.0",
     "@vitest/coverage-v8": "^2.1.9",
     "tsx": "^4.19.2",
