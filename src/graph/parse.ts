@@ -207,6 +207,13 @@ function nodeToSymbol(node: SyntaxNode, langKey: string): ParsedSymbol | null {
   }
 
   if (!name) {
+    // Fallback: some grammars (kotlin, dart, etc.) name declarations via a
+    // type_identifier/identifier child rather than a `name` field.
+    const id = node.namedChildren.find((c) => c.type === 'type_identifier' || c.type === 'identifier');
+    if (id) name = id.text;
+  }
+
+  if (!name) {
     for (let i = 0; i < node.childCount; i++) {
       const c = node.child(i);
       if (c && c.type === 'identifier') {

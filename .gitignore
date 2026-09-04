@@ -21,4 +21,3 @@ fixtures/sample-repo/.git/
 .github/
 .deepinit/
 context-engineering-article.txt
-.tree-sitter/

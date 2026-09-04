@@ -24,7 +24,7 @@ It is not a vector database or a RAG framework. It is the deterministic, local-f
 
 | Capability | Description |
 |------------|-------------|
-| **Symbol/import graph** | Tree-sitter parsing (TS/JS/Python/Java/C/C++/Go/Rust) into a SQLite graph of files, symbols, imports, edges. |
+| **Symbol/import graph** | Tree-sitter parsing (32 languages: TS/JS/Python/Java/C/C++/Go/Rust/PHP/Ruby/C#/Swift/Kotlin/Scala/Bash/Dart/Lua/Elixir/ObjC/HTML/CSS/JSON/YAML/Markdown/Vue/Svelte/Perl/R/Haskell/Clojure/Erlang/Zig) into a SQLite graph of files, symbols, imports, edges. |
 | **Data-flow analysis** | SQL/data-flow extraction (CREATE TABLE, queries, ORM, config mappings), Table↔Query↔Service projection, impact analysis, parallel-storage detection. |
 | **Git-history knowledge graph** | Walk git history, extract typed entities (decision, bug_fix, pattern, tech_debt, concept, breaking_change, security_fix, workflow) with bidirectional backlinks + FTS5 search. |
 | **Health scoring** | Deterministic health score (freshness/consistency/coverage/confidence) that gates LLM calls. |

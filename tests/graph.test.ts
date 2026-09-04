@@ -30,7 +30,9 @@ describe('graph layer', () => {
     const rows = db.prepare('SELECT COUNT(*) as c FROM files').get() as { c: number };
     // Phase 2 added: src/with-comments.ts, src/thread-counter.ts, and
     // outdated-doc.ts at the repo root. Original 3 (a/b/c.ts) + 3 new = 6.
-    expect(rows.c).toBe(6);
+    // Phase 7+ multi-language: the 2 AGENTS.md files are now indexed as
+    // markdown (previously unsupported) → 8.
+    expect(rows.c).toBe(8);
   });
 
   it('extracts exported symbols including the phase 2 additions', () => {

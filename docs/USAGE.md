@@ -22,7 +22,7 @@ deepindex index <repo> --rebuild
 
 `deepindex index` walks the repo, parses supported files via tree-sitter, and populates the SQLite store. Re-running skips unchanged files (hash-based invalidation).
 
-**Supported languages:** TypeScript, JavaScript, Python, Java, C, C++, Go, Rust, SQL.
+**Supported languages (32):** TypeScript, JavaScript, Python, Java, C, C++, Go, Rust, PHP, Ruby, C#, Swift, Kotlin, Scala, Bash, Dart, Lua, Elixir, Objective-C, HTML, CSS, JSON, YAML, Markdown, Vue, Svelte, Perl, R, Haskell, Clojure, Erlang, Zig.
 
 ## Git-History Knowledge Graph
 
