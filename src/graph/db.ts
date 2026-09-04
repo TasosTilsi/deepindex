@@ -2,7 +2,7 @@ import Database from 'better-sqlite3';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 
-const SCHEMA_VERSION = 4;
+const SCHEMA_VERSION = 5;
 
 const SCHEMA_V2 = `
 CREATE TABLE IF NOT EXISTS health_signals (
@@ -26,6 +26,76 @@ CREATE TABLE IF NOT EXISTS query_tables (
 );
 CREATE INDEX IF NOT EXISTS idx_query_tables_name ON query_tables(table_name);
 CREATE INDEX IF NOT EXISTS idx_sql_queries_file ON sql_queries(file_id);
+`;
+
+// Phase 5: Git-History Knowledge Graph (schema v5). Temporal KG tables —
+// commits, commit_files (link to existing files), entities, entity_symbols
+// (link to existing symbols), backlinks, metadata, entities_fts + triggers.
+const SCHEMA_V5 = `
+CREATE TABLE IF NOT EXISTS commits (
+  sha TEXT PRIMARY KEY,
+  message TEXT NOT NULL,
+  author TEXT NOT NULL,
+  author_date TEXT NOT NULL,
+  committer_date TEXT NOT NULL,
+  insertions INTEGER NOT NULL DEFAULT 0,
+  deletions INTEGER NOT NULL DEFAULT 0,
+  parent_sha TEXT,
+  commit_type TEXT NOT NULL DEFAULT 'other'
+);
+CREATE TABLE IF NOT EXISTS commit_files (
+  commit_sha TEXT NOT NULL REFERENCES commits(sha) ON DELETE CASCADE,
+  file_id INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+  PRIMARY KEY (commit_sha, file_id)
+);
+CREATE INDEX IF NOT EXISTS idx_commit_files_file ON commit_files(file_id);
+CREATE TABLE IF NOT EXISTS entities (
+  id TEXT PRIMARY KEY,
+  type TEXT NOT NULL CHECK(type IN ('decision','bug_fix','pattern','tech_debt','concept','breaking_change','security_fix','workflow')),
+  name TEXT NOT NULL,
+  content TEXT NOT NULL DEFAULT '',
+  commit_sha TEXT REFERENCES commits(sha),
+  tags TEXT NOT NULL DEFAULT '[]',
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+  last_seen TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
+);
+CREATE INDEX IF NOT EXISTS idx_entities_type ON entities(type);
+CREATE INDEX IF NOT EXISTS idx_entities_name ON entities(name);
+CREATE TABLE IF NOT EXISTS entity_symbols (
+  entity_id TEXT NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
+  symbol_id INTEGER NOT NULL REFERENCES symbols(id) ON DELETE CASCADE,
+  PRIMARY KEY (entity_id, symbol_id)
+);
+CREATE INDEX IF NOT EXISTS idx_entity_symbols_symbol ON entity_symbols(symbol_id);
+CREATE TABLE IF NOT EXISTS backlinks (
+  from_id TEXT NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
+  to_id TEXT NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
+  relationship TEXT NOT NULL,
+  context TEXT NOT NULL DEFAULT '',
+  PRIMARY KEY (from_id, to_id, relationship)
+);
+CREATE INDEX IF NOT EXISTS idx_backlinks_to ON backlinks(to_id);
+CREATE TABLE IF NOT EXISTS metadata (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
+CREATE VIRTUAL TABLE IF NOT EXISTS entities_fts USING fts5(
+  name,
+  content,
+  content=entities,
+  content_rowid=rowid,
+  tokenize='porter unicode61'
+);
+CREATE TRIGGER IF NOT EXISTS entities_fts_ai AFTER INSERT ON entities BEGIN
+  INSERT INTO entities_fts(rowid, name, content) VALUES (new.rowid, new.name, new.content);
+END;
+CREATE TRIGGER IF NOT EXISTS entities_fts_ad AFTER DELETE ON entities BEGIN
+  INSERT INTO entities_fts(entities_fts, rowid, name, content) VALUES('delete', old.rowid, old.name, old.content);
+END;
+CREATE TRIGGER IF NOT EXISTS entities_fts_au AFTER UPDATE ON entities BEGIN
+  INSERT INTO entities_fts(entities_fts, rowid, name, content) VALUES('delete', old.rowid, old.name, old.content);
+  INSERT INTO entities_fts(rowid, name, content) VALUES (new.rowid, new.name, new.content);
+END;
 `;
 
 const SCHEMA = `
@@ -95,6 +165,7 @@ export function initDb(dbPath: string): Database.Database {
   db.exec(SCHEMA);
   db.exec(SCHEMA_V2);
   db.exec(SCHEMA_V3);
+  db.exec(SCHEMA_V5);
   // Idempotent column migration: `complexity` was added to the base CREATE
   // TABLE, but CREATE TABLE IF NOT EXISTS is a no-op on existing DBs, so a
   // pre-existing .ctx.db lacks the column. Add it if missing. This is the
