@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -8,6 +8,7 @@ import {
   registerProject,
   listProjects,
   getProject,
+  discoverProjects,
 } from '../src/registry.js';
 
 describe('project registry', () => {
@@ -50,5 +51,16 @@ describe('project registry', () => {
   it('saveRegistry round-trips', () => {
     saveRegistry({ projects: [{ name: 'c', path: '/x/c', dbPath: '/x/c.db', lastIndexed: 'now' }] }, regPath);
     expect(loadRegistry(regPath).projects[0].name).toBe('c');
+  });
+
+  it('discoverProjects finds .deepindex.db files in the tree', () => {
+    const root = join(dir, 'discover');
+    mkdirSync(join(root, 'proj-a'), { recursive: true });
+    mkdirSync(join(root, 'proj-b'), { recursive: true });
+    writeFileSync(join(root, 'proj-a', '.deepindex.db'), '');
+    writeFileSync(join(root, 'proj-b', '.deepindex.db'), '');
+    const found = discoverProjects(root);
+    const names = found.map((p) => p.name).sort();
+    expect(names).toEqual(['proj-a', 'proj-b']);
   });
 });

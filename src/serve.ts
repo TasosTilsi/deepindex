@@ -92,7 +92,7 @@ export function serve(opts: ServeOptions = {}): Promise<ServeHandle> {
         }
         const db = initDb(dbForApi);
         try {
-          const r = handleApi(db, url, registryPath);
+          const r = handleApi(db, url, registryPath, process.cwd());
           sendJson(res, r.status, r.body);
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);

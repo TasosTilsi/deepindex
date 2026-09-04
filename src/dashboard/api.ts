@@ -4,11 +4,19 @@
 import type Database from 'better-sqlite3';
 import { searchEntities, getRelatedRecursive } from '../git/search.js';
 import { projectFullGraph } from '../graph/projection.js';
-import { listProjects, type ProjectEntry } from '../registry.js';
+import { listProjects, discoverProjects, type ProjectEntry } from '../registry.js';
 
-/** List all registered projects (for the multi-project dashboard). */
-export function apiProjects(registryPath?: string): { projects: ProjectEntry[] } {
-  return { projects: listProjects(registryPath) };
+/** List all projects: registered (home registry) + discovered (.deepindex.db
+ *  files in the current dir tree). Dedup by path. */
+export function apiProjects(registryPath?: string, rootDir?: string): { projects: ProjectEntry[] } {
+  const byPath = new Map<string, ProjectEntry>();
+  for (const p of listProjects(registryPath)) byPath.set(p.path, p);
+  if (rootDir) {
+    for (const p of discoverProjects(rootDir)) {
+      if (!byPath.has(p.path)) byPath.set(p.path, p);
+    }
+  }
+  return { projects: [...byPath.values()] };
 }
 
 /** Overview counts across the merged store. */
@@ -71,12 +79,12 @@ export function apiSymbols(db: Database.Database, limit = 500) {
 }
 
 /** Route a GET /api/* path to its handler. Returns {status, body}. */
-export function handleApi(db: Database.Database, url: string, registryPath?: string): { status: number; body: unknown } {
+export function handleApi(db: Database.Database, url: string, registryPath?: string, rootDir?: string): { status: number; body: unknown } {
   const u = new URL(url, 'http://localhost');
   const path = u.pathname;
   const q = u.searchParams;
 
-  if (path === '/api/projects') return { status: 200, body: apiProjects(registryPath) };
+  if (path === '/api/projects') return { status: 200, body: apiProjects(registryPath, rootDir) };
   if (path === '/api/overview') return { status: 200, body: apiOverview(db) };
   if (path === '/api/entities') {
     const limit = Number(q.get('limit') ?? 200);

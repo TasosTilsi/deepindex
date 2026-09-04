@@ -1,8 +1,8 @@
 // Project registry — records indexed projects so the dashboard can show all
 // of them. Stored at ~/.deepindex/projects.json (user-level, all projects).
 
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, statSync } from 'node:fs';
+import { join, dirname, basename } from 'node:path';
 import { homedir } from 'node:os';
 
 export interface ProjectEntry {
@@ -35,7 +35,7 @@ export function loadRegistry(registryPath = defaultRegistryPath()): Registry {
 
 /** Save the registry. */
 export function saveRegistry(registry: Registry, registryPath = defaultRegistryPath()): void {
-  mkdirSync(join(registryPath, '..'), { recursive: true });
+  mkdirSync(dirname(registryPath), { recursive: true });
   writeFileSync(registryPath, JSON.stringify(registry, null, 2) + '\n');
 }
 
@@ -69,4 +69,41 @@ export function getProject(
   registryPath = defaultRegistryPath()
 ): ProjectEntry | undefined {
   return loadRegistry(registryPath).projects.find((p) => p.name === key || p.path === key);
+}
+
+/** Discover projects by scanning for `.deepindex.db` files in a root dir and
+ *  its immediate subdirectories. This lets the dashboard show projects even
+ *  when the home registry is empty/unwritable. */
+export function discoverProjects(rootDir: string, depth = 2): ProjectEntry[] {
+  const out: ProjectEntry[] = [];
+  const seen = new Set<string>();
+  const scan = (dir: string, d: number) => {
+    if (d > depth) return;
+    let entries: string[];
+    try {
+      entries = readdirSync(dir);
+    } catch {
+      return;
+    }
+    for (const name of entries) {
+      const full = join(dir, name);
+      let st: ReturnType<typeof statSync>;
+      try {
+        st = statSync(full);
+      } catch {
+        continue;
+      }
+      if (st.isDirectory()) {
+        if (name === 'node_modules' || name === '.git' || name.startsWith('.')) continue;
+        scan(full, d + 1);
+      } else if (name === '.deepindex.db') {
+        const path = dir;
+        if (seen.has(path)) continue;
+        seen.add(path);
+        out.push({ name: basename(path), path, dbPath: full, lastIndexed: '' });
+      }
+    }
+  };
+  scan(rootDir, 0);
+  return out;
 }
