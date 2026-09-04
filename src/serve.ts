@@ -1,9 +1,11 @@
 // Phase 3 + 7: HTTP server. POST /context (adapter) + GET /api/* (dashboard)
 // + GET / static dashboard files. Node 20 stdlib only.
 
+import type Database from 'better-sqlite3';
 import { createServer, IncomingMessage, ServerResponse } from 'node:http';
-import { readFileSync, existsSync, statSync } from 'node:fs';
+import { readFileSync, existsSync, statSync, copyFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { join, extname, resolve } from 'node:path';
+import { tmpdir } from 'node:os';
 import { adaptClaudeCode } from './adapter-claude-code.js';
 import { initDb } from './graph/db.js';
 import { handleApi } from './dashboard/api.js';
@@ -37,6 +39,30 @@ const MIME: Record<string, string> = {
   '.ico': 'image/x-icon',
 };
 
+/** Copy a db (+ its -wal side file) into a private temp dir and open the
+ *  copy. Used when the source db lives outside a writable area (e.g. another
+ *  project's directory under a restricted server environment): SQLite cannot
+ *  create its WAL/shm side files there. The dashboard is read-only either
+ *  way, so serving from a copy is equivalent. Returns null when the source
+ *  is unusable. */
+function openDbCopy(
+  source: string,
+  copyDirs: Set<string>
+): Database.Database | null {
+  try {
+    if (!existsSync(source) || !statSync(source).isFile()) return null;
+    const dir = mkdtempSync(join(tmpdir(), 'deepindex-serve-'));
+    copyDirs.add(dir);
+    const copyPath = join(dir, 'index.db');
+    copyFileSync(source, copyPath);
+    const wal = `${source}-wal`;
+    if (existsSync(wal)) copyFileSync(wal, `${copyPath}-wal`);
+    return initDb(copyPath);
+  } catch {
+    return null;
+  }
+}
+
 function sendJson(res: ServerResponse, status: number, body: unknown): void {
   res.statusCode = status;
   res.setHeader('content-type', 'application/json');
@@ -51,6 +77,13 @@ function serveStatic(res: ServerResponse, dashboardDir: string, urlPath: string)
     sendJson(res, 403, { error: 'forbidden' });
     return;
   }
+  // Vite build outputs under /assets/ carry content-hashed filenames — safe to
+  // cache forever. Everything else (index.html, SPA fallback) must revalidate
+  // so rebuilt dashboards are picked up on refresh.
+  res.setHeader(
+    'cache-control',
+    urlPath.startsWith('/assets/') ? 'public, max-age=31536000, immutable' : 'no-cache'
+  );
   if (!existsSync(filePath) || !statSync(filePath).isFile()) {
     // SPA fallback to index.html for client routes.
     const index = join(dashboardDir, 'index.html');
@@ -75,6 +108,12 @@ export function serve(opts: ServeOptions = {}): Promise<ServeHandle> {
     const dbPath = opts.dbPath ?? DEFAULT_DB;
     const dashboardDir = opts.dashboardDir ?? DEFAULT_DASHBOARD;
     const registryPath = opts.registryPath ?? defaultRegistryPath();
+    // One connection per db file, reused across requests. initDb re-executes
+    // the full schema DDL + WAL pragmas on every call, so opening a fresh
+    // connection per request adds fixed latency to every dashboard endpoint.
+    const openHandles = new Map<string, Database.Database>();
+    // Temp dirs holding copies of dbs that could not be opened in place.
+    const copyDirs = new Set<string>();
 
     const server = createServer(async (req, res) => {
       const url = req.url ?? '/';
@@ -90,15 +129,27 @@ export function serve(opts: ServeOptions = {}): Promise<ServeHandle> {
           const proj = getProject(projectKey, registryPath);
           if (proj) dbForApi = proj.dbPath;
         }
-        const db = initDb(dbForApi);
+        // Opening the db inside the try: an unopenable project db (missing
+        // file, a directory, or a db outside a writable area) must answer
+        // with a 500, not kill the server process.
+        let db: Database.Database | undefined;
         try {
+          db = openHandles.get(dbForApi);
+          if (!db) {
+            try {
+              db = initDb(dbForApi);
+            } catch (err) {
+              const copy = openDbCopy(dbForApi, copyDirs);
+              if (!copy) throw err;
+              db = copy;
+            }
+            openHandles.set(dbForApi, db);
+          }
           const r = handleApi(db, url, registryPath, process.cwd());
           sendJson(res, r.status, r.body);
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
-          sendJson(res, 500, { error: 'internal', message });
-        } finally {
-          db.close();
+          sendJson(res, 500, { error: 'cannot open database', detail: message, path: dbForApi });
         }
         return;
       }
@@ -162,6 +213,10 @@ export function serve(opts: ServeOptions = {}): Promise<ServeHandle> {
         port: actualPort,
         async close(): Promise<void> {
           await new Promise<void>((r) => server.close(() => r()));
+          for (const h of openHandles.values()) h.close();
+          openHandles.clear();
+          for (const d of copyDirs) rmSync(d, { recursive: true, force: true });
+          copyDirs.clear();
         },
       });
     });
