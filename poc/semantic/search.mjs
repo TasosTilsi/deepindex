@@ -16,10 +16,10 @@ env.cacheDir = join(REPO, 'bench-tmp', 'models');
 env.allowLocalModels = false;
 
 const argv = process.argv.slice(2);
-const query = argv.filter((a) => !a.startsWith('--')).join(' ');
-if (!query) { console.error('usage: node search.mjs <query> [--k 5]'); process.exit(1); }
 const kIdx = argv.indexOf('--k');
 const k = kIdx >= 0 ? Number(argv[kIdx + 1]) || 5 : 5;
+const query = argv.filter((a, i) => !a.startsWith('--') && (kIdx < 0 || i !== kIdx + 1)).join(' ');
+if (!query) { console.error('usage: node search.mjs <query> [--k 5]'); process.exit(1); }
 
 const db = new Database(join(REPO, '.deepindex.db'), { readonly: true });
 sqliteVec.load(db);
@@ -52,12 +52,24 @@ ftsHits.forEach((h, i) => rrf.set(h.id, (rrf.get(h.id) ?? 0) + 1 / (60 + i + 1))
 const hybrid = [...rrf.entries()].sort((a, b) => b[1] - a[1]).slice(0, k);
 
 const fmtEnt = (id) => { const e = entById.get(id); return e ? `${e.type}  ${e.name.slice(0, 68)}` : id; };
+// vec0 default distance = L2 on unit vectors; cosine sim = 1 - d²/2 (monotonic with L2)
+const cos = (d) => 1 - (Number(d) * Number(d)) / 2;
+// first readable line of content, for judging relevance
+const entContent = db.prepare('SELECT content FROM entities WHERE id = ?');
+const snippet = (id) => {
+  const c = entContent.get(id)?.content ?? '';
+  return c.replace(/\n+/g, ' ').trim().slice(0, 110);
+};
 
-console.log(`query: "${query}"\n`);
-console.log('semantic (vec KNN, entities):');
+console.log(`query: "${query}"
+(semantic scores = cosine similarity, 1.0 = identical, ~0.3-0.6 = related, <0.2 = unrelated)
+\nsemantic (vec KNN, entities):`);
 for (const h of entHits) {
   const m = docByRow.get('entity', Number(h.rowid));
-  console.log(`  ${Number(h.distance).toFixed(3)}  ${m ? fmtEnt(m.doc_id) : '?'}`);
+  if (!m) continue;
+  console.log(`  ${cos(h.distance).toFixed(2)}  ${fmtEnt(m.doc_id)}`);
+  const s = snippet(m.doc_id);
+  if (s) console.log(`        "${s}"`);
 }
 console.log('lexical (FTS5, entities):');
 if (!ftsHits.length) console.log('  (no hits)');
@@ -69,6 +81,6 @@ for (const h of symHits) {
   const m = docByRow.get('symbol', Number(h.rowid));
   if (!m) continue;
   const s = symById.get(m.doc_id);
-  console.log(`  ${Number(h.distance).toFixed(3)}  ${s?.kind}  ${s?.name}  (${s?.path})`);
+  console.log(`  ${cos(h.distance).toFixed(2)}  ${s?.kind}  ${s?.name}  (${s?.path})`);
 }
 db.close();
