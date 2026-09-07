@@ -31,7 +31,11 @@ const qbuf = Buffer.from(new Float32Array(qv).buffer);
 // vec KNN through sqlite-vec; rowid → doc via poc_embed_meta (embed.mjs mapping)
 const entHits = db.prepare('SELECT rowid, distance FROM entity_vecs WHERE embedding MATCH ? AND k = ?').all(qbuf, k);
 const symHits = db.prepare('SELECT rowid, distance FROM symbol_vecs WHERE embedding MATCH ? AND k = ?').all(qbuf, k);
-const docByRow = db.prepare("SELECT doc_id FROM poc_embed_meta WHERE kind = ? AND vec_rowid = ?");
+const docHits = db.prepare('SELECT rowid, distance FROM doc_vecs WHERE embedding MATCH ? AND k = ?').all(qbuf, k);
+// vec KNN through sqlite-vec; rowid → doc via poc_embed_meta (embed.mjs mapping).
+// vec_rowid is only unique per (kind) — each vec0 table has its own rowid sequence.
+const docByRow = (kind, rowid) =>
+  db.prepare(`SELECT doc_id FROM poc_embed_meta WHERE vec_rowid = ? AND kind IN (${kind})`).get(rowid)?.doc_id;
 const entById = db.prepare('SELECT name, type FROM entities WHERE id = ?');
 const symById = db.prepare('SELECT s.name, s.kind, f.path FROM symbols s JOIN files f ON f.id = s.file_id WHERE s.id = ?');
 
@@ -44,9 +48,9 @@ try {
 
 // RRF hybrid (k=60) over semantic + lexical entity rankings
 const rrf = new Map();
-entHits.forEach((h) => {
-  const m = docByRow.get('entity', Number(h.rowid));
-  if (m) rrf.set(m.doc_id, (rrf.get(m.doc_id) ?? 0) + 1 / (60 + entHits.indexOf(h) + 1));
+entHits.forEach((h, i) => {
+  const id = docByRow("'entity'", Number(h.rowid));
+  if (id) rrf.set(id, (rrf.get(id) ?? 0) + 1 / (60 + i + 1));
 });
 ftsHits.forEach((h, i) => rrf.set(h.id, (rrf.get(h.id) ?? 0) + 1 / (60 + i + 1)));
 const hybrid = [...rrf.entries()].sort((a, b) => b[1] - a[1]).slice(0, k);
@@ -65,10 +69,10 @@ console.log(`query: "${query}"
 (semantic scores = cosine similarity, 1.0 = identical, ~0.3-0.6 = related, <0.2 = unrelated)
 \nsemantic (vec KNN, entities):`);
 for (const h of entHits) {
-  const m = docByRow.get('entity', Number(h.rowid));
-  if (!m) continue;
-  console.log(`  ${cos(h.distance).toFixed(2)}  ${fmtEnt(m.doc_id)}`);
-  const s = snippet(m.doc_id);
+  const id = docByRow("'entity'", Number(h.rowid));
+  if (!id) continue;
+  console.log(`  ${cos(h.distance).toFixed(2)}  ${fmtEnt(id)}`);
+  const s = snippet(id);
   if (s) console.log(`        "${s}"`);
 }
 console.log('lexical (FTS5, entities):');
@@ -78,9 +82,15 @@ console.log('hybrid (RRF, entities):');
 for (const [id] of hybrid) console.log(`  -         ${fmtEnt(id)}`);
 console.log('semantic (symbols — no lexical baseline exists today):');
 for (const h of symHits) {
-  const m = docByRow.get('symbol', Number(h.rowid));
-  if (!m) continue;
-  const s = symById.get(m.doc_id);
+  const id = docByRow("'symbol'", Number(h.rowid));
+  if (!id) continue;
+  const s = symById.get(id);
   console.log(`  ${cos(h.distance).toFixed(2)}  ${s?.kind}  ${s?.name}  (${s?.path})`);
+}
+console.log('semantic (module cards + markdown docs — "how does it work" layer):');
+for (const h of docHits) {
+  const id = docByRow("'module','doc'", Number(h.rowid));
+  if (!id) continue;
+  console.log(`  ${cos(h.distance).toFixed(2)}  ${id.slice(0, 90)}`);
 }
 db.close();
