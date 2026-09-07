@@ -21,6 +21,16 @@ Deps (temp): resolved from `bench-tmp/node_modules` — `@huggingface/transforme
 - Symbol code-intent search (no lexical baseline exists today): consistent top-1-3 hits — "evict least recently used" → `evictIfNeeded` (src/cache.ts); "walk git history and extract entities" → `commitsAfter`/`extractDeterministic`; grammar query → `GrammarUnavailableError` class.
 - Hybrid RRF (semantic + FTS5, k=60) merges both without demoting the target.
 
+## Extended corpora (2026-09-07, "how does it work" sources)
+
+Corpus 377 → **628 docs** (82 entities + 295 symbols + 57 module cards + 194 markdown chunks), 7.2s embed.
+
+- **Module cards** — synthesized from existing graph rows: exports/imports-out/imported-by/tables per code file. Zero new parsing.
+- **Markdown chunks** — heading-split docs (README/USAGE/DESIGN/ADRs): 194 chunks. This is the biggest "how does it work" win — ADRs were invisible to both FTS and vec before.
+- **Docstrings** — line-scan above symbol start: only **34/295 symbols have any comment text** — this repo is light on doc comments; extraction works, the raw material is thin. Prod phase should capture comments properly in `parse.ts`.
+
+Result: "how does the tool decide when to ask an LLM" now routes to `docs/adr/0002-llm-optional.md` chunks + `stage4LLM`/`LLMClient`/`repair` symbols — previously only commit-slugs. "What happens when a file is saved during watch" → USAGE.md chunk + `src/watcher.ts` card + `createWatcher`.
+
 ## Caveats
 
 Hand-picked queries (selection bias), one corpus, one model, L2-vs-cosine note above. Decision gate should be: 30-50 queries including your own real ones.
