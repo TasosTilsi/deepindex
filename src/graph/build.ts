@@ -12,13 +12,18 @@ export interface BuildStats {
   symbolCount: number;
   brokenImportCount: number;
   elapsedMs: number;
+  /** Repo-relative paths whose content hash changed this run — the substrate
+   *  for file-scoped re-embedding (D-26) and the HOOK-04 sessionStart chain. */
+  changedFiles: string[];
 }
 
 export interface BuildOptions {
   force?: boolean;
 }
 
-const IGNORED_DIRS = new Set([
+// Exported for the phase-8 markdown chunker (D-27b) so the corpus walk never
+// diverges from the index walk.
+export const IGNORED_DIRS = new Set([
   'node_modules',
   '.git',
   'dist',
@@ -62,8 +67,8 @@ export async function buildGraph(
        parsed_at = excluded.parsed_at`
   );
   const insertSymbol = db.prepare(
-    `INSERT INTO symbols (file_id, name, kind, start_line, end_line, exported, complexity)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO symbols (file_id, name, kind, start_line, end_line, exported, complexity, docstring)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
   );
   const insertImport = db.prepare(
     `INSERT INTO imports (file_id, source, resolved_file_id, resolved)
@@ -96,6 +101,7 @@ export async function buildGraph(
   let fileCount = 0;
   let symbolCount = 0;
   let brokenImportCount = 0;
+  const changedFiles: string[] = [];
   const needsParse: Array<{ relPath: string; fileId: number; content: string; absPath: string; ext: string }> = [];
 
   // First pass: insert/upsert all file rows so imports can resolve to them.
@@ -115,6 +121,7 @@ export async function buildGraph(
     const row = getFileByPath.get(relPath) as { id: number } | undefined;
     if (!row) continue;
     needsParse.push({ relPath, fileId: row.id, content, absPath: file.absPath, ext: file.ext });
+    changedFiles.push(relPath);
     fileCount++;
   }
 
@@ -131,7 +138,7 @@ export async function buildGraph(
     const insertedSymbols: { id: number; startLine: number }[] = [];
     for (const s of symbols) {
       const info = insertSymbol.run(
-        fileId, s.name, s.kind, s.startLine, s.endLine, s.exported ? 1 : 0, s.complexity,
+        fileId, s.name, s.kind, s.startLine, s.endLine, s.exported ? 1 : 0, s.complexity, s.docstring ?? '',
       );
       insertedSymbols.push({ id: Number(info.lastInsertRowid), startLine: s.startLine });
       symbolCount++;
@@ -191,6 +198,7 @@ export async function buildGraph(
     symbolCount,
     brokenImportCount,
     elapsedMs: Date.now() - start,
+    changedFiles,
   };
 }
 

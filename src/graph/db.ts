@@ -200,6 +200,11 @@ export function initDb(dbPath: string): Database.Database {
   if (!cols.some((c) => c.name === 'complexity')) {
     db.exec('ALTER TABLE symbols ADD COLUMN complexity INTEGER DEFAULT 0');
   }
+  // Phase 8 (D-27c): docstring captured by the parser, persisted per symbol.
+  // Same idempotent column-add pattern as `complexity` above.
+  if (!cols.some((c) => c.name === 'docstring')) {
+    db.exec("ALTER TABLE symbols ADD COLUMN docstring TEXT NOT NULL DEFAULT ''");
+  }
   const v = db.pragma('user_version', { simple: true }) as number;
   if (v < SCHEMA_VERSION) {
     db.pragma(`user_version = ${SCHEMA_VERSION}`);

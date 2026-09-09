@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { initDb, closeDb } from '../src/graph/db.js';
@@ -140,6 +140,41 @@ describe('graph layer', () => {
       expect(bAfter.hash).toBe(bBefore.hash);
     } finally {
       require('node:fs').writeFileSync(cPath, original);
+      // Rebuild to restore hashes
+      await buildGraph(db, FIXTURE);
+    }
+  });
+
+  // Phase 8 (D-27c): docstring capture — parse → build → symbols.docstring.
+  it('captures the preceding comment block as the symbol docstring', () => {
+    const row = db
+      .prepare("SELECT docstring FROM symbols WHERE name = 'auth'")
+      .get() as { docstring: string };
+    expect(row.docstring).toContain('header comment');
+    expect(row.docstring).toContain('another comment');
+    expect(row.docstring).not.toContain('//');
+  });
+
+  it('symbols with no preceding comment get an empty docstring', () => {
+    const row = db
+      .prepare("SELECT docstring FROM symbols WHERE name = 'foo'")
+      .get() as { docstring: string };
+    expect(row.docstring).toBe('');
+  });
+
+  it('initDb run twice on the same db file does not throw (idempotent docstring migration)', () => {
+    expect(() => initDb(dbPath)).not.toThrow();
+  });
+
+  it('buildGraph stats report changedFiles for exactly the mutated file', async () => {
+    const cPath = join(FIXTURE, 'src/c.ts');
+    const original = readFileSync(cPath, 'utf8');
+    try {
+      writeFileSync(cPath, original + '\n// touched-for-changedfiles\n');
+      const stats = await buildGraph(db, FIXTURE);
+      expect(stats.changedFiles).toEqual(['src/c.ts']);
+    } finally {
+      writeFileSync(cPath, original);
       // Rebuild to restore hashes
       await buildGraph(db, FIXTURE);
     }
