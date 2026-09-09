@@ -131,6 +131,13 @@ export {
   SemanticUnavailableError,
 } from './semantic/embedder.js';
 export {
+  hybridSearch,
+  rrfFuse,
+  type HybridHit,
+  type HitKind,
+  type HitSource,
+} from './semantic/search-hybrid.js';
+export {
   searchKnowledge,
   getEntity,
   getBacklinks,
