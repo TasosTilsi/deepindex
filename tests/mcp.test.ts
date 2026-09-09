@@ -34,14 +34,14 @@ describe('mcp', () => {
     rmSync(FIXTURE, { recursive: true, force: true });
   });
 
-  it('createMcpServer registers 6 read-only tools (MCP-02)', () => {
+  it('createMcpServer registers 7 read-only tools (MCP-02 + SRSR-02 semantic_search)', () => {
     const server = createMcpServer(db);
     const tools = (server as unknown as { _registeredTools: Record<string, unknown> })._registeredTools;
     const names = Object.keys(tools);
     expect(names).toEqual(
-      expect.arrayContaining(['search_knowledge', 'get_entity', 'get_backlinks', 'get_decisions', 'get_bugs', 'get_patterns'])
+      expect.arrayContaining(['search_knowledge', 'semantic_search', 'get_entity', 'get_backlinks', 'get_decisions', 'get_bugs', 'get_patterns'])
     );
-    expect(names.length).toBe(6);
+    expect(names.length).toBe(7);
   });
 
   it('search_knowledge returns typed entities via FTS5', () => {

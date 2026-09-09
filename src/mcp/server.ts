@@ -6,12 +6,14 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import type Database from 'better-sqlite3';
 import {
   searchKnowledge,
+  semanticSearch,
   getEntity,
   getBacklinks,
   getDecisions,
   getBugs,
   getPatterns,
   searchKnowledgeSchema,
+  semanticSearchSchema,
   getEntitySchema,
   getBacklinksSchema,
   typeListSchema,
@@ -30,7 +32,8 @@ export function createMcpServer(db: Database.Database): McpServer {
     {
       instructions:
         'deepindex is an engineering knowledge graph built from this repository. ' +
-        'Use search_knowledge for keyword search, get_decisions/get_bugs/get_patterns to browse by category, ' +
+        'Use search_knowledge for keyword search, semantic_search for hybrid semantic ' +
+        '(RRF-fused vector + lexical + file) search, get_decisions/get_bugs/get_patterns to browse by category, ' +
         'get_entity to fetch details by UUID or name, and get_backlinks to explore relationships. ' +
         'All responses are JSON.',
     }
@@ -40,6 +43,23 @@ export function createMcpServer(db: Database.Database): McpServer {
     'search_knowledge',
     { title: 'Search knowledge', description: 'Full-text search across entity names and content (FTS5).', inputSchema: searchKnowledgeSchema },
     (args) => ({ content: [{ type: 'text', text: JSON.stringify(searchKnowledge(db, args)) }] })
+  );
+
+  // Additive 7th read-only tool (SRSR-02): hybrid RRF ranking over FTS5 +
+  // vec KNN + file retrieval; degrades to lexical FTS5 when embeddings are
+  // unavailable (SRSR-03). Handler is async — the embedder contract is async.
+  server.registerTool(
+    'semantic_search',
+    {
+      title: 'Semantic search',
+      description:
+        'Hybrid semantic search: fuses FTS5, vector KNN and file-level retrieval by RRF. ' +
+        'Degrades to lexical FTS5 results when embeddings are unavailable.',
+      inputSchema: semanticSearchSchema,
+    },
+    async (args) => ({
+      content: [{ type: 'text', text: JSON.stringify(await semanticSearch(db, args)) }],
+    })
   );
 
   server.registerTool(

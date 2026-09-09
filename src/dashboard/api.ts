@@ -2,7 +2,9 @@
 // All handlers are pure functions of db — no LLM, no mutation.
 
 import type Database from 'better-sqlite3';
-import { searchEntities, getRelated } from '../git/search.js';
+import { searchEntities, getRelated, type SearchHit } from '../git/search.js';
+import { hybridSearch, type HybridHit } from '../semantic/search-hybrid.js';
+import { embedStatus } from '../semantic/embed.js';
 import { getHealth } from '../health.js';
 import { projectFullGraph } from '../graph/projection.js';
 import { listProjects, discoverProjects, type ProjectEntry } from '../registry.js';
@@ -88,9 +90,30 @@ export function apiDataflow(db: Database.Database, limit = 200) {
   return { tables, queries, services };
 }
 
-/** Search across entities. */
-export function apiSearch(db: Database.Database, query: string, limit = 20) {
+/** Search across entities. ASYNC (F-1): a mode-bearing request routes to the
+ *  awaited hybridSearch (semantic/hybrid need the async embedder contract);
+ *  mode absent/invalid keeps the legacy searchEntities return VERBATIM —
+ *  same array, byte-identical shape for existing clients (D-28b/RSK-8). The
+ *  embedder model resolves inside hybridSearch from [semantic] config at
+ *  repoPath (D-24) — no model threading through the API. */
+export async function apiSearch(
+  db: Database.Database,
+  query: string,
+  limit = 20,
+  mode?: string,
+  repoPath?: string
+): Promise<HybridHit[] | SearchHit[]> {
+  if (mode === 'lexical' || mode === 'semantic' || mode === 'hybrid') {
+    return hybridSearch(db, query, { mode, limit, repoPath: repoPath ?? process.cwd() });
+  }
   return searchEntities(db, query, limit);
+}
+
+/** Embedding status for the Overview Semantic Index card (DASH-02,
+ *  UI-SPEC §1.2). Read-only pure-db payload — NO write endpoints (D-28c
+ *  guardrail). */
+export function apiEmbedStatus(db: Database.Database, repoPath?: string) {
+  return embedStatus(db, repoPath ?? process.cwd());
 }
 
 /** Symbol/file browser. */
@@ -259,8 +282,10 @@ export function apiEntity(
   };
 }
 
-/** Route a GET /api/* path to its handler. Returns {status, body}. */
-export function handleApi(db: Database.Database, url: string, registryPath?: string, rootDir?: string): { status: number; body: unknown } {
+/** Route a GET /api/* path to its handler. Returns {status, body}. ASYNC
+ *  (F-1): the /api/search?mode= branch awaits the async apiSearch — serve.ts
+ *  awaits this function once at its single call site. */
+export async function handleApi(db: Database.Database, url: string, registryPath?: string, rootDir?: string): Promise<{ status: number; body: unknown }> {
   const u = new URL(url, 'http://localhost');
   const path = u.pathname;
   const q = u.searchParams;
@@ -304,7 +329,14 @@ export function handleApi(db: Database.Database, url: string, registryPath?: str
   if (path === '/api/search') {
     const query = q.get('q') ?? '';
     const limit = limitParam(q.get('limit'), 20);
-    return { status: 200, body: apiSearch(db, query, limit) };
+    // Invalid mode behaves as omitted (limitParam clamp pattern): the legacy
+    // searchEntities shape is preserved for unknown values.
+    const rawMode = q.get('mode');
+    const mode = rawMode === 'lexical' || rawMode === 'semantic' || rawMode === 'hybrid' ? rawMode : undefined;
+    return { status: 200, body: await apiSearch(db, query, limit, mode, rootDir ?? process.cwd()) };
+  }
+  if (path === '/api/embed-status') {
+    return { status: 200, body: apiEmbedStatus(db, rootDir ?? process.cwd()) };
   }
   if (path === '/api/symbols') {
     const limit = limitParam(q.get('limit'), 500);

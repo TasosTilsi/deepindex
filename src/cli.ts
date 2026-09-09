@@ -15,7 +15,8 @@ import { syncRequirements } from './requirements/sync.js';
 import { calculateReqCoverage } from './requirements/coverage.js';
 import { initRequirementsDb } from './requirements/setup.js';
 import { gitIndex, gitSync, type IndexResult } from './git/indexer.js';
-import { searchEntities } from './git/search.js';
+import { searchEntities, type SearchHit } from './git/search.js';
+import { hybridSearch, type HybridHit } from './semantic/search-hybrid.js';
 import { serveMcp } from './mcp/server.js';
 import { installClaudeSettings } from './mcp/install.js';
 import { installInteractive, installHarness, type Harness } from './install.js';
@@ -660,7 +661,9 @@ program
     .argument('<query>', 'search query')
     .option('-d, --db <path>', 'SQLite database path', '.deepindex.db')
     .option('--limit <n>', 'number of results', '10')
-    .action((query: string, opts: { db: string; limit: string }) => {
+    .option('--semantic', 'semantic (vector) search — shorthand for --mode semantic', false)
+    .option('--mode <mode>', 'search mode: lexical | semantic | hybrid (hybrid fuses FTS5 + vectors + file retrieval by RRF)')
+    .action(async (query: string, opts: { db: string; limit: string; semantic?: boolean; mode?: string }) => {
       const dbPath = resolve(opts.db);
       if (!existsSync(dbPath)) {
         console.error(`deepindex search: no index — run \`deepindex git-index <repo>\` first`);
@@ -671,10 +674,40 @@ program
         console.error(`deepindex search: invalid --limit: ${opts.limit}`);
         process.exit(2);
       }
+      const rawMode = opts.mode ?? (opts.semantic ? 'semantic' : undefined);
+      if (rawMode !== undefined && !['lexical', 'semantic', 'hybrid'].includes(rawMode)) {
+        console.error(`deepindex search: invalid --mode: ${rawMode} (expected lexical | semantic | hybrid)`);
+        process.exit(2);
+      }
+      const mode = rawMode as 'lexical' | 'semantic' | 'hybrid' | undefined;
       const db = initDb(dbPath);
       try {
         // Incremental git-sync before searching so entities are current.
         syncBeforeQuery(db, process.cwd());
+        if (mode !== undefined) {
+          // Mode-aware path (D-28b): the model resolves inside hybridSearch
+          // from the [semantic] config at the repo (D-24) — repoPath only.
+          const hits = await hybridSearch(db, query, { mode, limit, repoPath: process.cwd() });
+          if (hits.length === 0) {
+            console.log('no entities found');
+          } else if (mode === 'lexical') {
+            for (const h of hits as SearchHit[]) {
+              console.log(`[${h.type}] ${h.name}  (rank ${h.rank.toFixed(2)})`);
+              if (h.related.length > 0) {
+                for (const r of h.related) {
+                  console.log(`  -> ${r.relationship} ${r.type}:${r.name} (${r.context})`);
+                }
+              }
+            }
+          } else {
+            for (const h of hits as HybridHit[]) {
+              console.log(`[${h.kind}] ${h.label}  (score ${h.score.toFixed(3)})`);
+              if (h.path) console.log(`  path: ${h.path}`);
+              if (h.snippet) console.log(`  ${h.snippet}`);
+            }
+          }
+          return;
+        }
         const hits = searchEntities(db, query, limit);
         if (hits.length === 0) {
           console.log('no entities found');

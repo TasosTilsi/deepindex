@@ -109,7 +109,7 @@ describe('dashboard api', () => {
     for (const q of r.queries) expect(svcFiles.has(q.file)).toBe(true);
   });
 
-  it('handleApi defaults the limit when the param is missing (regression: Number(null) is 0)', () => {
+  it('handleApi defaults the limit when the param is missing (regression: Number(null) is 0)', async () => {
     // The Data Flow view calls /api/dataflow with no limit — that used to
     // resolve to LIMIT 0 and render "No data-flow indexed".
     const f = db.prepare('SELECT id FROM files LIMIT 1').get() as { id: number } | undefined;
@@ -117,18 +117,18 @@ describe('dashboard api', () => {
       db.prepare('INSERT OR IGNORE INTO sql_queries (id, query_text, file_id) VALUES (9999, ?, ?)').run('SELECT * FROM users', f.id);
       db.prepare('INSERT OR IGNORE INTO query_tables (query_id, table_name) VALUES (9999, ?)').run('users');
     }
-    const df = handleApi(db, '/api/dataflow');
+    const df = await handleApi(db, '/api/dataflow');
     expect(df.status).toBe(200);
     const dfBody = df.body as { tables: unknown[]; queries: unknown[]; services: unknown[] };
     expect(dfBody.tables.length).toBeGreaterThan(0);
-    const ent = handleApi(db, '/api/entities');
+    const ent = await handleApi(db, '/api/entities');
     expect(ent.status).toBe(200);
     const entBody = ent.body as { entities: unknown[] };
     expect(entBody.entities.length).toBeGreaterThan(0);
   });
 
-  it('apiSearch returns typed entities', () => {
-    const r = apiSearch(db, 'error');
+  it('apiSearch returns typed entities', async () => {
+    const r = await apiSearch(db, 'error');
     expect(r.length).toBeGreaterThan(0);
     expect(r[0].type).toBe('bug_fix');
   });
@@ -140,22 +140,22 @@ describe('dashboard api', () => {
     expect(r.symbols[0]).toHaveProperty('name');
   });
 
-  it('handleApi routes /api/overview and 404s unknown', () => {
-    const ov = handleApi(db, '/api/overview');
+  it('handleApi routes /api/overview and 404s unknown', async () => {
+    const ov = await handleApi(db, '/api/overview');
     expect(ov.status).toBe(200);
     expect(ov.body).toHaveProperty('entities');
-    const nf = handleApi(db, '/api/nope');
+    const nf = await handleApi(db, '/api/nope');
     expect(nf.status).toBe(404);
   });
 
-  it('handleApi clamps malformed limit params to defaults', () => {
+  it('handleApi clamps malformed limit params to defaults', async () => {
     // Regression: the dashboard used to build '?limit=500?project=x' (double
     // '?') — Number('500?project=x') is NaN, which better-sqlite3 rejects.
-    const nan = handleApi(db, '/api/entities?limit=500?project=x');
+    const nan = await handleApi(db, '/api/entities?limit=500?project=x');
     expect(nan.status).toBe(200);
-    const neg = handleApi(db, '/api/symbols?limit=-1');
+    const neg = await handleApi(db, '/api/symbols?limit=-1');
     expect(neg.status).toBe(200);
-    const searchBad = handleApi(db, '/api/search?q=error&limit=abc');
+    const searchBad = await handleApi(db, '/api/search?q=error&limit=abc');
     expect(searchBad.status).toBe(200);
   });
 
@@ -199,7 +199,7 @@ describe('dashboard api', () => {
     expect(r[0]).toHaveProperty('relationship');
   });
 
-  it('apiEntity returns detail with related + tags; handleApi 404s unknown', () => {
+  it('apiEntity returns detail with related + tags; handleApi 404s unknown', async () => {
     const ent = apiEntities(db, 1).entities[0];
     expect(ent).toBeDefined();
     const d = apiEntity(db, ent.id);
@@ -207,16 +207,16 @@ describe('dashboard api', () => {
     expect(d?.entity).toHaveProperty('name');
     expect(d?.entity).toHaveProperty('tags');
     expect(Array.isArray(d?.related)).toBe(true);
-    const nf = handleApi(db, `/api/entity?id=${encodeURIComponent('no-such-id')}`);
+    const nf = await handleApi(db, `/api/entity?id=${encodeURIComponent('no-such-id')}`);
     expect(nf.status).toBe(404);
-    const ok = handleApi(db, `/api/entity?id=${encodeURIComponent(ent.id)}`);
+    const ok = await handleApi(db, `/api/entity?id=${encodeURIComponent(ent.id)}`);
     expect(ok.status).toBe(200);
   });
 
-  it('handleApi routes /api/health, /api/commits, /api/relations', () => {
-    expect(handleApi(db, '/api/health').status).toBe(200);
-    expect(handleApi(db, '/api/commits?limit=2').status).toBe(200);
-    expect(handleApi(db, '/api/relations?limit=5').status).toBe(200);
+  it('handleApi routes /api/health, /api/commits, /api/relations', async () => {
+    expect((await handleApi(db, '/api/health')).status).toBe(200);
+    expect((await handleApi(db, '/api/commits?limit=2')).status).toBe(200);
+    expect((await handleApi(db, '/api/relations?limit=5')).status).toBe(200);
   });
 
   it('apiProjects lists registered projects', () => {

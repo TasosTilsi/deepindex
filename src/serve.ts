@@ -9,6 +9,7 @@ import { tmpdir } from 'node:os';
 import { adaptClaudeCode } from './adapter-claude-code.js';
 import { initDb } from './graph/db.js';
 import { handleApi } from './dashboard/api.js';
+import { ensureVecTables } from './semantic/vec.js';
 import { getProject, defaultRegistryPath } from './registry.js';
 
 export interface ServeOptions {
@@ -144,8 +145,17 @@ export function serve(opts: ServeOptions = {}): Promise<ServeHandle> {
               db = copy;
             }
             openHandles.set(dbForApi, db);
+            // Prepare vec capability on this connection (per-connection
+            // sqlite-vec load — RESEARCH §1.6). Non-fatal: initDb itself never
+            // loads the extension (RSK-2); a missing extension only leaves
+            // semantic search degraded, ensureVecTables reports { ok: false }.
+            try {
+              ensureVecTables(db);
+            } catch {
+              // extension load failure must never break the dashboard API
+            }
           }
-          const r = handleApi(db, url, registryPath, process.cwd());
+          const r = await handleApi(db, url, registryPath, process.cwd());
           sendJson(res, r.status, r.body);
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
