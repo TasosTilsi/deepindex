@@ -103,6 +103,33 @@ export {
   type SemanticDoc,
 } from './semantic/knowledge.js';
 export {
+  embed,
+  embedStatus,
+  stalenessScan,
+  type EmbedResult,
+  type EmbedStatusPayload,
+} from './semantic/embed.js';
+export {
+  loadSemanticConfig,
+  loadHooksConfig,
+  type SemanticConfig,
+  type HooksConfig,
+  DEFAULT_SEMANTIC_CONFIG,
+} from './semantic/config.js';
+export {
+  resolveModelName,
+  hasCachedModel,
+  modelCacheDir,
+  fetchModel,
+  loadRealEmbedder,
+  getEmbedder,
+  FETCH_MODEL_COMMAND,
+  MODEL_CONFIGS,
+  type Embedder,
+  type ModelConfig,
+  SemanticUnavailableError,
+} from './semantic/embedder.js';
+export {
   searchKnowledge,
   getEntity,
   getBacklinks,

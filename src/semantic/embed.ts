@@ -9,9 +9,15 @@ import {
 } from './vec.js';
 import {
   type Embedder,
-  SemanticUnavailableError,
-  MODEL_CONFIGS,
+  getEmbedder,
+  resolveModelName,
+  hasCachedModel,
+  FETCH_MODEL_COMMAND,
 } from './embedder.js';
+import {
+  loadSemanticConfig,
+  DEFAULT_SEMANTIC_CONFIG,
+} from './config.js';
 
 // Hash-guarded embedding lifecycle (D-25/D-26/D-21b). Doc texts are pure
 // functions of db rows (+ one fs read per markdown file), so staleness is
@@ -95,6 +101,72 @@ export function stalenessScan(
   return { stale, corpusCounts: corpusCounts(corpus) };
 }
 
+/** Dashboard /api/embed-status payload (plan 03 consumes; UI-SPEC §1.2).
+ *  Pure db + fs — NEVER loads the model (D-26c). */
+export interface EmbedStatusPayload {
+  available: boolean;
+  hint?: string;
+  model?: string;
+  dim?: number;
+  lastEmbedAt?: string;
+  coverage?: number;
+  staleCount?: number;
+  corpusCounts: { entity: number; symbol: number; module: number; doc: number };
+}
+
+const VEC_TABLE_NAMES = ['entity_vecs', 'symbol_vecs', 'doc_vecs'] as const;
+
+function countVecRows(db: Database.Database): number {
+  const existing = new Set(
+    (
+      db
+        .prepare("SELECT name FROM sqlite_master WHERE type = 'table'")
+        .all() as { name: string }[]
+    ).map((r) => r.name)
+  );
+  let total = 0;
+  for (const table of VEC_TABLE_NAMES) {
+    if (!existing.has(table)) continue;
+    const row = db.prepare(`SELECT COUNT(*) c FROM ${table}`).get() as { c: number };
+    total += row.c;
+  }
+  return total;
+}
+
+/** Embedding status for the dashboard: coverage, staleness, model info.
+ *  available = semantic.enabled AND model cached AND ≥1 embedded row. */
+export function embedStatus(db: Database.Database, repoPath: string): EmbedStatusPayload {
+  const cfg = loadSemanticConfig(repoPath) ?? DEFAULT_SEMANTIC_CONFIG;
+  const model = resolveModelName(cfg);
+  const scan = stalenessScan(db, repoPath);
+  const corpusSize = scan.corpusCounts.entity + scan.corpusCounts.symbol +
+    scan.corpusCounts.module + scan.corpusCounts.doc;
+  const embeddedRows = (
+    db.prepare('SELECT COUNT(*) c FROM embeddings_meta').get() as { c: number }
+  ).c;
+  const cached = hasCachedModel(model);
+  const vecRows = countVecRows(db);
+  const available = cfg.enabled && cached && vecRows > 0;
+  const lastRow = db
+    .prepare('SELECT MAX(embedded_at) m FROM embeddings_meta')
+    .get() as { m: number | null };
+  const payload: EmbedStatusPayload = {
+    available,
+    corpusCounts: scan.corpusCounts,
+  };
+  if (!available) {
+    payload.hint = cfg.enabled
+      ? `run ${FETCH_MODEL_COMMAND} to cache the model`
+      : `run ${FETCH_MODEL_COMMAND}, then set [semantic] enabled = true in .deepindex.toml`;
+  }
+  payload.model = model;
+  payload.dim = EMBEDDING_DIM;
+  payload.coverage = corpusSize === 0 ? 0 : embeddedRows / corpusSize;
+  payload.staleCount = scan.stale.length;
+  if (lastRow.m !== null) payload.lastEmbedAt = new Date(lastRow.m).toISOString();
+  return payload;
+}
+
 /** Hash-guarded incremental embedding (POC embed.mjs pattern, EMBD-01/05):
  *  embed every stale doc, skip the rest. Model/dim mismatch against
  *  embeddings_meta forces a full re-embed with a warning (D-21b) — never
@@ -105,9 +177,11 @@ export async function embed(
   opts: EmbedOptions
 ): Promise<EmbedResult> {
   const corpus = buildCorpus(db, opts.rootDir);
-  // TASK-1 PLACEHOLDER (D-24): minilm default until config.ts exists — Task 2
-  // rewires this to opts.model ?? resolveModelName(loadSemanticConfig(opts.rootDir)).
-  const model = opts.model ?? MODEL_CONFIGS.minilm.name;
+  // CONFIG-AWARE model default (D-24): a `[semantic] model = bge` user gets
+  // bge end-to-end without ANY call site threading model — the embed verb,
+  // autoEmbedStep and the sessionStart chain all call embed() with no model
+  // and inherit this resolution.
+  const model = opts.model ?? resolveModelName(loadSemanticConfig(opts.rootDir));
   const counts = corpusCounts(corpus);
 
   const metaRows = db
@@ -149,18 +223,14 @@ export async function embed(
     return result;
   }
 
-  // Lazy embedder resolution (D-24b/D-26c): only reached when stale docs
-  // exist and the vec layer is usable. opts.embedder (fake injection) wins;
-  // else the loader-spy seam; the real-model default arrives in Task 2 via
-  // getEmbedder.
-  let embedder: Embedder;
-  if (opts.embedder) {
-    embedder = opts.embedder;
-  } else if (opts.loader) {
-    embedder = await opts.loader(model);
-  } else {
-    throw new SemanticUnavailableError(`no embedder available for model ${model}`);
-  }
+  // Lazy embedder resolution via the shared resolver (D-24b/D-26c): only
+  // reached when stale docs exist and the vec layer is usable. opts.embedder
+  // (fake injection) wins, then the loader-spy seam, then the cache gate —
+  // an empty cache refuses with FETCH_MODEL_COMMAND (D-23).
+  const embedder = await getEmbedder(model, {
+    embedder: opts.embedder,
+    loader: opts.loader,
+  });
 
   const upsertMeta = db.prepare(
     `INSERT INTO embeddings_meta (kind, doc_id, vec_rowid, hash, model, dim, source_path, embedded_at)
