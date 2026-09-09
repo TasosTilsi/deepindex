@@ -1,0 +1,5 @@
+[semantic]
+enabled = true
+
+[hooks]
+session_budget_ms = 10000
