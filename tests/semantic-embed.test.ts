@@ -1,5 +1,12 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
-import { mkdtempSync, cpSync, rmSync, appendFileSync } from 'node:fs';
+import {
+  mkdtempSync,
+  cpSync,
+  rmSync,
+  appendFileSync,
+  mkdirSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import type Database from 'better-sqlite3';
@@ -7,7 +14,7 @@ import { createHash } from 'node:crypto';
 import { initDb } from '../src/graph/db.js';
 import { buildGraph } from '../src/graph/build.js';
 import { buildCorpus } from '../src/semantic/knowledge.js';
-import { embed } from '../src/semantic/embed.js';
+import { embed, autoEmbedStep } from '../src/semantic/embed.js';
 import { MODEL_CONFIGS, type Embedder } from '../src/semantic/embedder.js';
 
 const FIXTURE = resolve(process.cwd(), 'fixtures/sample-repo');
@@ -173,5 +180,46 @@ describe('semantic embed lifecycle (hash guard + file-scoped re-embed)', () => {
     expect(scan.corpusCounts.symbol).toBeGreaterThan(0);
     expect(scan.corpusCounts.module).toBeGreaterThan(0);
     expect(scan.corpusCounts.doc).toBeGreaterThan(0);
+  });
+
+  // (f) D-26b autoEmbedStep gate: enabled=false → hint path, loader never
+  // called (and never any download attempt).
+  it('autoEmbedStep with semantic disabled prints the hint and never loads', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const loader = vi.fn(async (m: string) => fakeEmbedder(m));
+    try {
+      await autoEmbedStep(db, fixtureCopy, { loader });
+      expect(
+        log.mock.calls.some((c) => String(c[0]).includes('semantic embedding not enabled'))
+      ).toBe(true);
+      expect(loader).not.toHaveBeenCalled();
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  // (g) D-26b gate positive path: enabled=true + cached model + stale docs →
+  // embed runs (loader called); the model marker comes from the env-override
+  // cache dir, so zero network/native code is touched.
+  it('autoEmbedStep embeds when enabled, cached, and stale docs exist', async () => {
+    const cacheDir = join(tmpDir, 'autoemb-cache');
+    mkdirSync(join(cacheDir, 'Xenova', 'all-MiniLM-L6-v2'), { recursive: true });
+    process.env.DEEPINDEX_MODEL_CACHE_DIR = cacheDir;
+    writeFileSync(
+      join(fixtureCopy, '.deepindex.toml'),
+      '[semantic]\nenabled = true\nmodel = minilm\n'
+    );
+    // Mutate with a NEW EXPORT (not a trailing comment): a fresh symbol id
+    // and a changed module card are what make corpus docs stale.
+    appendFileSync(join(fixtureCopy, 'src', 'a.ts'), '\nexport const AUTO_EMBED_MARKER = 1;\n');
+    await buildGraph(db, fixtureCopy);
+    const loader = vi.fn(async (m: string) => fakeEmbedder(m));
+    try {
+      await autoEmbedStep(db, fixtureCopy, { loader });
+      expect(loader).toHaveBeenCalledTimes(1);
+      expect(loader.mock.calls[0]![0]).toBe('Xenova/all-MiniLM-L6-v2');
+    } finally {
+      delete process.env.DEEPINDEX_MODEL_CACHE_DIR;
+    }
   });
 });

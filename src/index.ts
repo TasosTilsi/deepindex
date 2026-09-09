@@ -106,6 +106,7 @@ export {
   embed,
   embedStatus,
   stalenessScan,
+  autoEmbedStep,
   type EmbedResult,
   type EmbedStatusPayload,
 } from './semantic/embed.js';

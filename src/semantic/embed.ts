@@ -167,6 +167,32 @@ export function embedStatus(db: Database.Database, repoPath: string): EmbedStatu
   return payload;
 }
 
+/** D-26b auto-embed gate, run after index and git-sync: embeds ONLY when
+ *  semantic.enabled AND the model is already cached; otherwise prints a
+ *  one-line hint (the `embed` verb remains the bootstrap). Never downloads —
+ *  there is no network outside `--fetch-model` (D-23). The model loads
+ *  lazily, only when stalenessScan finds changed docs (D-26c). `opts.loader`
+ *  is a test pass-through to embed() so the gate is observable without a
+ *  native model. */
+export async function autoEmbedStep(
+  db: Database.Database,
+  repoPath: string,
+  opts: { loader?: (m: string) => Promise<Embedder> } = {}
+): Promise<void> {
+  const cfg = loadSemanticConfig(repoPath) ?? DEFAULT_SEMANTIC_CONFIG;
+  if (cfg.enabled && hasCachedModel(resolveModelName(cfg))) {
+    const scan = stalenessScan(db, repoPath);
+    if (scan.stale.length > 0) {
+      await embed(db, { rootDir: repoPath, loader: opts.loader });
+    }
+    // stale.length === 0 → log nothing (D-26b).
+  } else {
+    console.log(
+      `semantic embedding not enabled — run ${FETCH_MODEL_COMMAND} then set [semantic] enabled = true`
+    );
+  }
+}
+
 /** Hash-guarded incremental embedding (POC embed.mjs pattern, EMBD-01/05):
  *  embed every stale doc, skip the rest. Model/dim mismatch against
  *  embeddings_meta forces a full re-embed with a warning (D-21b) — never
