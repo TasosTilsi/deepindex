@@ -31,6 +31,7 @@ export default function Symbols({ qs = '', initialPath, onClearFilter }: Props) 
             {onClearFilter && (
               <button
                 title="Clear path filter"
+                aria-label={`Clear path filter ${initialPath}`}
                 onClick={onClearFilter}
                 style={{ background: 'none', border: 'none', color: 'var(--text-dim)', cursor: 'pointer', fontFamily: 'var(--font-mono)', fontSize: 10, padding: '0 0 0 6px' }}
               >×</button>

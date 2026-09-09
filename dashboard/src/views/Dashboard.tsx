@@ -283,7 +283,7 @@ function SemanticCard({ qs }: { qs: string }) {
   } else if (d) {
     if (coverage > 0) {
       statValue = `${Math.round(coverage * 100)}%`;
-      subLine = d.model ? `${d.model} · ${d.dim}d` : '—';
+      subLine = d.model ? `${d.model} · ${Number.isFinite(d.dim) ? d.dim : '?'}d` : '—';
       progress = coverage;
       // R-W5: '{n} stale' only when present and > 0; absent + coverage 1 → 'up to date';
       // absent + coverage < 1 → omit stale text. Never '0 stale'.

@@ -769,6 +769,10 @@ tr:last-child td { border-bottom: none; }
 .kind-chip.on { background: var(--accent); color: #ffffff; border-color: var(--accent); }
 
 .score-badge {
+  /* REVIEW-FIX W-2: .result-actions is space-between; single-child rows
+     (symbol/file/module/doc have no View-in-Graph button) otherwise pin the
+     badge to the left edge. */
+  margin-left: auto;
   font-family: var(--font-mono);
   font-size: 10px;
   text-transform: uppercase;

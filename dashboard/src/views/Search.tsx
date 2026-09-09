@@ -169,7 +169,7 @@ export default function Search({ qs, initialQuery, onSelectEntity, onOpenInGraph
           {/* R-W1: filtered count when a kind chip is active; filtered-empty names the kind. */}
           <span>
             {kindFilter !== 'all' && filtered.length === 0 ? (
-              <>0 {kindLabel} results</>
+              <>No {kindLabel} matches</>
             ) : (
               <>
                 Found: <strong style={{ color: 'var(--text-dim)' }}>{filtered.length} nodes</strong>
@@ -192,7 +192,7 @@ export default function Search({ qs, initialQuery, onSelectEntity, onOpenInGraph
           <p>No {kindLabel} results for this query.</p>
         </div>
       )}
-      {results?.filter((h) => kindFilter === 'all' || rowKind(h) === kindFilter).map((h) =>
+      {filtered.map((h) =>
         isHybrid(h) ? (
           (() => {
             const isStatic = h.kind === 'module' || h.kind === 'doc';
@@ -237,7 +237,19 @@ export default function Search({ qs, initialQuery, onSelectEntity, onOpenInGraph
             );
           })()
         ) : (
-          <div key={h.id} className="result" onClick={() => onSelectEntity(h.id)}>
+          <div
+            key={h.id}
+            className="result"
+            onClick={() => onSelectEntity(h.id)}
+            tabIndex={0}
+            role="button"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                onSelectEntity(h.id);
+              }
+            }}
+          >
             <div className="result-name">
               <span className={`tag tag-${h.type}`}>{h.type.replace('_', ' ')}</span> {h.name}
             </div>
