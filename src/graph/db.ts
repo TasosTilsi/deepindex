@@ -2,7 +2,7 @@ import Database from 'better-sqlite3';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 
-const SCHEMA_VERSION = 5;
+const SCHEMA_VERSION = 6;
 
 const SCHEMA_V2 = `
 CREATE TABLE IF NOT EXISTS health_signals (
@@ -98,6 +98,30 @@ CREATE TRIGGER IF NOT EXISTS entities_fts_au AFTER UPDATE ON entities BEGIN
 END;
 `;
 
+// Phase 8: Semantic Retrieval & Embeddings (schema v6). PLAIN SQL ONLY — the
+// vec0 virtual tables (entity_vecs/symbol_vecs/doc_vecs) are created lazily by
+// src/semantic/vec.ts#ensureVecTables, which loads the sqlite-vec extension per
+// connection. initDb must NEVER require the extension: readonly watcher handles
+// (src/watcher.ts) and serve db copies (src/serve.ts) open connections that
+// must keep working without it. embeddings_meta maps each embedded doc to its
+// vec0 rowid (auto-rowid inserts only — declared-PK inserts are broken in
+// sqlite-vec 0.1.9) and records the model/dim per row.
+const SCHEMA_V6 = `
+CREATE TABLE IF NOT EXISTS embeddings_meta (
+  kind TEXT NOT NULL CHECK(kind IN ('entity','symbol','module','doc')),
+  doc_id TEXT NOT NULL,
+  vec_rowid INTEGER NOT NULL,
+  hash TEXT NOT NULL,
+  model TEXT NOT NULL,
+  dim INTEGER NOT NULL,
+  source_path TEXT,
+  embedded_at INTEGER NOT NULL,
+  PRIMARY KEY (kind, doc_id)
+);
+CREATE INDEX IF NOT EXISTS idx_embeddings_meta_source
+  ON embeddings_meta(source_path) WHERE source_path IS NOT NULL;
+`;
+
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS files (
   id INTEGER PRIMARY KEY,
@@ -166,6 +190,7 @@ export function initDb(dbPath: string): Database.Database {
   db.exec(SCHEMA_V2);
   db.exec(SCHEMA_V3);
   db.exec(SCHEMA_V5);
+  db.exec(SCHEMA_V6);
   // Idempotent column migration: `complexity` was added to the base CREATE
   // TABLE, but CREATE TABLE IF NOT EXISTS is a no-op on existing DBs, so a
   // pre-existing .deepindex.db lacks the column. Add it if missing. This is the
