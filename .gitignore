@@ -24,3 +24,6 @@ fixtures/sample-repo/.git/
 .deepinit/
 context-engineering-article.txt
 bench-tmp/
+# GitHub workflows are source, not tooling state
+!.github/
+!.github/**

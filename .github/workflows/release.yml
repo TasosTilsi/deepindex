@@ -1,0 +1,54 @@
+name: Release
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: Typecheck
+        run: pnpm exec tsc --noEmit
+      - name: Test
+        run: pnpm exec vitest run
+      - name: Coverage gate (>=70% lines on src/)
+        run: CI=1 pnpm exec vitest run
+      - name: Dashboard build
+        run: pnpm --dir dashboard build
+
+  publish:
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write   # npm provenance
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org/
+          cache: pnpm
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: Publish
+        run: npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: GitHub release from tag
+        run: gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
