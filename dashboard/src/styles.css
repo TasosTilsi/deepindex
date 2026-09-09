@@ -724,6 +724,97 @@ tr:last-child td { border-bottom: none; }
 }
 .card, .result, .tl-row, .entity-card, .rel-row { animation: fadeUp 600ms cubic-bezier(0.16, 1, 0.3, 1); }
 
+/* ============ Search semantic surface (UI-SPEC §0 allowlist) ============ */
+.mode-toggle {
+  display: inline-flex;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--panel);
+}
+.mode-toggle button {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 5px 12px;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: background 200ms, color 200ms;
+}
+.mode-toggle button + button { border-left: 1px solid var(--line); }
+.mode-toggle button:hover:not(:disabled):not(.on) { background: var(--surface); color: var(--text); }
+.mode-toggle button:active:not(:disabled) { transform: scale(0.98); }
+.mode-toggle button.on { background: var(--accent); color: #ffffff; }
+.mode-toggle button:disabled { cursor: not-allowed; color: var(--text-faint); }
+/* R-W2: selected-but-unavailable keeps the charcoal fill, faint text + title hint. */
+.mode-toggle button.on:disabled { background: var(--accent); color: var(--text-faint); }
+
+.kind-chip {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--text-dim);
+  cursor: pointer;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  transition: all 200ms;
+}
+.kind-chip:hover { border-color: var(--line-strong); color: var(--text); }
+.kind-chip.on { background: var(--accent); color: #ffffff; border-color: var(--accent); }
+
+.score-badge {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-faint);
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+.score-badge.on { background: var(--accent); color: #ffffff; }
+
+/* Static kinds (module/doc): no pointer, hover stays on the hairline (§1.5). */
+.result-static { cursor: default; }
+.result-static:hover { border-color: var(--line); }
+
+/* E-18: doc/module snippets clamp at 4 lines. */
+.result-content.clamp {
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* §1.6 exact recipe — yellow = "action available". */
+.hint-card {
+  background: var(--pale-yellow-bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 12.5px;
+  color: var(--text-dim);
+  margin-bottom: 16px;
+}
+.hint-card code { font-family: var(--font-mono); font-size: 12px; color: var(--pale-blue); background: var(--pale-blue-bg); padding: 1px 5px; border-radius: 4px; }
+
+/* R-B3: neutral tags for the five HybridHit kinds — no pastel reuse. */
+.tag-entity, .tag-symbol, .tag-module, .tag-doc, .tag-file { background: var(--surface); color: var(--text-dim); }
+
+/* §4: shared focus visibility (codebase had none). */
+.mode-toggle button:focus-visible, .kind-chip:focus-visible, .result:focus-visible { outline: 2px solid var(--accent-border); outline-offset: 1px; }
+
+/* §4: reduced motion. */
+@media (prefers-reduced-motion: reduce) {
+  .card, .result { animation: none; }
+  .progress > div { transition: none; }
+}
+
 /* Scrollbars */
 ::-webkit-scrollbar { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }

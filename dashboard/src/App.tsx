@@ -36,6 +36,7 @@ export default function App() {
   const [selection, setSelection] = useState<Selection>(null);
   const [topQuery, setTopQuery] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [symbolsPath, setSymbolsPath] = useState('');
   const [overview, setOverview] = useState<Overview | null>(null);
 
   useEffect(() => {
@@ -62,6 +63,11 @@ export default function App() {
   const openInGraph = (id: string) => {
     setSelection({ kind: 'entity', id });
     setView('knowledge');
+  };
+  // R-B1: only a search hit sets symbolsPath; nav landing clears it.
+  const openSymbols = (path: string) => {
+    setSymbolsPath(path);
+    setView('symbols');
   };
   const submitSearch = () => {
     if (!topQuery.trim()) return;
@@ -111,7 +117,7 @@ export default function App() {
             <button
               key={n.id}
               className={`sidenav-link ${view === n.id ? 'active' : ''}`}
-              onClick={() => setView(n.id)}
+              onClick={() => { if (n.id === 'symbols') setSymbolsPath(''); setView(n.id); }}
             >
               <span className="material-symbols-outlined">{n.icon}</span> {n.label}
             </button>
@@ -122,7 +128,7 @@ export default function App() {
             <button
               key={n.id}
               className={`sidenav-link ${view === n.id ? 'active' : ''}`}
-              onClick={() => setView(n.id)}
+              onClick={() => { if (n.id === 'symbols') setSymbolsPath(''); setView(n.id); }}
             >
               <span className="material-symbols-outlined">{n.icon}</span> {n.label}
             </button>
@@ -153,9 +159,9 @@ export default function App() {
             {view === 'entities' && <Entities qs={qs} onSelectEntity={selectEntity} />}
             {view === 'relations' && <Relations qs={qs} onSelectEntity={selectEntity} />}
             {view === 'episodes' && <Episodes qs={qs} activeSha={selection?.kind === 'commit' ? selection.commit.sha : null} onSelectCommit={selectCommit} />}
-            {view === 'search' && <Search qs={qs} initialQuery={searchQuery} onSelectEntity={selectEntity} onOpenInGraph={openInGraph} />}
+            {view === 'search' && <Search qs={qs} initialQuery={searchQuery} onSelectEntity={selectEntity} onOpenInGraph={openInGraph} onOpenSymbols={openSymbols} />}
             {view === 'dataflow' && <DataFlow qs={qs} />}
-            {view === 'symbols' && <Symbols qs={qs} />}
+            {view === 'symbols' && <Symbols qs={qs} initialPath={symbolsPath} onClearFilter={() => setSymbolsPath('')} />}
           </Suspense>
         </div>
       </main>
