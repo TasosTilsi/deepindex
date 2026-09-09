@@ -133,13 +133,31 @@ export async function fetchModel(
 /** Real-model runtime. NO auto-download (D-23): an empty cache refuses with
  *  the exact fetch command. Both supported models are BERT-family v1.5/v2 —
  *  no query-side instruction prefix (OQ-7): queries and docs embed
- *  identically, mean-pooled and unit-normalized. */
-export async function loadRealEmbedder(model: string): Promise<Embedder> {
+ *  identically, mean-pooled and unit-normalized.
+ *  REVIEW-FIX W4: memoized per model name — a long-lived MCP/serve process
+ *  must not re-run the ONNX pipeline constructor (hundreds of ms) per query.
+ *  The PROMISE is cached (not the instance) so concurrent callers share one
+ *  load; failures evict the entry (a transient load error stays retryable). */
+const realEmbedderCache = new Map<string, Promise<Embedder>>();
+
+export function loadRealEmbedder(model: string): Promise<Embedder> {
   if (!hasCachedModel(model)) {
-    throw new SemanticUnavailableError(
-      `model ${model} is not cached — run ${FETCH_MODEL_COMMAND} first (cache dir: ${modelCacheDir()})`
+    return Promise.reject(
+      new SemanticUnavailableError(
+        `model ${model} is not cached — run ${FETCH_MODEL_COMMAND} first (cache dir: ${modelCacheDir()})`
+      )
     );
   }
+  let cached = realEmbedderCache.get(model);
+  if (!cached) {
+    cached = loadRealEmbedderUncached(model);
+    realEmbedderCache.set(model, cached);
+    cached.catch(() => realEmbedderCache.delete(model));
+  }
+  return cached;
+}
+
+async function loadRealEmbedderUncached(model: string): Promise<Embedder> {
   const tf = await importTransformers();
   tf.env.cacheDir = modelCacheDir();
   tf.env.allowLocalModels = true;

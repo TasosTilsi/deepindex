@@ -1,4 +1,4 @@
-import { describe, it, expect, afterAll, vi } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -170,5 +170,42 @@ describe('embedder runtime (fetch seam + cache gate + resolver)', () => {
       },
     });
     expect(seenPlain).toEqual(['Xenova/all-MiniLM-L6-v2']);
+  });
+});
+// REVIEW-FIX W4: pipeline construction memoized per model — two loadRealEmbedder
+// calls share one pipeline construction (long-lived MCP/serve processes pay the
+// ONNX load once, not per query).
+describe('review-fix W4: embedder memoization', () => {
+  const tmpDir3 = mkdtempSync(join(tmpdir(), 'deepindex-embedder-memo-'));
+  let pipelineCalls = 0;
+
+  beforeAll(() => {
+    const cacheDir = join(tmpDir3, 'model-cache');
+    mkdirSync(join(cacheDir, 'Xenova', 'all-MiniLM-L6-v2'), { recursive: true });
+    process.env.DEEPINDEX_MODEL_CACHE_DIR = cacheDir;
+    vi.doMock('@huggingface/transformers', () => ({
+      pipeline: async () => {
+        pipelineCalls++;
+        return async (texts: string[]) => ({
+          tolist: () => texts.map(() => new Array(384).fill(0.5)),
+        });
+      },
+      env: { cacheDir: cacheDir, allowLocalModels: true },
+    }));
+  });
+
+  afterAll(() => {
+    rmSync(tmpDir3, { recursive: true, force: true });
+    delete process.env.DEEPINDEX_MODEL_CACHE_DIR;
+    vi.resetModules();
+  });
+
+  it('two loadRealEmbedder calls construct the pipeline once', async () => {
+    vi.resetModules(); // force the dynamic import below through vi.doMock
+    const { loadRealEmbedder } = await import('../src/semantic/embedder.js');
+    const a = await loadRealEmbedder(MODEL_CONFIGS.minilm.name);
+    const b = await loadRealEmbedder(MODEL_CONFIGS.minilm.name);
+    expect(pipelineCalls).toBe(1);
+    expect(a.embed).toBe(b.embed);
   });
 });
