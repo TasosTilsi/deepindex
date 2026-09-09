@@ -107,8 +107,11 @@ program
       // cached model; never fatal, never downloads (no network here).
       try {
         await autoEmbedStep(db, repoPath);
-      } catch {
-        // embedding failure never fails indexing (RSK-4)
+      } catch (err) {
+        // embedding failure never fails indexing (RSK-4) — but never silent:
+        // the detail goes to stderr so embed bugs stay debuggable (REVIEW
+        // INFO 8).
+        console.error(`deepindex index: auto-embed skipped (${err instanceof Error ? err.message : String(err)})`);
       }
       // Register the project so the multi-project dashboard can show it.
       // Non-fatal: indexing succeeds even if the registry can't be written.
@@ -584,8 +587,9 @@ program
         // Auto-embed after git-sync (D-26b) — same non-fatal gate as index.
         try {
           await autoEmbedStep(db, repoPath);
-        } catch {
-          // embedding failure never fails git-sync (RSK-4)
+        } catch (err) {
+          // embedding failure never fails git-sync (RSK-4) — never silent.
+          console.error(`deepindex git-sync: auto-embed skipped (${err instanceof Error ? err.message : String(err)})`);
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);

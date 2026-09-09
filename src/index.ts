@@ -111,6 +111,13 @@ export {
   type EmbedStatusPayload,
 } from './semantic/embed.js';
 export {
+  ensureVecTables,
+  vecSearch,
+  deleteVecRow,
+  EMBEDDING_DIM,
+  type VecTable,
+} from './semantic/vec.js';
+export {
   loadSemanticConfig,
   loadHooksConfig,
   type SemanticConfig,
