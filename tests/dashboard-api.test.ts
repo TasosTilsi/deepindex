@@ -219,6 +219,55 @@ describe('dashboard api', () => {
     expect((await handleApi(db, '/api/relations?limit=5')).status).toBe(200);
   });
 
+  // --- Phase 8 semantic surface contracts (SRSR-02/SRSR-03, DASH-02) ---
+
+  it('handleApi /api/search?mode=semantic returns HybridHit-shaped rows', async () => {
+    const r = await handleApi(db, '/api/search?q=error&mode=semantic', undefined, tmpDir);
+    expect(r.status).toBe(200);
+    const rows = r.body as Array<Record<string, unknown>>;
+    expect(rows.length).toBeGreaterThan(0);
+    for (const key of ['kind', 'id', 'label', 'score', 'source']) {
+      expect(rows[0]).toHaveProperty(key);
+    }
+  });
+
+  it('handleApi /api/search without mode keeps the legacy SearchHit shape (byte-identical pin)', async () => {
+    const r = await handleApi(db, '/api/search?q=error');
+    expect(r.status).toBe(200);
+    const rows = r.body as Array<Record<string, unknown>>;
+    expect(rows.length).toBeGreaterThan(0);
+    for (const key of ['id', 'type', 'name', 'rank']) {
+      expect(rows[0]).toHaveProperty(key);
+    }
+    expect(rows[0]).not.toHaveProperty('kind');
+    expect(rows[0]).not.toHaveProperty('source');
+  });
+
+  it('handleApi /api/embed-status returns the EmbedStatus contract (read-only)', async () => {
+    const r = await handleApi(db, '/api/embed-status', undefined, tmpDir);
+    expect(r.status).toBe(200);
+    const body = r.body as Record<string, unknown>;
+    for (const key of ['available', 'model', 'dim', 'coverage', 'staleCount', 'corpusCounts']) {
+      expect(body).toHaveProperty(key);
+    }
+    expect(typeof body.available).toBe('boolean');
+    expect(body.dim).toBe(384);
+  });
+
+  it('handleApi /api/search invalid mode behaves as omitted; malformed limits clamp to defaults', async () => {
+    const badMode = await handleApi(db, '/api/search?q=error&mode=bogus');
+    expect(badMode.status).toBe(200);
+    const badRows = badMode.body as Array<Record<string, unknown>>;
+    expect(badRows.length).toBeGreaterThan(0);
+    expect(badRows[0]).not.toHaveProperty('kind'); // legacy shape — mode treated as absent
+    const nan = await handleApi(db, '/api/search?q=error&limit=abc');
+    expect(nan.status).toBe(200);
+    expect((nan.body as unknown[]).length).toBeLessThanOrEqual(20);
+    const neg = await handleApi(db, '/api/search?q=error&limit=-1');
+    expect(neg.status).toBe(200);
+    expect((neg.body as unknown[]).length).toBeLessThanOrEqual(20);
+  });
+
   it('apiProjects lists registered projects', () => {
     const regPath = join(tmpDir, 'projects.json');
     registerProject({ name: 'p1', path: '/x/p1', dbPath: join(tmpDir, 'test.db') }, regPath);

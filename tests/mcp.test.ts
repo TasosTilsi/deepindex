@@ -7,12 +7,14 @@ import { gitIndex } from '../src/git/indexer.js';
 import { createMcpServer } from '../src/mcp/server.js';
 import {
   searchKnowledge,
+  semanticSearch,
   getEntity,
   getBacklinks,
   getDecisions,
   getBugs,
   getPatterns,
 } from '../src/mcp/tools.js';
+import type { HybridHit } from '../src/semantic/search-hybrid.js';
 import { createGitFixture } from './helpers/git-fixture.js';
 import type Database from 'better-sqlite3';
 
@@ -42,6 +44,30 @@ describe('mcp', () => {
       expect.arrayContaining(['search_knowledge', 'semantic_search', 'get_entity', 'get_backlinks', 'get_decisions', 'get_bugs', 'get_patterns'])
     );
     expect(names.length).toBe(7);
+  });
+
+  it('semantic_search is registered (SRSR-02) and semanticSearch degrades to lexical-shaped hits', async () => {
+    const server = createMcpServer(db);
+    const tools = (server as unknown as { _registeredTools: Record<string, unknown> })._registeredTools;
+    expect(tools).toHaveProperty('semantic_search');
+    // No vec tables / no [semantic] config in this fixture db → semantic mode
+    // degrades to lexical fallback hits (source 'lexical', SRSR-03).
+    const r = await semanticSearch(db, { query: 'error', mode: 'semantic' });
+    expect(r.results.length).toBeGreaterThan(0);
+    for (const key of ['kind', 'id', 'label', 'score', 'source']) {
+      expect(r.results[0]).toHaveProperty(key);
+    }
+    const first = r.results[0] as HybridHit;
+    expect(first.source).toBe('lexical');
+    expect(first.kind).toBe('entity');
+  });
+
+  it('semanticSearch default mode returns HybridHit-shaped results', async () => {
+    const r = await semanticSearch(db, { query: 'error' });
+    expect(r.results.length).toBeGreaterThan(0);
+    for (const key of ['kind', 'id', 'label', 'score', 'source']) {
+      expect(r.results[0]).toHaveProperty(key);
+    }
   });
 
   it('search_knowledge returns typed entities via FTS5', () => {

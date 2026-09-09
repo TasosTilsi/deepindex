@@ -1,4 +1,13 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
+import { mkdirSync } from 'node:fs';
+
+// The API-level pins run the REAL loadRealEmbedder path (cache gate +
+// dynamic import) — the native package is mocked to a topicVec-backed
+// pipeline so no network/native code is touched (D-23/D-24b).
+vi.mock('@huggingface/transformers', async () => {
+  const { makeTransformersMock } = await import('./helpers/semantic-mock.js');
+  return makeTransformersMock();
+});
 import { mkdtempSync, cpSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -12,48 +21,13 @@ import {
   rrfFuse,
   type HybridHit,
 } from '../src/semantic/search-hybrid.js';
-import { searchEntities } from '../src/git/search.js';
+import { searchEntities, type SearchHit } from '../src/git/search.js';
+import { handleApi } from '../src/dashboard/api.js';
 import { MODEL_CONFIGS, type Embedder } from '../src/semantic/embedder.js';
+import { topicVec, topicEmbedder } from './helpers/semantic-mock.js';
 
 const FIXTURE = resolve(process.cwd(), 'fixtures/sample-repo');
 const TOML = '[semantic]\nenabled = true\n';
-
-/** Topic-lexicon fake embedder (D-24b — CI never touches a native model).
- *  Each topic maps to one vector dimension; a text's vector is the normalized
- *  sum of one-hot topic hits. Synonyms share a topic, so a query can rank a
- *  doc whose text shares NO lexical token with the query — the paraphrase
- *  property SRSR-01 demands, deterministically. */
-const TOPICS: Record<string, number> = {
-  storage: 0,
-  cache: 0,
-  database: 0,
-  persist: 0,
-  persistent: 0,
-  durable: 0,
-  durability: 0,
-  auth: 1,
-  token: 1,
-  session: 1,
-  login: 1,
-  network: 2,
-  http: 2,
-  retry: 2,
-  timeout: 2,
-};
-
-function topicVec(text: string): number[] {
-  const v = new Array<number>(384).fill(0);
-  for (const tok of text.toLowerCase().split(/[^a-z]+/)) {
-    const t = TOPICS[tok];
-    if (t !== undefined) v[t] += 1;
-  }
-  const norm = Math.sqrt(v.reduce((s, x) => s + x * x, 0)) || 1;
-  return v.map((x) => x / norm);
-}
-
-function topicEmbedder(model = 'fake'): Embedder {
-  return { model, dim: 384, embed: async (texts) => texts.map(topicVec) };
-}
 
 function loaderSpy(): ReturnType<typeof vi.fn> {
   return vi.fn(async (m: string) => topicEmbedder(m));
@@ -231,5 +205,98 @@ describe('hybrid search (RRF fusion + typed sourced hits)', () => {
       loader: loaderNotCalled,
     });
     expect(loaderNotCalled).not.toHaveBeenCalled();
+  });
+
+  // --- Surface contract pins (plan 03 task 3) ---
+
+  // (a) CLI-format pin: lexical-mode hits rendered through the cli.ts search
+  // template produce EXACTLY the current lexical lines (SRSR-03/RSK-8).
+  it('lexical-mode hits render byte-identically through the CLI template', async () => {
+    const q = 'auth';
+    const hits = (await hybridSearch(db, q, { mode: 'lexical', limit: 10 })) as SearchHit[];
+    const render = (h: SearchHit): string => `[${h.type}] ${h.name}  (rank ${h.rank.toFixed(2)})`;
+    const rendered = hits.map(render).join('\n');
+    const expected = searchEntities(db, q, 10).map(render).join('\n');
+    expect(rendered).toBe(expected);
+    // And the format itself is pinned: [type] name  (rank n.necessarily-2dp)
+    expect(rendered).toMatch(/^.+ \(rank -?\d+\.\d{2}\)$/m);
+  });
+
+  // (b) SRSR-03 trigger 1: semantic.enabled=false → lexical fallback wrapped
+  // with source 'lexical'; the embedder is never loaded.
+  it('semantic mode with enabled=false returns the lexical fallback without loading a model', async () => {
+    const tomlPath = join(fixtureCopy, '.deepindex.toml');
+    writeFileSync(tomlPath, '[semantic]\nenabled = false\n');
+    const loader = loaderSpy();
+    try {
+      const hits = (await hybridSearch(db, 'auth', {
+        mode: 'semantic',
+        repoPath: fixtureCopy,
+        loader,
+      })) as HybridHit[];
+      expect(hits.length).toBeGreaterThan(0);
+      for (const h of hits) {
+        expect(h.source).toBe('lexical');
+        expect(h.kind).toBe('entity');
+      }
+      expect(loader).not.toHaveBeenCalled();
+    } finally {
+      writeFileSync(tomlPath, TOML); // restore for the API-level pin below
+    }
+  });
+
+  // (c) SRSR-03 trigger 2: empty vec tables (enabled, but nothing embedded)
+  // → the same lexical fallback.
+  it('semantic mode with empty vec tables returns the lexical fallback', async () => {
+    const db3 = initDb(join(tmpDir, 'empty.db'));
+    try {
+      db3
+        .prepare(
+          `INSERT INTO entities (id, type, name, content)
+           VALUES ('e-empty', 'decision', 'auth gate', 'auth token handling')`
+        )
+        .run();
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      try {
+        const hits = (await hybridSearch(db3, 'auth', {
+          mode: 'semantic',
+          repoPath: fixtureCopy, // toml: enabled = true, but db3 has no embeddings
+        })) as HybridHit[];
+        expect(hits.length).toBeGreaterThan(0);
+        for (const h of hits) {
+          expect(h.source).toBe('lexical');
+          expect(h.kind).toBe('entity');
+        }
+      } finally {
+        warn.mockRestore();
+      }
+    } finally {
+      db3.close();
+    }
+  });
+
+  // (d) Paraphrase acceptance at the API level (SRSR-02): mode=semantic
+  // returns the lexically-disjoint entity; mode=lexical misses it.
+  it('/api/search?mode=semantic returns the paraphrase target that mode=lexical misses', async () => {
+    // Warm the model-cache marker + mocked transformers runtime so the real
+    // loadRealEmbedder path (cache gate → dynamic import) serves the query.
+    const cacheDir = join(tmpDir, 'model-cache');
+    mkdirSync(join(cacheDir, 'Xenova', 'all-MiniLM-L6-v2'), { recursive: true });
+    process.env.DEEPINDEX_MODEL_CACHE_DIR = cacheDir;
+    const sem = await handleApi(
+      db,
+      '/api/search?q=' + encodeURIComponent('database durability') + '&mode=semantic',
+      undefined,
+      fixtureCopy
+    );
+    expect(sem.status).toBe(200);
+    const semRows = sem.body as HybridHit[];
+    expect(semRows.some((h) => h.kind === 'entity' && h.id === 'e-para')).toBe(true);
+
+    const lex = await handleApi(db, '/api/search?q=' + encodeURIComponent('database durability'), undefined, fixtureCopy);
+    expect(lex.status).toBe(200);
+    const lexRows = lex.body as Array<Record<string, unknown>>;
+    expect(lexRows.some((h) => h['id'] === 'e-para')).toBe(false);
+    delete process.env.DEEPINDEX_MODEL_CACHE_DIR;
   });
 });
