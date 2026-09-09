@@ -97,6 +97,12 @@ export {
 } from './git/search.js';
 export { createMcpServer, serveMcp } from './mcp/server.js';
 export {
+  buildCorpus,
+  moduleCards,
+  markdownChunks,
+  type SemanticDoc,
+} from './semantic/knowledge.js';
+export {
   searchKnowledge,
   getEntity,
   getBacklinks,
