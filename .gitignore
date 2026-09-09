@@ -3,6 +3,8 @@ dist/
 *.log
 *.db
 *.db-journal
+*.db-wal
+*.db-shm
 .DS_Store
 .env
 .env.local
@@ -21,3 +23,4 @@ fixtures/sample-repo/.git/
 .github/
 .deepinit/
 context-engineering-article.txt
+bench-tmp/

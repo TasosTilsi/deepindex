@@ -15,7 +15,8 @@ import { syncRequirements } from './requirements/sync.js';
 import { calculateReqCoverage } from './requirements/coverage.js';
 import { initRequirementsDb } from './requirements/setup.js';
 import { gitIndex, gitSync, type IndexResult } from './git/indexer.js';
-import { searchEntities } from './git/search.js';
+import { searchEntities, type SearchHit } from './git/search.js';
+import { hybridSearch, type HybridHit } from './semantic/search-hybrid.js';
 import { serveMcp } from './mcp/server.js';
 import { installClaudeSettings } from './mcp/install.js';
 import { installInteractive, installHarness, type Harness } from './install.js';
@@ -24,6 +25,15 @@ import { sessionStart } from './hooks/session-start.js';
 import { userPromptSubmit } from './hooks/user-prompt-submit.js';
 import { postToolUse } from './hooks/post-tool-use.js';
 import { sessionEnd } from './hooks/session-end.js';
+import { embed, autoEmbedStep } from './semantic/embed.js';
+import {
+  fetchModel,
+  loadRealEmbedder,
+  modelCacheDir,
+  resolveModelName,
+  SemanticUnavailableError,
+} from './semantic/embedder.js';
+import { loadSemanticConfig } from './semantic/config.js';
 import { resolve, basename } from 'node:path';
 import { existsSync } from 'node:fs';
 import type Database from 'better-sqlite3';
@@ -92,6 +102,16 @@ program
         gitStats = gitIndex(db, repoPath);
       } catch {
         gitStats = null;
+      }
+      // Auto-embed after index (D-26b): gated on semantic.enabled AND a
+      // cached model; never fatal, never downloads (no network here).
+      try {
+        await autoEmbedStep(db, repoPath);
+      } catch (err) {
+        // embedding failure never fails indexing (RSK-4) — but never silent:
+        // the detail goes to stderr so embed bugs stay debuggable (REVIEW
+        // INFO 8).
+        console.error(`deepindex index: auto-embed skipped (${err instanceof Error ? err.message : String(err)})`);
       }
       // Register the project so the multi-project dashboard can show it.
       // Non-fatal: indexing succeeds even if the registry can't be written.
@@ -547,7 +567,7 @@ program
     .argument('<repo>', 'path to git repository root')
     .option('-d, --db <path>', 'SQLite database path', '.deepindex.db')
     .option('--full', 'force full reindex', false)
-    .action((repo: string, opts: { db: string; full: boolean }) => {
+    .action(async (repo: string, opts: { db: string; full: boolean }) => {
       const repoPath = resolve(repo);
       if (!existsSync(repoPath)) {
         console.error(`deepindex git-sync: repository not found: ${repoPath}`);
@@ -564,9 +584,75 @@ program
               `${r.entitiesUpdated} updated, ${r.relationshipsWritten} backlinks`
           );
         }
+        // Auto-embed after git-sync (D-26b) — same non-fatal gate as index.
+        try {
+          await autoEmbedStep(db, repoPath);
+        } catch (err) {
+          // embedding failure never fails git-sync (RSK-4) — never silent.
+          console.error(`deepindex git-sync: auto-embed skipped (${err instanceof Error ? err.message : String(err)})`);
+        }
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         console.error(`deepindex git-sync: ${message}`);
+        process.exit(1);
+      } finally {
+        db.close();
+      }
+    });
+
+  program
+    .command('embed')
+    .description('Embed the semantic corpus into vec tables (hash-guarded, incremental)')
+    .argument('[repo]', 'path to repository root', '.')
+    .option('-d, --db <path>', 'SQLite database path', '.deepindex.db')
+    .option('--fetch-model', 'download the configured embedding model into the local cache (explicit bootstrap — the only network path)', false)
+    .option('--full', 'force re-embedding of every doc, ignoring the hash guard', false)
+    .action(async (repo: string, opts: { db: string; fetchModel: boolean; full: boolean }) => {
+      const repoPath = resolve(repo);
+      if (!existsSync(repoPath)) {
+        console.error(`deepindex embed: repository not found: ${repoPath}`);
+        process.exit(2);
+      }
+      // --fetch-model bootstrap (D-23): download via fetchModel (THE network
+      // path — loadRealEmbedder's cache gate cannot download), then verify
+      // loadability once. Resolves the model from the SAME [semantic] config
+      // the embed run will use, so the fetched model is the embedded model.
+      if (opts.fetchModel) {
+        const model = resolveModelName(loadSemanticConfig(repoPath));
+        try {
+          await fetchModel(model);
+          await loadRealEmbedder(model);
+          console.log(`fetched model ${model} → cache ${modelCacheDir()}`);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          // Degradation posture (RSK-4): a failed fetch is a warning, not a
+          // crash — lexical behaviour is fully functional without embeddings.
+          if (err instanceof SemanticUnavailableError) {
+            console.error(`deepindex embed: ${message}`);
+            process.exit(0);
+          }
+          console.error(`deepindex embed: ${message}`);
+          process.exit(1);
+        }
+      }
+      const dbPath = resolve(opts.db);
+      if (!existsSync(dbPath)) {
+        console.error(`deepindex embed: no index — run \`deepindex index <repo>\` first`);
+        process.exit(2);
+      }
+      const db = initDb(dbPath);
+      try {
+        // NO explicit model: embed()'s config-aware default re-derives the
+        // same name from the same [semantic] config that --fetch-model warmed.
+        const res = await embed(db, { rootDir: repoPath, full: opts.full });
+        console.log(`embedded ${res.embedded}, skipped ${res.skipped} (model ${res.model})`);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        if (err instanceof SemanticUnavailableError) {
+          console.error(`deepindex embed: ${message}`);
+          process.exit(0);
+        }
+        console.error(`deepindex embed: ${message}`);
         process.exit(1);
       } finally {
         db.close();
@@ -579,7 +665,9 @@ program
     .argument('<query>', 'search query')
     .option('-d, --db <path>', 'SQLite database path', '.deepindex.db')
     .option('--limit <n>', 'number of results', '10')
-    .action((query: string, opts: { db: string; limit: string }) => {
+    .option('--semantic', 'semantic (vector) search — shorthand for --mode semantic', false)
+    .option('--mode <mode>', 'search mode: lexical | semantic | hybrid (hybrid fuses FTS5 + vectors + file retrieval by RRF)')
+    .action(async (query: string, opts: { db: string; limit: string; semantic?: boolean; mode?: string }) => {
       const dbPath = resolve(opts.db);
       if (!existsSync(dbPath)) {
         console.error(`deepindex search: no index — run \`deepindex git-index <repo>\` first`);
@@ -590,10 +678,40 @@ program
         console.error(`deepindex search: invalid --limit: ${opts.limit}`);
         process.exit(2);
       }
+      const rawMode = opts.mode ?? (opts.semantic ? 'semantic' : undefined);
+      if (rawMode !== undefined && !['lexical', 'semantic', 'hybrid'].includes(rawMode)) {
+        console.error(`deepindex search: invalid --mode: ${rawMode} (expected lexical | semantic | hybrid)`);
+        process.exit(2);
+      }
+      const mode = rawMode as 'lexical' | 'semantic' | 'hybrid' | undefined;
       const db = initDb(dbPath);
       try {
         // Incremental git-sync before searching so entities are current.
         syncBeforeQuery(db, process.cwd());
+        if (mode !== undefined) {
+          // Mode-aware path (D-28b): the model resolves inside hybridSearch
+          // from the [semantic] config at the repo (D-24) — repoPath only.
+          const hits = await hybridSearch(db, query, { mode, limit, repoPath: process.cwd() });
+          if (hits.length === 0) {
+            console.log('no entities found');
+          } else if (mode === 'lexical') {
+            for (const h of hits as SearchHit[]) {
+              console.log(`[${h.type}] ${h.name}  (rank ${h.rank.toFixed(2)})`);
+              if (h.related.length > 0) {
+                for (const r of h.related) {
+                  console.log(`  -> ${r.relationship} ${r.type}:${r.name} (${r.context})`);
+                }
+              }
+            }
+          } else {
+            for (const h of hits as HybridHit[]) {
+              console.log(`[${h.kind}] ${h.label}  (score ${h.score.toFixed(3)})`);
+              if (h.path) console.log(`  path: ${h.path}`);
+              if (h.snippet) console.log(`  ${h.snippet}`);
+            }
+          }
+          return;
+        }
         const hits = searchEntities(db, query, limit);
         if (hits.length === 0) {
           console.log('no entities found');
@@ -688,7 +806,7 @@ program
       let result: { ok: boolean; message: string };
       switch (name) {
         case 'session-start':
-          result = sessionStart(repo, opts.db);
+          result = await sessionStart(repo, opts.db);
           break;
         case 'user-prompt-submit':
           result = await userPromptSubmit(opts.task ?? '', repo, opts.db);

@@ -1,0 +1,1458 @@
+<!-- Design System -->
+<!DOCTYPE html><html class="dark" lang="en"><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>Recall UI | Neural Nexus Dashboard</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&amp;family=Inter:wght@300;400;500;600;700&amp;family=JetBrains+Mono:wght@400;700&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "tertiary": "#ffde9f",
+              "on-secondary-container": "#395c00",
+              "inverse-surface": "#dae2fd",
+              "error-container": "#93000a",
+              "surface-container-high": "#222a3d",
+              "outline-variant": "#3f484e",
+              "surface-tint": "#7cd0ff",
+              "on-primary-container": "#005979",
+              "error": "#ffb4ab",
+              "secondary-fixed": "#aaf932",
+              "on-error": "#690005",
+              "inverse-primary": "#00668a",
+              "on-background": "#dae2fd",
+              "surface-container-highest": "#2d3449",
+              "on-secondary-fixed": "#112000",
+              "on-primary-fixed": "#001e2c",
+              "primary": "#c3e7ff",
+              "on-primary-fixed-variant": "#004c69",
+              "inverse-on-surface": "#283044",
+              "secondary": "#aaf932",
+              "on-primary": "#00344a",
+              "surface-bright": "#31394d",
+              "primary-fixed": "#c4e7ff",
+              "tertiary-fixed": "#ffdf9f",
+              "on-tertiary-container": "#6a4e00",
+              "on-tertiary-fixed-variant": "#5c4300",
+              "on-tertiary": "#402d00",
+              "on-secondary-fixed-variant": "#314f00",
+              "surface-container-low": "#131b2e",
+              "on-error-container": "#ffdad6",
+              "on-tertiary-fixed": "#261a00",
+              "background": "#0b1326",
+              "secondary-container": "#8fdb01",
+              "surface-container-lowest": "#060e20",
+              "tertiary-fixed-dim": "#f9bd22",
+              "surface-container": "#171f33",
+              "on-secondary": "#203600",
+              "primary-fixed-dim": "#7cd0ff",
+              "surface-dim": "#0b1326",
+              "secondary-fixed-dim": "#8fdb01",
+              "on-surface": "#dae2fd",
+              "on-surface-variant": "#bfc8cf",
+              "outline": "#899299",
+              "tertiary-container": "#f9bd22",
+              "primary-container": "#7bd0ff",
+              "surface": "#0b1326",
+              "surface-variant": "#2d3449"
+            },
+            fontFamily: {
+              "headline": ["Space Grotesk"],
+              "body": ["Inter"],
+              "label": ["Inter"],
+              "mono": ["JetBrains Mono"]
+            },
+            borderRadius: {"DEFAULT": "0.125rem", "lg": "0.25rem", "xl": "0.5rem", "full": "0.75rem"},
+          },
+        },
+      }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            vertical-align: middle;
+        }
+        .glass-panel {
+            background: rgba(19, 27, 46, 0.7);
+            backdrop-filter: blur(12px);
+        }
+        .neon-glow-cyan {
+            box-shadow: 0 0 15px rgba(123, 208, 255, 0.3);
+        }
+        .neon-glow-lime {
+            box-shadow: 0 0 15px rgba(143, 219, 1, 0.3);
+        }
+        body {
+            background-color: #0b1326;
+            color: #dae2fd;
+        }
+    </style>
+</head>
+<body class="font-body selection:bg-primary-container selection:text-on-primary-container overflow-hidden">
+<!-- TopAppBar -->
+<header class="fixed top-0 w-full h-12 z-50 bg-[#0b0f17]/85 backdrop-blur-xl flex items-center justify-between px-6 border-b border-white/[0.06]">
+<div class="flex items-center gap-8">
+<div class="flex items-center gap-2.5">
+<span class="w-2 h-2 rounded-full bg-primary/80"></span>
+<span class="text-sm font-semibold tracking-tight text-slate-200 font-headline">Recall</span>
+<span class="text-[10px] font-mono text-slate-500 font-normal px-1.5 py-0.5 rounded bg-white/[0.04] border border-white/[0.05]">0.14</span>
+</div>
+<div class="hidden md:flex items-center bg-white/[0.03] px-3 py-1 rounded-md border border-white/[0.06] hover:border-white/[0.12] transition-colors">
+<span class="material-symbols-outlined text-slate-500 text-sm mr-2">search</span>
+<input class="bg-transparent border-none focus:ring-0 text-xs font-mono text-slate-300 w-64 placeholder:text-slate-500" placeholder="Search memories, entities, tags..." type="text">
+<span class="text-[10px] font-mono text-slate-500 border border-white/[0.08] px-1 rounded">⌘K</span>
+</div>
+</div>
+<div class="flex items-center gap-3">
+<button class="p-1.5 text-slate-400 hover:text-slate-200 hover:bg-white/[0.04] transition-colors rounded-md" title="History"><span class="material-symbols-outlined text-base">history</span></button>
+<button class="p-1.5 text-slate-400 hover:text-slate-200 hover:bg-white/[0.04] transition-colors rounded-md" title="Refresh sync"><span class="material-symbols-outlined text-base">sync</span></button>
+<div class="h-3.5 w-px bg-white/[0.08] mx-1"></div>
+<button class="flex items-center gap-2 pl-1 py-1 text-slate-400 hover:text-slate-200 transition-colors">
+<span class="font-mono text-[10px] text-slate-400">0x8F2</span>
+<div class="w-5 h-5 rounded-full bg-slate-800 flex items-center justify-center text-[10px] font-mono text-slate-300 border border-white/[0.1]">R</div>
+</button>
+</div>
+</header>
+<!-- SideNavBar -->
+<aside class="fixed left-0 top-12 bottom-8 w-[220px] z-40 bg-[#0b0f17]/60 backdrop-blur-xl border-r border-white/[0.06] flex flex-col py-6 px-3.5 gap-y-6">
+<div class="px-2">
+<p class="font-mono text-[10px] text-slate-500 tracking-wider uppercase font-medium">Workspace</p>
+<h2 class="font-headline font-semibold text-slate-200 text-sm tracking-tight mt-0.5">Personal Vault</h2>
+</div>
+<nav class="flex flex-col gap-1">
+<a class="flex items-center gap-2.5 py-1.5 px-2.5 rounded text-slate-200 bg-white/[0.06] font-mono text-xs tracking-normal transition-all duration-200" href="#">
+<span class="material-symbols-outlined text-base text-primary">space_dashboard</span>
+<span>Dashboard</span>
+</a>
+<a class="flex items-center gap-2.5 py-1.5 px-2.5 rounded text-slate-400 hover:text-slate-200 hover:bg-white/[0.03] font-mono text-xs tracking-normal transition-all duration-200" href="#">
+<span class="material-symbols-outlined text-base text-slate-500">schema</span>
+<span>Knowledge Graph</span>
+</a>
+<a class="flex items-center gap-2.5 py-1.5 px-2.5 rounded text-slate-400 hover:text-slate-200 hover:bg-white/[0.03] font-mono text-xs tracking-normal transition-all duration-200" href="#">
+<span class="material-symbols-outlined text-base text-slate-500">category</span>
+<span>Entities</span>
+</a>
+<a class="flex items-center gap-2.5 py-1.5 px-2.5 rounded text-slate-400 hover:text-slate-200 hover:bg-white/[0.03] font-mono text-xs tracking-normal transition-all duration-200" href="#">
+<span class="material-symbols-outlined text-base text-slate-500">hub</span>
+<span>Relations</span>
+</a>
+<a class="flex items-center gap-2.5 py-1.5 px-2.5 rounded text-slate-400 hover:text-slate-200 hover:bg-white/[0.03] font-mono text-xs tracking-normal transition-all duration-200" href="#">
+<span class="material-symbols-outlined text-base text-slate-500">history_edu</span>
+<span>Episodes</span>
+</a>
+</nav>
+<div class="mt-auto px-1">
+<button class="w-full bg-white/[0.03] border border-white/[0.06] py-1.5 px-2.5 rounded text-[11px] font-mono text-slate-400 hover:text-slate-200 hover:bg-white/[0.06] transition-colors flex items-center justify-between">
+<span>Project Scope</span>
+<span class="text-[10px] text-slate-500">⌥P</span>
+</button>
+<div class="mt-3 flex items-center gap-2 text-slate-500 px-1">
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-400/80"></span>
+<span class="font-mono text-[10px] text-slate-400">Global Sync Active</span>
+</div>
+</div>
+</aside>
+<!-- Main Canvas -->
+<main class="ml-[220px] pt-12 pb-8 pr-[380px] h-screen overflow-y-auto bg-background">
+<div class="p-10 max-w-7xl mx-auto space-y-10">
+<!-- Row 1: Stat Cards -->
+<div class="grid grid-cols-1 md:grid-cols-3 gap-5">
+<!-- Entities Card -->
+<div class="card-surface p-5 rounded-lg relative overflow-hidden transition-all duration-200 hover:border-white/[0.12]">
+<div class="flex justify-between items-start">
+<div>
+<p class="font-mono text-[11px] text-slate-400 uppercase tracking-wider mb-1.5 font-medium">Indexed Entities</p>
+<h3 class="text-3xl font-headline font-semibold text-slate-100 tracking-tight">247</h3>
+</div>
+<div class="w-8 h-8 rounded-md bg-white/[0.03] border border-white/[0.06] flex items-center justify-center text-slate-400">
+<span class="material-symbols-outlined text-lg">fingerprint</span>
+</div>
+</div>
+<div class="mt-5 flex items-center justify-between text-[11px] font-mono">
+<span class="text-primary flex items-center gap-1 font-medium">
+<span class="material-symbols-outlined text-xs">arrow_upward</span> +12 new
+</span>
+<span class="text-slate-500">last session</span>
+</div>
+<div class="mt-2.5 h-1 w-full bg-white/[0.04] rounded-full overflow-hidden">
+<div class="h-full bg-primary/70 rounded-full w-[72%]"></div>
+</div>
+</div>
+<!-- Edges Card -->
+<div class="card-surface p-5 rounded-lg relative overflow-hidden transition-all duration-200 hover:border-white/[0.12]">
+<div class="flex justify-between items-start">
+<div>
+<p class="font-mono text-[11px] text-slate-400 uppercase tracking-wider mb-1.5 font-medium">Active Edges</p>
+<h3 class="text-3xl font-headline font-semibold text-slate-100 tracking-tight">891</h3>
+</div>
+<div class="w-8 h-8 rounded-md bg-white/[0.03] border border-white/[0.06] flex items-center justify-center text-slate-400">
+<span class="material-symbols-outlined text-lg">share</span>
+</div>
+</div>
+<div class="mt-5 flex items-center justify-between text-[11px] font-mono">
+<span class="text-slate-300 font-medium">Semantic Density</span>
+<span class="text-slate-400">3.61 avg</span>
+</div>
+<div class="mt-2.5 h-1 w-full bg-white/[0.04] rounded-full overflow-hidden">
+<div class="h-full bg-primary/70 rounded-full w-[45%]"></div>
+</div>
+</div>
+<!-- Episodes Card -->
+<div class="card-surface p-5 rounded-lg relative overflow-hidden transition-all duration-200 hover:border-white/[0.12]">
+<div class="flex justify-between items-start">
+<div>
+<p class="font-mono text-[11px] text-slate-400 uppercase tracking-wider mb-1.5 font-medium">Total Episodes</p>
+<h3 class="text-3xl font-headline font-semibold text-slate-100 tracking-tight">1,203</h3>
+</div>
+<div class="w-8 h-8 rounded-md bg-white/[0.03] border border-white/[0.06] flex items-center justify-center text-slate-400">
+<span class="material-symbols-outlined text-lg">database</span>
+</div>
+</div>
+<div class="mt-5 flex items-center justify-between text-[11px] font-mono">
+<span class="text-emerald-400/90 flex items-center gap-1.5 font-medium">
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> Synchronized
+</span>
+<span class="text-slate-500">88% capacity</span>
+</div>
+<div class="mt-2.5 h-1 w-full bg-white/[0.04] rounded-full overflow-hidden">
+<div class="h-full bg-primary/70 rounded-full w-[88%]"></div>
+</div>
+</div>
+</div>
+<!-- Row 2: Nexus Activity & Velocity -->
+<div class="grid grid-cols-1 lg:grid-cols-5 gap-5">
+<!-- Activity Visualization (3 cols) -->
+<div class="lg:col-span-3 card-surface p-6 rounded-lg relative overflow-hidden min-h-[380px] flex flex-col justify-between">
+<div class="flex justify-between items-start relative z-10">
+<div>
+<h2 class="font-headline text-base font-semibold text-slate-100 flex items-center gap-2">
+<span class="w-2 h-2 rounded-full bg-primary/90"></span>
+Neural Nexus Activity
+</h2>
+<p class="text-xs text-slate-400 mt-1 font-body">Real-time synaptic firing fragment</p>
+</div>
+<div class="bg-white/[0.04] px-2.5 py-1 border border-white/[0.06] rounded flex items-center gap-2">
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+<span class="font-mono text-[10px] text-slate-300">FEED ACTIVE</span>
+</div>
+</div>
+<!-- Network Visual Area -->
+<div class="absolute inset-0 flex items-center justify-center opacity-40 pointer-events-none">
+<svg class="filter drop-shadow-md" height="280" viewBox="0 0 400 300" width="380">
+<circle cx="200" cy="150" fill="#c3dfff" r="3.5"></circle>
+<circle cx="120" cy="80" fill="#94a3b8" r="2.5"></circle>
+<circle cx="280" cy="100" fill="#98cbff" r="3"></circle>
+<circle cx="150" cy="220" fill="#94a3b8" r="2.5"></circle>
+<circle cx="250" cy="240" fill="#c3dfff" r="3"></circle>
+<line opacity="0.2" stroke="#98cbff" stroke-width="1" x1="200" x2="120" y1="150" y2="80"></line>
+<line opacity="0.2" stroke="#98cbff" stroke-width="1" x1="200" x2="280" y1="150" y2="100"></line>
+<line opacity="0.2" stroke="#94a3b8" stroke-width="1" x1="200" x2="150" y1="150" y2="220"></line>
+<line opacity="0.2" stroke="#98cbff" stroke-width="1" x1="200" x2="250" y1="150" y2="240"></line>
+<line opacity="0.12" stroke="#94a3b8" stroke-width="1" x1="120" x2="280" y1="80" y2="100"></line>
+</svg>
+</div>
+<div class="relative z-10 pt-36 flex justify-between items-end border-t border-white/[0.05]">
+<div class="space-y-0.5">
+<p class="text-[10px] font-mono text-slate-500 uppercase tracking-wider">Input Node</p>
+<p class="text-xs font-mono text-slate-300">0xCF4..9A</p>
+</div>
+<div class="space-y-0.5 text-right">
+<p class="text-[10px] font-mono text-slate-500 uppercase tracking-wider">Process Load</p>
+<p class="text-xs font-mono text-slate-300">4.2 Gflops/s</p>
+</div>
+</div>
+</div>
+<!-- Intelligence Velocity Chart (2 cols) -->
+<div class="lg:col-span-2 card-surface p-6 rounded-lg flex flex-col justify-between">
+<div>
+<div class="flex justify-between items-start mb-6">
+<div>
+<h2 class="font-headline text-base font-semibold text-slate-100">Intelligence Velocity</h2>
+<p class="text-xs text-slate-400 mt-0.5 font-body">30-day knowledge accumulation</p>
+</div>
+<span class="text-[10px] font-mono text-slate-400 px-2 py-0.5 bg-white/[0.04] rounded border border-white/[0.05]">Weekly</span>
+</div>
+<div class="flex items-end gap-2.5 px-1 h-36 mt-2">
+<div class="w-full bg-white/[0.04] hover:bg-white/[0.08] rounded h-[30%] transition-colors"></div>
+<div class="w-full bg-white/[0.04] hover:bg-white/[0.08] rounded h-[45%] transition-colors"></div>
+<div class="w-full bg-white/[0.04] hover:bg-white/[0.08] rounded h-[40%] transition-colors"></div>
+<div class="w-full bg-white/[0.04] hover:bg-white/[0.08] rounded h-[65%] transition-colors"></div>
+<div class="w-full bg-white/[0.04] hover:bg-white/[0.08] rounded h-[80%] transition-colors"></div>
+<div class="w-full bg-white/[0.04] hover:bg-white/[0.08] rounded h-[75%] transition-colors"></div>
+<div class="w-full bg-primary/70 hover:bg-primary/90 rounded h-[95%] transition-colors shadow-sm"></div>
+</div>
+</div>
+<div class="mt-5 pt-4 border-t border-white/[0.06] grid grid-cols-2 gap-4">
+<div>
+<p class="text-[10px] font-mono text-slate-500 uppercase tracking-wider">Growth Rate</p>
+<p class="text-lg font-headline font-semibold text-slate-100 mt-0.5">+14.2%</p>
+</div>
+<div>
+<p class="text-[10px] font-mono text-slate-500 uppercase tracking-wider">Entity Delta</p>
+<p class="text-lg font-headline font-semibold text-slate-100 mt-0.5">+188</p>
+</div>
+</div>
+</div>
+</div>
+<!-- Row 3: Growth Chart & Activity Timeline -->
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
+<!-- Knowledge Growth (2 cols) -->
+<div class="lg:col-span-2 card-surface p-6 rounded-lg flex flex-col justify-between">
+<div class="flex justify-between items-center mb-6">
+<div>
+<h2 class="font-headline text-base font-semibold text-slate-100">Knowledge Growth</h2>
+<p class="text-xs text-slate-400 mt-0.5 font-body">Trend analysis across graph schemas</p>
+</div>
+<div class="flex gap-4">
+<div class="flex items-center gap-2">
+<span class="w-2 h-2 rounded-full bg-primary"></span>
+<span class="text-[11px] font-mono text-slate-400">Structural</span>
+</div>
+<div class="flex items-center gap-2">
+<span class="w-2 h-2 rounded-full bg-slate-400"></span>
+<span class="text-[11px] font-mono text-slate-400">Semantic</span>
+</div>
+</div>
+</div>
+<!-- Chart Area -->
+<div class="relative h-56 w-full">
+<svg class="w-full h-full" preserveAspectRatio="none" viewBox="0 0 400 100">
+<!-- Structural Line -->
+<path d="M0,80 Q50,75 100,60 T200,45 T300,30 T400,10" fill="none" stroke="#c3dfff" stroke-width="1.75"></path>
+<!-- Semantic Line -->
+<path d="M0,90 Q50,88 100,80 T200,60 T300,55 T400,40" fill="none" stroke="#94a3b8" stroke-dasharray="3,3" stroke-width="1.75"></path>
+<!-- Grids -->
+<line stroke="rgba(255,255,255,0.05)" stroke-dasharray="2" x1="0" x2="400" y1="25" y2="25"></line>
+<line stroke="rgba(255,255,255,0.05)" stroke-dasharray="2" x1="0" x2="400" y1="55" y2="55"></line>
+<line stroke="rgba(255,255,255,0.05)" stroke-dasharray="2" x1="0" x2="400" y1="85" y2="85"></line>
+</svg>
+</div>
+</div>
+<!-- Recent Activity Timeline (1 col) -->
+<div class="card-surface p-6 rounded-lg flex flex-col gap-4">
+<div class="flex justify-between items-center">
+<h2 class="font-headline text-base font-semibold text-slate-100">Recent Activity</h2>
+<span class="text-[10px] font-mono text-slate-500">Live Stream</span>
+</div>
+<div class="space-y-4 mt-1">
+<div class="relative pl-5 border-l border-white/[0.08]">
+<span class="absolute left-[-4px] top-1 w-2 h-2 rounded-full bg-primary"></span>
+<div class="space-y-1">
+<div class="flex justify-between items-start">
+<p class="text-xs font-medium text-slate-200">Entity Merged</p>
+<span class="text-[10px] font-mono text-slate-500">2m ago</span>
+</div>
+<p class="text-xs text-slate-400 font-body leading-relaxed">Concept "Quantum Cryptography" unified from 3 sources.</p>
+<div class="mt-1.5 inline-flex items-center gap-1 px-2 py-0.5 bg-white/[0.04] text-slate-300 text-[10px] font-mono rounded border border-white/[0.05]">
+<span class="material-symbols-outlined text-xs text-primary">auto_awesome</span> Potential synergy detected
+</div>
+</div>
+</div>
+<div class="relative pl-5 border-l border-white/[0.08]">
+<span class="absolute left-[-4px] top-1 w-2 h-2 rounded-full bg-slate-500"></span>
+<div class="space-y-1">
+<div class="flex justify-between items-start">
+<p class="text-xs font-medium text-slate-200">Git Ingest Complete</p>
+<span class="text-[10px] font-mono text-slate-500">14m ago</span>
+</div>
+<p class="text-xs text-slate-400 font-body leading-relaxed">Repository "Recall-Core" indexed: 42 new edges.</p>
+</div>
+</div>
+<div class="relative pl-5 border-l border-white/[0.08]">
+<span class="absolute left-[-4px] top-1 w-2 h-2 rounded-full bg-slate-600"></span>
+<div class="space-y-1">
+<div class="flex justify-between items-start">
+<p class="text-xs font-medium text-slate-200">Anomaly Resolved</p>
+<span class="text-[10px] font-mono text-slate-500">1h ago</span>
+</div>
+<p class="text-xs text-slate-400 font-body leading-relaxed">Duplicate episode 0xAF removed from primary index.</p>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Row 4: Sources & Health -->
+<div class="grid grid-cols-1 md:grid-cols-2 gap-5 pb-8">
+<div class="card-surface p-6 rounded-lg flex items-center gap-8">
+<div class="relative w-28 h-28 flex-shrink-0">
+<svg class="w-full h-full" viewBox="0 0 36 36">
+<circle cx="18" cy="18" fill="transparent" r="15.9" stroke="rgba(255,255,255,0.06)" stroke-width="2.5"></circle>
+<circle cx="18" cy="18" fill="transparent" r="15.9" stroke="#c3dfff" stroke-dasharray="60 40" stroke-dashoffset="25" stroke-width="2.5"></circle>
+<circle cx="18" cy="18" fill="transparent" r="15.9" stroke="#94a3b8" stroke-dasharray="30 70" stroke-dashoffset="85" stroke-width="2.5"></circle>
+</svg>
+<div class="absolute inset-0 flex items-center justify-center flex-col">
+<span class="text-xs font-semibold font-headline text-slate-200">SOURCES</span>
+<span class="text-[8px] font-mono text-slate-500">DISTRIB</span>
+</div>
+</div>
+<div class="flex-grow space-y-2.5">
+<div class="flex justify-between items-center">
+<span class="text-xs font-mono text-slate-400">GIT REPOS</span>
+<span class="text-xs font-mono font-medium text-slate-200">60%</span>
+</div>
+<div class="flex justify-between items-center">
+<span class="text-xs font-mono text-slate-400">WEB HOOKS</span>
+<span class="text-xs font-mono font-medium text-slate-200">30%</span>
+</div>
+<div class="flex justify-between items-center">
+<span class="text-xs font-mono text-slate-400">CLI INPUTS</span>
+<span class="text-xs font-mono font-medium text-slate-400">10%</span>
+</div>
+</div>
+</div>
+<div class="card-surface p-6 rounded-lg space-y-4">
+<div class="flex justify-between items-center">
+<h2 class="font-headline text-base font-semibold text-slate-100">Index Health</h2>
+<span class="text-[10px] font-mono text-emerald-400/90 bg-emerald-400/10 px-2 py-0.5 rounded border border-emerald-400/20">Optimal</span>
+</div>
+<div class="space-y-3 pt-1">
+<div class="space-y-1.5">
+<div class="flex justify-between text-[11px] font-mono">
+<span class="text-slate-400">Relational Integrity</span>
+<span class="text-slate-200">99.8%</span>
+</div>
+<div class="h-1 w-full bg-white/[0.04] rounded-full overflow-hidden">
+<div class="h-full bg-primary/80 rounded-full w-[99.8%]"></div>
+</div>
+</div>
+<div class="space-y-1.5">
+<div class="flex justify-between text-[11px] font-mono">
+<span class="text-slate-400">Semantic Cohesion</span>
+<span class="text-slate-200">84.2%</span>
+</div>
+<div class="h-1 w-full bg-white/[0.04] rounded-full overflow-hidden">
+<div class="h-full bg-slate-400 rounded-full w-[84.2%]"></div>
+</div>
+</div>
+<div class="space-y-1.5">
+<div class="flex justify-between text-[11px] font-mono">
+<span class="text-slate-400">Temporal Drift</span>
+<span class="text-slate-400">1.2%</span>
+</div>
+<div class="h-1 w-full bg-white/[0.04] rounded-full overflow-hidden">
+<div class="h-full bg-slate-600 rounded-full w-[12%]"></div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</main>
+<!-- Overlay Detail Panel (Right Side) -->
+<aside class="fixed right-0 top-12 bottom-8 w-[380px] z-40 bg-[#0e131d]/90 backdrop-blur-xl border-l border-white/[0.06] flex flex-col overflow-y-auto">
+<div class="p-6 border-b border-white/[0.06] bg-white/[0.01]">
+<div class="flex justify-between items-center mb-3">
+<span class="text-[10px] font-mono text-slate-300 bg-white/[0.04] px-2 py-0.5 rounded border border-white/[0.06]">EPISODE_DETAILS</span>
+<button class="text-slate-400 hover:text-slate-200 transition-colors p-1 rounded hover:bg-white/[0.04]"><span class="material-symbols-outlined text-base">close</span></button>
+</div>
+<h1 class="text-xl font-headline font-semibold text-slate-100 leading-snug">Neural Reconstruction: Episode 0x1242</h1>
+<p class="font-mono text-xs text-slate-500 mt-1.5">UUID: 8829-AF21-X992-001</p>
+</div>
+<div class="p-6 space-y-6">
+<div class="rounded-lg overflow-hidden relative border border-white/[0.06]">
+<img class="w-full aspect-video object-cover opacity-90" data-alt="Close-up of high-speed data particles flowing through a glowing fiber optic cable with deep blue and neon cyan highlights." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAijWRXdYklLvlGphxjXE0ZaE8qdhl6ny6Me_81W5-BS7siu9iQvDuaBIEja6T6aG0bsQcIqyC7lilNKu5WMVCxUfIUsqHH43sfUNTX-Auov_4YOshl8pjrFYM2LqcnZYsC18ySv2JRbaC35AHJ5eiQAx5R1CWrr67V5h-vTNBN4oKH3NZcsok2GF0Z_raHgSX5muOLcE2O0gUbZmKfx8IFSBAvvybI8GwvKkE_maQeWyOPgXbprNiYuwjpSqmd36pm2Q3tommgAv7C">
+<div class="absolute inset-0 bg-gradient-to-t from-[#0e131d] via-transparent to-transparent"></div>
+</div>
+<section class="space-y-3">
+<h3 class="font-mono text-[10px] text-slate-400 uppercase tracking-wider">Metadata Tags</h3>
+<div class="flex flex-wrap gap-1.5">
+<span class="bg-white/[0.03] px-2 py-1 text-[11px] font-mono text-slate-300 border border-white/[0.06] rounded">#blockchain</span>
+<span class="bg-white/[0.03] px-2 py-1 text-[11px] font-mono text-slate-300 border border-white/[0.06] rounded">#lattice-encryption</span>
+<span class="bg-white/[0.03] px-2 py-1 text-[11px] font-mono text-slate-300 border border-white/[0.06] rounded">#vector-index</span>
+<span class="bg-white/[0.03] px-2 py-1 text-[11px] font-mono text-primary border border-white/[0.06] rounded">@AI-CORE</span>
+</div>
+</section>
+<section class="space-y-3">
+<h3 class="font-mono text-[10px] text-slate-400 uppercase tracking-wider">Inferred Relations</h3>
+<div class="space-y-2">
+<div class="p-3 bg-white/[0.02] border border-white/[0.06] rounded-md flex justify-between items-center hover:bg-white/[0.04] transition-colors">
+<div class="flex items-center gap-2.5">
+<span class="material-symbols-outlined text-slate-400 text-base">link</span>
+<span class="text-xs text-slate-200 font-mono">Quantum_Vault</span>
+</div>
+<span class="text-[10px] font-mono text-slate-500 uppercase">Parent</span>
+</div>
+<div class="p-3 bg-white/[0.02] border border-white/[0.06] rounded-md flex justify-between items-center hover:bg-white/[0.04] transition-colors">
+<div class="flex items-center gap-2.5">
+<span class="material-symbols-outlined text-slate-400 text-base">insights</span>
+<span class="text-xs text-slate-200 font-mono">Memory_Leak_22</span>
+</div>
+<span class="text-[10px] font-mono text-slate-500 uppercase">Causal</span>
+</div>
+</div>
+</section>
+<button class="w-full bg-primary/90 text-slate-950 font-medium py-2.5 rounded-md flex items-center justify-center gap-2 hover:bg-primary transition-all active:scale-98 shadow-sm text-sm">
+<span class="material-symbols-outlined text-base">psychology</span>
+Start Neural Walk
+</button>
+</div>
+</aside>
+<!-- Footer -->
+<footer class="fixed bottom-0 w-full h-8 z-50 flex items-center bg-[#0b0f17]/95 border-t border-white/[0.06] justify-between px-5">
+<div class="flex items-center gap-6">
+<span class="font-mono text-[10px] text-slate-400 tracking-wider">RECALL_CORE_V1</span>
+<div class="flex gap-4">
+<span class="font-mono text-[10px] text-slate-400">ENTITIES: <span class="text-slate-200">1,242</span></span>
+<span class="font-mono text-[10px] text-slate-400">EDGES: <span class="text-slate-200">8,490</span></span>
+<span class="font-mono text-[10px] text-slate-400">EPISODES: <span class="text-slate-200">154</span></span>
+</div>
+</div>
+<div class="flex items-center gap-3">
+<span class="text-[10px] font-mono text-slate-500">14ms latency</span>
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-400/80"></span>
+</div>
+</footer>
+</body></html>
+
+<!-- Dashboard - Recall Soft Minimal -->
+<!DOCTYPE html><html class="dark" lang="en"><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>Recall UI - Semantic Search</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&amp;family=Inter:wght@300;400;500;600;700&amp;family=JetBrains+Mono:wght@400;700&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "tertiary": "#ffde9f",
+                        "on-secondary-container": "#395c00",
+                        "inverse-surface": "#dae2fd",
+                        "error-container": "#93000a",
+                        "surface-container-high": "#222a3d",
+                        "outline-variant": "#3f484e",
+                        "surface-tint": "#7cd0ff",
+                        "on-primary-container": "#005979",
+                        "error": "#ffb4ab",
+                        "secondary-fixed": "#aaf932",
+                        "on-error": "#690005",
+                        "inverse-primary": "#00668a",
+                        "on-background": "#dae2fd",
+                        "surface-container-highest": "#2d3449",
+                        "on-secondary-fixed": "#112000",
+                        "on-primary-fixed": "#001e2c",
+                        "primary": "#c3e7ff",
+                        "on-primary-fixed-variant": "#004c69",
+                        "inverse-on-surface": "#283044",
+                        "secondary": "#aaf932",
+                        "on-primary": "#00344a",
+                        "surface-bright": "#31394d",
+                        "primary-fixed": "#c4e7ff",
+                        "tertiary-fixed": "#ffdf9f",
+                        "on-tertiary-container": "#6a4e00",
+                        "on-tertiary-fixed-variant": "#5c4300",
+                        "on-tertiary": "#402d00",
+                        "on-secondary-fixed-variant": "#314f00",
+                        "surface-container-low": "#131b2e",
+                        "on-error-container": "#ffdad6",
+                        "on-tertiary-fixed": "#261a00",
+                        "background": "#0b1326",
+                        "secondary-container": "#8fdb01",
+                        "surface-container-lowest": "#060e20",
+                        "tertiary-fixed-dim": "#f9bd22",
+                        "surface-container": "#171f33",
+                        "on-secondary": "#203600",
+                        "primary-fixed-dim": "#7cd0ff",
+                        "surface-dim": "#0b1326",
+                        "secondary-fixed-dim": "#8fdb01",
+                        "on-surface": "#dae2fd",
+                        "on-surface-variant": "#bfc8cf",
+                        "outline": "#899299",
+                        "tertiary-container": "#f9bd22",
+                        "primary-container": "#7bd0ff",
+                        "surface": "#0b1326",
+                        "surface-variant": "#2d3449"
+                    },
+                    fontFamily: {
+                        "headline": ["Space Grotesk"],
+                        "body": ["Inter"],
+                        "label": ["Inter"]
+                    },
+                    borderRadius: {"DEFAULT": "0.125rem", "lg": "0.25rem", "xl": "0.5rem", "full": "0.75rem"},
+                },
+            },
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .glass-panel {
+            background: rgba(19, 27, 46, 0.7);
+            backdrop-filter: blur(12px);
+        }
+        .code-block {
+            background: #060e20;
+            scrollbar-width: thin;
+            scrollbar-color: #3f484e transparent;
+        }
+        body {
+            background-color: #0b1326;
+            color: #dae2fd;
+        }
+    </style>
+</head>
+<body class="font-body selection:bg-primary-container selection:text-on-primary-container">
+<!-- TopAppBar -->
+<header class="fixed top-0 w-full h-12 z-50 bg-[#0B0F17]/80 backdrop-blur-xl flex items-center justify-between px-6 border-b border-white/[0.06]">
+<div class="flex items-center gap-6 grow">
+<div class="flex items-center gap-2">
+<span class="h-2 w-2 rounded-full bg-[#8ec5fc]/80 shadow-[0_0_8px_rgba(142,197,252,0.6)]"></span>
+<span class="text-base font-semibold tracking-tight text-slate-100 font-headline">Recall <span class="text-[#8ec5fc] font-normal">UI</span></span>
+</div>
+<div class="relative max-w-xl w-full">
+<div class="absolute inset-y-0 left-3 flex items-center pointer-events-none">
+<span class="material-symbols-outlined text-slate-400 text-sm">search</span>
+</div>
+<input class="w-full bg-[#131823]/80 border border-white/[0.06] text-slate-200 placeholder-slate-500 font-['Space_Grotesk'] text-xs tracking-tight rounded-md pl-9 pr-4 h-8 focus:outline-none focus:border-[#8ec5fc]/40 focus:ring-1 focus:ring-[#8ec5fc]/20 transition-all" type="text" value="Analyze dependencies for recall-ui component">
+</div>
+</div>
+<div class="flex items-center gap-2">
+<button class="text-slate-400 hover:text-slate-200 hover:bg-white/[0.04] transition-colors p-1.5 rounded-md text-xs"><span class="material-symbols-outlined text-base">history</span></button>
+<button class="text-slate-400 hover:text-slate-200 hover:bg-white/[0.04] transition-colors p-1.5 rounded-md text-xs"><span class="material-symbols-outlined text-base">refresh</span></button>
+<div class="h-4 w-[1px] bg-white/[0.08] mx-1"></div>
+<button class="flex items-center gap-2 text-slate-300 hover:text-white transition-colors pl-1.5 pr-2 py-1 rounded-md text-xs font-['JetBrains_Mono']"><span class="material-symbols-outlined text-base text-[#8ec5fc]">account_circle</span><span class="text-[11px] text-slate-400">dev@core</span></button>
+</div>
+</header>
+<!-- SideNavBar -->
+<aside class="fixed left-0 top-12 bottom-8 w-[220px] z-40 bg-[#0B0F17]/95 backdrop-blur-md border-r border-white/[0.06] flex flex-col py-6 px-3.5 justify-between">
+<div class="flex flex-col gap-y-5">
+<div class="px-2.5 pb-2 border-b border-white/[0.04]">
+<h2 class="font-['Space_Grotesk'] font-bold text-slate-200 text-xs tracking-wider uppercase">RECALL</h2>
+<p class="font-['JetBrains_Mono'] text-[9px] uppercase tracking-widest text-slate-500 mt-0.5">V1.0.4-STABLE</p>
+</div>
+<nav class="flex flex-col gap-0.5">
+<a class="flex items-center gap-2.5 px-2.5 py-1.5 rounded font-['JetBrains_Mono'] text-[11px] uppercase tracking-wider text-slate-400 hover:text-slate-200 hover:bg-white/[0.03] transition-all" href="#">
+<span class="material-symbols-outlined text-base text-slate-500">dashboard</span>
+<span>Dashboard</span>
+</a>
+<a class="flex items-center gap-2.5 px-2.5 py-1.5 rounded font-['JetBrains_Mono'] text-[11px] uppercase tracking-wider text-[#8ec5fc] bg-[#8ec5fc]/10 border border-[#8ec5fc]/20 font-medium transition-all shadow-sm" href="#">
+<span class="material-symbols-outlined text-base text-[#8ec5fc]">search</span>
+<span>Search</span>
+</a>
+<a class="flex items-center gap-2.5 px-2.5 py-1.5 rounded font-['JetBrains_Mono'] text-[11px] uppercase tracking-wider text-slate-400 hover:text-slate-200 hover:bg-white/[0.03] transition-all" href="#">
+<span class="material-symbols-outlined text-base text-slate-500">account_tree</span>
+<span>Knowledge Graph</span>
+</a>
+<a class="flex items-center gap-2.5 px-2.5 py-1.5 rounded font-['JetBrains_Mono'] text-[11px] uppercase tracking-wider text-slate-400 hover:text-slate-200 hover:bg-white/[0.03] transition-all" href="#">
+<span class="material-symbols-outlined text-base text-slate-500">category</span>
+<span>Entities</span>
+</a>
+<a class="flex items-center gap-2.5 px-2.5 py-1.5 rounded font-['JetBrains_Mono'] text-[11px] uppercase tracking-wider text-slate-400 hover:text-slate-200 hover:bg-white/[0.03] transition-all" href="#">
+<span class="material-symbols-outlined text-base text-slate-500">hub</span>
+<span>Relations</span>
+</a>
+<a class="flex items-center gap-2.5 px-2.5 py-1.5 rounded font-['JetBrains_Mono'] text-[11px] uppercase tracking-wider text-slate-400 hover:text-slate-200 hover:bg-white/[0.03] transition-all" href="#">
+<span class="material-symbols-outlined text-base text-slate-500">history_edu</span>
+<span>Episodes</span>
+</a>
+</nav>
+</div>
+<div class="border-t border-white/[0.06] pt-4 flex flex-col gap-2">
+<button class="w-full text-left flex items-center justify-between px-2.5 py-1.5 rounded font-['JetBrains_Mono'] text-[10px] uppercase tracking-wider text-slate-400 hover:text-slate-200 hover:bg-white/[0.03] transition-colors">
+<span class="flex items-center gap-2"><span class="material-symbols-outlined text-sm">public</span>Global Scope</span>
+<span class="h-1.5 w-1.5 rounded-full bg-slate-600"></span>
+</button>
+<div class="px-1">
+<button class="w-full py-1.5 bg-[#8ec5fc]/15 text-[#8ec5fc] border border-[#8ec5fc]/20 text-[10px] font-['JetBrains_Mono'] font-medium uppercase tracking-widest rounded hover:bg-[#8ec5fc]/25 transition-all flex items-center justify-center gap-1.5">
+<span class="h-1.5 w-1.5 rounded-full bg-[#8ec5fc]"></span> Project Scope
+</button>
+</div>
+</div>
+</aside>
+<!-- Main Content Canvas -->
+<main class="ml-[220px] mr-[380px] pt-16 pb-16 px-8 min-h-screen bg-[#0B0F17]">
+<header class="mb-8 flex justify-between items-end border-b border-white/[0.06] pb-5">
+<div>
+<div class="flex items-center gap-2 mb-1.5">
+<span class="font-['JetBrains_Mono'] text-[10px] uppercase tracking-[0.18em] text-[#8ec5fc]">SYNTHESIS_HUB</span>
+<span class="text-slate-600 text-xs">/</span>
+<span class="font-['JetBrains_Mono'] text-[10px] uppercase tracking-[0.18em] text-slate-400">ACTIVE_QUERY</span>
+</div>
+<h1 class="font-headline text-2xl font-semibold text-slate-100 tracking-tight">Search Results</h1>
+</div>
+<div class="flex gap-3 items-center font-['JetBrains_Mono'] text-[10px] text-slate-400 bg-[#131823] px-3 py-1.5 rounded border border-white/[0.06]">
+<span>FOUND: <strong class="text-slate-200 font-medium">42 NODES</strong></span>
+<span class="h-1 w-1 bg-slate-600 rounded-full"></span>
+<span>LATENCY: <strong class="text-slate-200 font-medium">124MS</strong></span>
+</div>
+</header>
+<!-- Search Results List -->
+<div class="space-y-6">
+<!-- Result Card 1 -->
+<div class="bg-[#131823] border border-white/[0.06] rounded-lg overflow-hidden transition-all duration-200 hover:border-[#8ec5fc]/30 hover:shadow-lg hover:shadow-[#000000]/40">
+<div class="px-5 py-3 flex justify-between items-center border-b border-white/[0.04] bg-[#0F141F]">
+<div class="flex items-center gap-2 font-['JetBrains_Mono'] text-[10px] text-slate-400">
+<span class="text-[#8ec5fc] font-semibold">GITHUB</span>
+<span class="text-slate-600">/</span>
+<span>RECALL</span>
+<span class="text-slate-600">/</span>
+<span>SRC</span>
+<span class="text-slate-600">/</span>
+<span class="text-slate-200 font-medium">UI-CORE.TSX</span>
+</div>
+<span class="font-['JetBrains_Mono'] text-[10px] text-slate-500 bg-white/[0.04] px-2 py-0.5 rounded">IDX_001</span>
+</div>
+<div class="p-5">
+<div class="flex items-start gap-3.5 mb-5 bg-[#0B0F17]/60 p-3.5 rounded border border-white/[0.04]">
+<div class="mt-0.5 p-1.5 bg-[#8ec5fc]/10 text-[#8ec5fc] rounded">
+<span class="material-symbols-outlined text-sm leading-none">bolt</span>
+</div>
+<p class="text-slate-300 text-xs font-normal leading-relaxed">
+This component acts as the primary layout orchestrator. It manages the dependency tree for all navigation elements and ensures atomic state injection into sub-modules.
+</p>
+</div>
+<div class="bg-[#080B11] border border-white/[0.04] rounded p-4 mb-4 font-['JetBrains_Mono'] text-xs leading-relaxed text-slate-300 overflow-x-auto">
+<pre><code><span class="text-[#c4a7e7]">export const</span> <span class="text-[#8ec5fc]">RecallUIProvider</span> = ({ children }) =&gt; {
+  <span class="text-[#c4a7e7]">const</span> [state, dispatch] = <span class="text-[#f6c177]">useReducer</span>(recallReducer, initialState);
+  
+  <span class="text-slate-500">// Syncing local dependency nodes</span>
+  <span class="text-[#f6c177]">useEffect</span>(() =&gt; {
+    <span class="text-[#8ec5fc]">DependencySync</span>.<span class="text-[#f6c177]">init</span>(state.activeNodes);
+  }, [state.activeNodes]);
+
+  <span class="text-[#c4a7e7]">return</span> &lt;<span class="text-[#8ec5fc]">Context.Provider</span> value={{ state, dispatch }}&gt;{children}&lt;/<span class="text-[#8ec5fc]">Context.Provider</span>&gt;;
+};</code></pre>
+</div>
+<div class="flex items-center justify-between pt-1">
+<div class="flex gap-2.5">
+<button class="px-3 py-1.5 bg-white/[0.05] hover:bg-white/[0.08] text-[#8ec5fc] border border-white/[0.06] rounded text-[10px] font-['JetBrains_Mono'] font-medium uppercase tracking-wider flex items-center gap-1.5 transition-all">
+<span class="material-symbols-outlined text-sm">account_tree</span> View in Graph
+</button>
+<button class="px-3 py-1.5 bg-transparent hover:bg-white/[0.04] text-slate-400 hover:text-slate-200 border border-white/[0.06] rounded text-[10px] font-['JetBrains_Mono'] font-medium uppercase tracking-wider flex items-center gap-1.5 transition-all">
+<span class="material-symbols-outlined text-sm">visibility</span> Deep Dive
+</button>
+</div>
+<span class="text-[10px] font-['JetBrains_Mono'] text-slate-500">Updated 2h ago</span>
+</div>
+</div>
+</div>
+<!-- Result Card 2 -->
+<div class="bg-[#131823] border border-white/[0.06] rounded-lg overflow-hidden transition-all duration-200 hover:border-[#8ec5fc]/30 hover:shadow-lg hover:shadow-[#000000]/40">
+<div class="px-5 py-3 flex justify-between items-center border-b border-white/[0.04] bg-[#0F141F]">
+<div class="flex items-center gap-2 font-['JetBrains_Mono'] text-[10px] text-slate-400">
+<span class="text-[#8ec5fc] font-semibold">RECALL_DOCS</span>
+<span class="text-slate-600">/</span>
+<span>ARCH</span>
+<span class="text-slate-600">/</span>
+<span class="text-slate-200 font-medium">DEPENDENCY_MAP.MD</span>
+</div>
+<span class="font-['JetBrains_Mono'] text-[10px] text-slate-500 bg-white/[0.04] px-2 py-0.5 rounded">IDX_014</span>
+</div>
+<div class="p-5">
+<div class="flex items-start gap-3.5 mb-5 bg-[#0B0F17]/60 p-3.5 rounded border border-white/[0.04]">
+<div class="mt-0.5 p-1.5 bg-[#8ec5fc]/10 text-[#8ec5fc] rounded">
+<span class="material-symbols-outlined text-sm leading-none">bolt</span>
+</div>
+<p class="text-slate-300 text-xs font-normal leading-relaxed">
+Documentation node referencing circular dependencies in the UI layer. Identified as a high-priority refactor target in V1.0.2.
+</p>
+</div>
+<div class="bg-[#080B11] border-l-2 border-[#8ec5fc]/40 border border-white/[0.04] rounded p-4 mb-4 font-['JetBrains_Mono'] text-xs leading-relaxed text-slate-300 overflow-x-auto space-y-1">
+<p class="text-slate-400 font-semibold mb-2">### Circular Dependency Warnings</p>
+<p class="text-slate-400">- <span class="text-slate-300">Sidebar</span> depends on <span class="text-[#8ec5fc]">ShellState</span></p>
+<p class="text-slate-400">- <span class="text-[#8ec5fc]">ShellState</span> depends on <span class="text-slate-300">ActiveNav</span></p>
+<p class="text-slate-400">- <span class="text-slate-300">ActiveNav</span> depends on <span class="text-slate-300">Sidebar</span> (via mapping rules)</p>
+</div>
+<div class="flex items-center justify-between pt-1">
+<div class="flex gap-2.5">
+<button class="px-3 py-1.5 bg-white/[0.05] hover:bg-white/[0.08] text-[#8ec5fc] border border-white/[0.06] rounded text-[10px] font-['JetBrains_Mono'] font-medium uppercase tracking-wider flex items-center gap-1.5 transition-all">
+<span class="material-symbols-outlined text-sm">account_tree</span> View in Graph
+</button>
+<button class="px-3 py-1.5 bg-transparent hover:bg-white/[0.04] text-slate-400 hover:text-slate-200 border border-white/[0.06] rounded text-[10px] font-['JetBrains_Mono'] font-medium uppercase tracking-wider flex items-center gap-1.5 transition-all">
+<span class="material-symbols-outlined text-sm">visibility</span> Deep Dive
+</button>
+</div>
+<span class="text-[10px] font-['JetBrains_Mono'] text-slate-500">Updated yesterday</span>
+</div>
+</div>
+</div>
+</div>
+</main>
+<!-- Synthesis Panel (Right Sidebar) -->
+<aside class="fixed right-0 top-12 bottom-8 w-[380px] z-40 bg-[#0B0F17]/95 backdrop-blur-md border-l border-white/[0.06] p-6 flex flex-col gap-6 overflow-y-auto">
+<section>
+<div class="flex items-center justify-between mb-3.5">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-base text-[#8ec5fc]">auto_awesome</span>
+<h3 class="font-headline text-xs font-bold tracking-wider text-slate-200 uppercase">AI Synthesis Summary</h3>
+</div>
+<span class="text-[9px] font-['JetBrains_Mono'] uppercase tracking-widest text-[#8ec5fc] bg-[#8ec5fc]/10 px-2 py-0.5 rounded border border-[#8ec5fc]/20">Active</span>
+</div>
+<div class="bg-[#131823] rounded-lg p-4 border border-white/[0.06] relative overflow-hidden">
+<p class="text-xs text-slate-300 leading-relaxed mb-3">
+The <span class="text-[#8ec5fc] font-mono font-medium">recall-ui</span> component currently exhibits <span class="text-slate-100 font-medium underline decoration-[#8ec5fc]/50 underline-offset-2">3 direct dependencies</span> and <span class="text-slate-100 font-medium underline decoration-[#8ec5fc]/50 underline-offset-2">14 transient edges</span> across the project scope.
+</p>
+<p class="text-xs text-slate-400 leading-relaxed pt-2 border-t border-white/[0.04]">
+Most critical path identified between <code class="text-[11px] font-['JetBrains_Mono'] bg-[#0B0F17] text-[#8ec5fc] px-1.5 py-0.5 rounded border border-white/[0.04]">ui-provider.tsx</code> and the global <code class="text-[11px] font-['JetBrains_Mono'] bg-[#0B0F17] text-[#8ec5fc] px-1.5 py-0.5 rounded border border-white/[0.04]">graph-engine</code>.
+</p>
+</div>
+</section>
+<section>
+<div class="flex items-center justify-between mb-3">
+<h3 class="font-['JetBrains_Mono'] text-[10px] uppercase tracking-widest text-slate-400">Sources Citations</h3>
+<span class="font-['JetBrains_Mono'] text-[10px] text-slate-500">3 channels</span>
+</div>
+<div class="grid grid-cols-1 gap-1.5">
+<div class="flex justify-between items-center bg-[#131823] px-3 py-2 rounded border border-white/[0.04]">
+<span class="font-['JetBrains_Mono'] text-[11px] text-slate-300">Local Repositories</span>
+<span class="font-['JetBrains_Mono'] text-[11px] text-[#8ec5fc] font-semibold bg-[#8ec5fc]/10 px-1.5 py-0.5 rounded">3</span>
+</div>
+<div class="flex justify-between items-center bg-[#131823] px-3 py-2 rounded border border-white/[0.04]">
+<span class="font-['JetBrains_Mono'] text-[11px] text-slate-300">Internal Doc Nodes</span>
+<span class="font-['JetBrains_Mono'] text-[11px] text-[#8ec5fc] font-semibold bg-[#8ec5fc]/10 px-1.5 py-0.5 rounded">12</span>
+</div>
+<div class="flex justify-between items-center bg-[#131823] px-3 py-2 rounded border border-white/[0.04]">
+<span class="font-['JetBrains_Mono'] text-[11px] text-slate-300">Slack Conversations</span>
+<span class="font-['JetBrains_Mono'] text-[11px] text-[#8ec5fc] font-semibold bg-[#8ec5fc]/10 px-1.5 py-0.5 rounded">5</span>
+</div>
+</div>
+</section>
+<section>
+<h3 class="font-['JetBrains_Mono'] text-[10px] uppercase tracking-widest text-slate-400 mb-3">Recall Path</h3>
+<div class="relative pl-5 space-y-4 before:content-[''] before:absolute before:left-[5px] before:top-1.5 before:bottom-1.5 before:w-[1px] before:bg-white/[0.08]">
+<div class="relative">
+<div class="absolute -left-[20px] top-1 h-2.5 w-2.5 rounded-full bg-[#8ec5fc] ring-4 ring-[#8ec5fc]/15"></div>
+<p class="text-xs font-medium text-slate-200">UI-CORE Initialization</p>
+<p class="text-[10px] font-['JetBrains_Mono'] text-slate-500">Module load sequence start</p>
+</div>
+<div class="relative">
+<div class="absolute -left-[20px] top-1 h-2.5 w-2.5 rounded-full bg-slate-700"></div>
+<p class="text-xs font-medium text-slate-400">State Subscription</p>
+<p class="text-[10px] font-['JetBrains_Mono'] text-slate-500">Hooking into Redux/Context</p>
+</div>
+<div class="relative">
+<div class="absolute -left-[20px] top-1 h-2.5 w-2.5 rounded-full bg-[#8ec5fc] shadow-[0_0_8px_rgba(142,197,252,0.5)]"></div>
+<p class="text-xs font-medium text-[#8ec5fc]">Dependency Sync [Active]</p>
+<p class="text-[10px] font-['JetBrains_Mono'] text-slate-400">Injecting local node states</p>
+</div>
+</div>
+</section>
+<section>
+<h3 class="font-['JetBrains_Mono'] text-[10px] uppercase tracking-widest text-slate-400 mb-3">Linked Entities</h3>
+<div class="flex flex-wrap gap-1.5">
+<span class="px-2 py-1 bg-white/[0.04] text-slate-300 hover:text-[#8ec5fc] hover:bg-[#8ec5fc]/10 text-[10px] font-['JetBrains_Mono'] tracking-tight rounded border border-white/[0.06] transition-colors">Typescript</span>
+<span class="px-2 py-1 bg-white/[0.04] text-slate-300 hover:text-[#8ec5fc] hover:bg-[#8ec5fc]/10 text-[10px] font-['JetBrains_Mono'] tracking-tight rounded border border-white/[0.06] transition-colors">React Context</span>
+<span class="px-2 py-1 bg-white/[0.04] text-slate-300 hover:text-[#8ec5fc] hover:bg-[#8ec5fc]/10 text-[10px] font-['JetBrains_Mono'] tracking-tight rounded border border-white/[0.06] transition-colors">Refactoring</span>
+<span class="px-2 py-1 bg-white/[0.04] text-slate-300 hover:text-[#8ec5fc] hover:bg-[#8ec5fc]/10 text-[10px] font-['JetBrains_Mono'] tracking-tight rounded border border-white/[0.06] transition-colors">Dependency Injection</span>
+<span class="px-2 py-1 bg-white/[0.04] text-slate-300 hover:text-[#8ec5fc] hover:bg-[#8ec5fc]/10 text-[10px] font-['JetBrains_Mono'] tracking-tight rounded border border-white/[0.06] transition-colors">UI Architecture</span>
+</div>
+</section>
+</aside>
+<!-- Footer -->
+<footer class="fixed bottom-0 w-full h-8 z-50 flex items-center justify-between px-5 bg-[#0B0F17] border-t border-white/[0.06]">
+<div class="flex items-center gap-6">
+<span class="font-['JetBrains_Mono'] text-[10px] font-medium uppercase text-slate-500 tracking-wider">RECALL_CORE_v1</span>
+</div>
+<div class="flex items-center gap-6">
+<a class="font-['JetBrains_Mono'] text-[10px] uppercase text-slate-500 hover:text-slate-300 transition-colors" href="#">ENTITIES: 1,242</a>
+<a class="font-['JetBrains_Mono'] text-[10px] uppercase text-slate-500 hover:text-slate-300 transition-colors" href="#">EDGES: 8,490</a>
+<a class="font-['JetBrains_Mono'] text-[10px] uppercase text-[#8ec5fc] font-medium" href="#">EPISODES: 154</a>
+</div>
+</footer>
+</body></html>
+
+<!-- Semantic Search - Recall Soft Minimal -->
+<!DOCTYPE html><html class="dark" lang="en"><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>Recall UI - Knowledge Graph</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&amp;family=Inter:wght@300;400;500;600&amp;family=JetBrains+Mono:wght@400;700&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "tertiary": "#ffde9f",
+                        "on-secondary-container": "#395c00",
+                        "inverse-surface": "#dae2fd",
+                        "error-container": "#93000a",
+                        "surface-container-high": "#222a3d",
+                        "outline-variant": "#3f484e",
+                        "surface-tint": "#7cd0ff",
+                        "on-primary-container": "#005979",
+                        "error": "#ffb4ab",
+                        "secondary-fixed": "#aaf932",
+                        "on-error": "#690005",
+                        "inverse-primary": "#00668a",
+                        "on-background": "#dae2fd",
+                        "surface-container-highest": "#2d3449",
+                        "on-secondary-fixed": "#112000",
+                        "on-primary-fixed": "#001e2c",
+                        "primary": "#c3e7ff",
+                        "on-primary-fixed-variant": "#004c69",
+                        "inverse-on-surface": "#283044",
+                        "secondary": "#aaf932",
+                        "on-primary": "#00344a",
+                        "surface-bright": "#31394d",
+                        "primary-fixed": "#c4e7ff",
+                        "tertiary-fixed": "#ffdf9f",
+                        "on-tertiary-container": "#6a4e00",
+                        "on-tertiary-fixed-variant": "#5c4300",
+                        "on-tertiary": "#402d00",
+                        "on-secondary-fixed-variant": "#314f00",
+                        "surface-container-low": "#131b2e",
+                        "on-error-container": "#ffdad6",
+                        "on-tertiary-fixed": "#261a00",
+                        "background": "#0b1326",
+                        "secondary-container": "#8fdb01",
+                        "surface-container-lowest": "#060e20",
+                        "tertiary-fixed-dim": "#f9bd22",
+                        "surface-container": "#171f33",
+                        "on-secondary": "#203600",
+                        "primary-fixed-dim": "#7cd0ff",
+                        "surface-dim": "#0b1326",
+                        "secondary-fixed-dim": "#8fdb01",
+                        "on-surface": "#dae2fd",
+                        "on-surface-variant": "#bfc8cf",
+                        "outline": "#899299",
+                        "tertiary-container": "#f9bd22",
+                        "primary-container": "#7bd0ff",
+                        "surface": "#0b1326",
+                        "surface-variant": "#2d3449"
+                    },
+                    fontFamily: {
+                        "headline": ["Space Grotesk"],
+                        "body": ["Inter"],
+                        "label": ["Inter"],
+                        "mono": ["JetBrains Mono"]
+                    },
+                    borderRadius: {"DEFAULT": "0.125rem", "lg": "0.25rem", "xl": "0.5rem", "full": "0.75rem"},
+                },
+            },
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .graph-canvas {
+            background-image: 
+                radial-gradient(circle at 2px 2px, rgba(123, 208, 255, 0.05) 1px, transparent 0);
+            background-size: 40px 40px;
+        }
+        .glow-node {
+            filter: drop-shadow(0 0 8px rgba(123, 208, 255, 0.6));
+        }
+        .node-pulse {
+            animation: pulse-ring 3s cubic-bezier(0.455, 0.03, 0.515, 0.955) infinite;
+        }
+        @keyframes pulse-ring {
+            0% { transform: scale(.8); opacity: 0.5; }
+            50% { transform: scale(1.2); opacity: 0.2; }
+            100% { transform: scale(.8); opacity: 0.5; }
+        }
+    </style>
+</head>
+<body class="bg-background text-on-background font-body select-none overflow-hidden">
+<!-- TopAppBar -->
+<header class="fixed top-0 w-full h-12 z-50 bg-slate-950/70 backdrop-blur-xl flex items-center justify-between px-6 shadow-2xl shadow-cyan-900/10">
+<div class="flex items-center gap-6">
+<span class="text-xl font-bold tracking-tighter text-cyan-400 font-headline">Recall UI</span>
+<div class="relative flex items-center">
+<span class="material-symbols-outlined absolute left-3 text-slate-500 text-sm">search</span>
+<input class="bg-slate-900 border-none text-xs font-mono py-1 pl-9 pr-4 rounded w-64 focus:ring-1 focus:ring-cyan-500 text-slate-300" placeholder="Query entities..." type="text">
+</div>
+</div>
+<div class="flex items-center gap-4">
+<button class="p-1.5 text-slate-400 hover:bg-slate-800/50 transition-colors scale-95 active:scale-90 transition-transform">
+<span class="material-symbols-outlined">history</span>
+</button>
+<button class="p-1.5 text-slate-400 hover:bg-slate-800/50 transition-colors scale-95 active:scale-90 transition-transform">
+<span class="material-symbols-outlined">refresh</span>
+</button>
+<div class="h-6 w-px bg-slate-800 mx-2"></div>
+<button class="flex items-center gap-2 px-2 py-1 text-slate-400 hover:bg-slate-800/50 transition-colors scale-95 active:scale-90 transition-transform">
+<span class="material-symbols-outlined">account_circle</span>
+</button>
+</div>
+</header>
+<!-- SideNavBar -->
+<nav class="fixed left-0 top-12 bottom-8 w-[220px] z-40 bg-slate-900/50 backdrop-blur-md border-r border-slate-800/30 flex flex-col py-8 px-4 gap-y-6">
+<div class="mb-4">
+<h2 class="font-headline font-black text-slate-100 text-lg tracking-tight">RECALL</h2>
+<p class="font-mono text-[10px] text-slate-500 tracking-widest uppercase">V1.0.4-STABLE</p>
+</div>
+<div class="flex flex-col gap-1">
+<a class="flex items-center gap-3 px-3 py-2 text-slate-500 hover:text-slate-200 hover:bg-slate-800/40 font-mono text-xs uppercase tracking-widest transition-all duration-300 ease-out" href="#">
+<span class="material-symbols-outlined">dashboard</span>
+                Dashboard
+            </a>
+<a class="flex items-center gap-3 px-3 py-2 text-cyan-400 bg-cyan-500/10 border-r-2 border-cyan-400 font-mono text-xs uppercase tracking-widest transition-all duration-300 ease-out" href="#">
+<span class="material-symbols-outlined">account_tree</span>
+                Knowledge Graph
+            </a>
+<a class="flex items-center gap-3 px-3 py-2 text-slate-500 hover:text-slate-200 hover:bg-slate-800/40 font-mono text-xs uppercase tracking-widest transition-all duration-300 ease-out" href="#">
+<span class="material-symbols-outlined">category</span>
+                Entities
+            </a>
+<a class="flex items-center gap-3 px-3 py-2 text-slate-500 hover:text-slate-200 hover:bg-slate-800/40 font-mono text-xs uppercase tracking-widest transition-all duration-300 ease-out" href="#">
+<span class="material-symbols-outlined">hub</span>
+                Relations
+            </a>
+<a class="flex items-center gap-3 px-3 py-2 text-slate-500 hover:text-slate-200 hover:bg-slate-800/40 font-mono text-xs uppercase tracking-widest transition-all duration-300 ease-out" href="#">
+<span class="material-symbols-outlined">history_edu</span>
+                Episodes
+            </a>
+</div>
+<div class="mt-auto">
+<button class="w-full bg-slate-800/50 text-cyan-400 py-2 font-mono text-[10px] uppercase tracking-tighter hover:bg-slate-800 transition-colors">
+                Project Scope
+            </button>
+<div class="flex items-center gap-3 px-3 py-4 text-slate-500 hover:text-slate-200 font-mono text-xs uppercase tracking-widest mt-2 cursor-pointer">
+<span class="material-symbols-outlined">public</span>
+                Global Scope
+            </div>
+</div>
+</nav>
+<!-- Main Canvas View -->
+<main class="ml-[220px] pt-12 pb-8 h-screen w-[calc(100%-220px)] relative overflow-hidden bg-surface">
+<!-- Graph Simulation Area (Placeholder for WebGL) -->
+<div class="absolute inset-0 graph-canvas flex items-center justify-center">
+<!-- Floating Nodes Representation -->
+<div class="relative w-full h-full">
+<!-- Selected Node -->
+<div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-20"><div class="relative flex flex-col items-center group cursor-pointer"><div class="node-pulse absolute inset-0 -m-3 bg-primary-container/20 rounded-2xl scale-110 pointer-events-none"></div><div class="w-14 h-14 bg-surface-container-high/90 backdrop-blur-md border border-primary-container/60 rounded-2xl flex items-center justify-center glow-node relative z-10 shadow-xl shadow-black/40 transition-all duration-300 group-hover:border-primary-container group-hover:scale-105"><span class="material-symbols-outlined text-primary text-2xl">memory</span></div><div class="mt-3 whitespace-nowrap z-10"><span class="font-mono text-[10px] tracking-wide bg-slate-900/80 backdrop-blur-md px-2.5 py-1 text-slate-200 rounded border border-white/10 shadow-sm">Vector Quantization Module</span></div></div></div>
+<!-- Neighbor Node 1 -->
+<div class="absolute top-1/3 left-1/3">
+<div class="w-6 h-6 bg-surface border border-slate-700 rounded-full flex items-center justify-center">
+<div class="w-2 h-2 bg-slate-500 rounded-full"></div>
+</div>
+<div class="h-px w-32 bg-slate-800 absolute top-3 left-6 -rotate-12 border-t border-dashed border-slate-700 origin-left"></div>
+</div>
+<!-- Neighbor Node 2 -->
+<div class="absolute top-2/3 left-1/4">
+<div class="w-8 h-8 bg-surface border border-secondary rounded-full flex items-center justify-center">
+<span class="material-symbols-outlined text-secondary text-sm">psychology</span>
+</div>
+<div class="h-px w-48 bg-slate-800 absolute top-4 left-8 -rotate-45 border-t border-dashed border-slate-700 origin-left"></div>
+</div>
+<!-- Neighbor Node 3 -->
+<div class="absolute bottom-1/4 right-1/3">
+<div class="w-6 h-6 bg-surface border border-slate-700 rounded-full flex items-center justify-center">
+<div class="w-2 h-2 bg-slate-500 rounded-full"></div>
+</div>
+<div class="h-px w-40 bg-slate-800 absolute bottom-3 right-6 rotate-12 border-t border-dashed border-slate-700 origin-right"></div>
+</div>
+</div>
+</div>
+<!-- Toolbar Overlay -->
+<div class="absolute top-6 left-6 right-6 flex justify-between items-center z-30 pointer-events-none">
+<div class="flex gap-2 pointer-events-auto">
+<div class="flex items-center gap-2 bg-slate-900/80 backdrop-blur-md px-3 py-1.5 rounded shadow-lg border border-slate-800/50">
+<span class="font-mono text-[10px] text-slate-500">FILTER:</span>
+<button class="bg-slate-800 text-[10px] font-mono px-2 py-0.5 text-slate-300 hover:text-white transition-colors">ENTITIES</button>
+<button class="bg-slate-800 text-[10px] font-mono px-2 py-0.5 text-slate-300 hover:text-white transition-colors">TYPES</button>
+<div class="w-px h-3 bg-slate-700 mx-1"></div>
+<label class="flex items-center gap-2 cursor-pointer group">
+<div class="w-3 h-3 border border-slate-600 rounded-sm bg-cyan-400"></div>
+<span class="font-mono text-[10px] text-slate-300 group-hover:text-white">SHOW EPISODES</span>
+</label>
+</div>
+</div>
+<div class="flex gap-2 pointer-events-auto">
+<button class="bg-slate-900/80 backdrop-blur-md p-2 rounded shadow-lg border border-slate-800/50 text-slate-400 hover:text-cyan-400">
+<span class="material-symbols-outlined text-xl">zoom_in</span>
+</button>
+<button class="bg-slate-900/80 backdrop-blur-md p-2 rounded shadow-lg border border-slate-800/50 text-slate-400 hover:text-cyan-400">
+<span class="material-symbols-outlined text-xl">zoom_out</span>
+</button>
+<button class="bg-slate-900/80 backdrop-blur-md p-2 rounded shadow-lg border border-slate-800/50 text-slate-400 hover:text-cyan-400">
+<span class="material-symbols-outlined text-xl">center_focus_strong</span>
+</button>
+</div>
+</div>
+<!-- Legend Bottom Left -->
+<div class="absolute bottom-6 left-6 z-30 pointer-events-auto">
+<div class="bg-slate-900/80 backdrop-blur-md p-4 rounded shadow-lg border border-slate-800/50 flex flex-col gap-3">
+<h4 class="font-mono text-[10px] text-slate-500 tracking-widest uppercase">Legend</h4>
+<div class="flex flex-col gap-2">
+<div class="flex items-center gap-3">
+<div class="w-3 h-3 bg-cyan-400 rounded-full"></div>
+<span class="font-mono text-[10px] text-slate-300">CORE ENTITY</span>
+</div>
+<div class="flex items-center gap-3">
+<div class="w-3 h-3 bg-secondary rounded-full"></div>
+<span class="font-mono text-[10px] text-slate-300">CONCEPTUAL NODE</span>
+</div>
+<div class="flex items-center gap-3">
+<div class="w-6 h-0.5 border-t border-dashed border-slate-500"></div>
+<span class="font-mono text-[10px] text-slate-300">EPISODE RELATION</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Detail Panel (Glassmorphic Overlay) -->
+<aside class="absolute top-6 right-6 bottom-6 w-[380px] z-50 bg-[#0e1420]/85 backdrop-blur-xl rounded-xl shadow-2xl flex flex-col overflow-hidden border border-white/10"><div class="p-6 flex-1 overflow-y-auto custom-scrollbar"><div class="flex justify-between items-start mb-6"><div><span class="font-mono text-[10px] text-emerald-300/90 tracking-wider uppercase bg-emerald-950/40 border border-emerald-500/20 px-2 py-0.5 rounded">CONCEPT</span><h1 class="font-headline text-xl font-medium text-slate-100 mt-2.5 leading-snug tracking-tight">Vector Quantization Module</h1></div><button class="p-1 text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 rounded transition-colors"><span class="material-symbols-outlined text-lg">close</span></button></div><section class="mb-6 p-4 bg-slate-900/50 rounded-lg border border-white/5"><div class="flex items-center gap-2 mb-2.5"><span class="material-symbols-outlined text-primary-container text-sm">auto_awesome</span><h3 class="font-mono text-[11px] text-primary tracking-wide uppercase font-medium">AI Insight</h3></div><p class="text-xs text-slate-300/90 leading-relaxed font-body font-light">The module acts as the primary discrete latent space bottleneck. It converts continuous input vectors into quantized representations, enabling long-term episodic storage and compressed retrieval cycles.</p><div class="mt-4 pt-3 border-t border-white/5"><div class="flex justify-between items-center mb-1.5"><span class="font-mono text-[10px] text-slate-400 uppercase tracking-wider">Systemic Dependency</span><span class="font-mono text-[10px] text-primary-container font-semibold">89%</span></div><div class="w-full h-1 bg-slate-800/80 rounded-full overflow-hidden"><div class="h-full bg-gradient-to-r from-primary-container to-tertiary-container w-[89%] rounded-full"></div></div></div></section><section class="mb-6"><h3 class="font-mono text-[10px] text-slate-400 uppercase tracking-widest mb-3">Connected Intelligence</h3><div class="space-y-3"><div class="flex gap-3 p-2.5 rounded-lg bg-slate-900/30 border border-white/5 hover:border-white/10 transition-colors"><div class="w-1 bg-primary-container/70 rounded-full self-stretch"></div><div class="flex-1"><h4 class="text-xs font-medium text-slate-200 mb-0.5">Neural Archiver (Level 1)</h4><p class="text-[11px] text-slate-400 leading-snug italic font-light">"Responsible for committing the quantized indices into the global knowledge graph."</p></div></div><div class="flex gap-3 p-2.5 rounded-lg bg-slate-900/30 border border-white/5 hover:border-white/10 transition-colors"><div class="w-1 bg-emerald-400/60 rounded-full self-stretch"></div><div class="flex-1"><h4 class="text-xs font-medium text-slate-200 mb-0.5">Codebook Optimization (Level 2)</h4><p class="text-[11px] text-slate-400 leading-snug italic font-light">"Regulates the distribution of active clusters to prevent posterior collapse."</p></div></div></div></section><section><h3 class="font-mono text-[10px] text-slate-400 uppercase tracking-widest mb-3">Source Episodes</h3><div class="space-y-1.5"><div class="flex items-center justify-between p-2.5 bg-slate-900/30 hover:bg-slate-800/40 border border-transparent hover:border-white/5 transition-all cursor-pointer group rounded-lg"><div class="flex items-center gap-2.5"><span class="material-symbols-outlined text-slate-400 text-sm group-hover:text-primary-container transition-colors">history_edu</span><span class="text-[11px] text-slate-300 font-mono">Bootstrap_Init_Sequence</span></div><span class="text-[10px] text-slate-400 font-mono">2h ago</span></div><div class="flex items-center justify-between p-2.5 bg-slate-900/30 hover:bg-slate-800/40 border border-transparent hover:border-white/5 transition-all cursor-pointer group rounded-lg"><div class="flex items-center gap-2.5"><span class="material-symbols-outlined text-slate-400 text-sm group-hover:text-primary-container transition-colors">history_edu</span><span class="text-[11px] text-slate-300 font-mono">Quantizer_Refinement_V4</span></div><span class="text-[10px] text-slate-400 font-mono">1d ago</span></div><div class="flex items-center justify-between p-2.5 bg-slate-900/30 hover:bg-slate-800/40 border border-transparent hover:border-white/5 transition-all cursor-pointer group rounded-lg"><div class="flex items-center gap-2.5"><span class="material-symbols-outlined text-slate-400 text-sm group-hover:text-primary-container transition-colors">history_edu</span><span class="text-[11px] text-slate-300 font-mono">Latent_Space_Expansion</span></div><span class="text-[10px] text-slate-400 font-mono">3d ago</span></div></div></section></div><div class="p-5 bg-slate-950/40 border-t border-white/5"><button class="w-full py-2.5 px-4 bg-primary-container/20 hover:bg-primary-container/30 text-primary border border-primary-container/40 font-headline font-medium text-xs tracking-wide rounded-lg transition-all flex items-center justify-center gap-2 active:scale-95"><span class="material-symbols-outlined text-base">open_in_full</span>Expand into Editor</button></div></aside>
+<!-- Floating Zoom Controls -->
+<div class="absolute bottom-6 right-[420px] z-30 flex flex-col gap-2"><div class="bg-slate-900/80 backdrop-blur-md p-1 rounded-xl shadow-xl border border-white/10 flex flex-col gap-1"><button class="w-8 h-8 flex items-center justify-center text-slate-300 hover:text-white hover:bg-slate-800/70 active:scale-90 transition-all rounded-lg" title="Zoom In"><span class="material-symbols-outlined text-base">add</span></button><button class="w-8 h-8 flex items-center justify-center text-slate-300 hover:text-white hover:bg-slate-800/70 active:scale-90 transition-all rounded-lg" title="Zoom Out"><span class="material-symbols-outlined text-base">remove</span></button><div class="h-px bg-white/10 mx-1 my-0.5"></div><button class="w-8 h-8 flex items-center justify-center text-slate-300 hover:text-white hover:bg-slate-800/70 active:scale-90 transition-all rounded-lg" title="Fit View"><span class="material-symbols-outlined text-base">fullscreen_exit</span></button></div></div></main>
+<!-- Footer -->
+<footer class="fixed bottom-0 w-full h-8 z-50 bg-slate-950 border-t border-slate-800 flex items-center justify-between px-4 font-mono text-[10px] font-bold uppercase text-slate-600">
+<div class="flex items-center gap-6">
+<span class="text-cyan-500">RECALL_CORE_v1</span>
+<div class="flex gap-4">
+<span class="hover:text-cyan-300 transition-colors cursor-pointer">ENTITIES: 1,242</span>
+<span class="hover:text-cyan-300 transition-colors cursor-pointer">EDGES: 8,490</span>
+<span class="hover:text-cyan-300 transition-colors cursor-pointer">EPISODES: 154</span>
+</div>
+</div>
+<div class="flex items-center gap-4">
+<span class="text-slate-500">STATUS: <span class="text-secondary">OPTIMIZED</span></span>
+<span class="text-slate-500">LOCAL_TIME: <span class="text-slate-300" id="clock">14:42:08</span></span>
+</div>
+</footer>
+<script>
+        // Decorative simple clock for footer
+        setInterval(() => {
+            const now = new Date();
+            document.getElementById('clock').innerText = now.toTimeString().split(' ')[0];
+        }, 1000);
+    </script>
+</body></html>
+
+<!-- Knowledge Graph - Recall Soft Minimal -->
+<!DOCTYPE html><html class="dark" lang="en"><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>Recall UI - Activity Stream</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&amp;family=Inter:wght@300;400;500;600&amp;family=JetBrains+Mono:wght@400;700&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "tertiary": "#ffde9f",
+              "on-secondary-container": "#395c00",
+              "inverse-surface": "#dae2fd",
+              "error-container": "#93000a",
+              "surface-container-high": "#222a3d",
+              "outline-variant": "#3f484e",
+              "surface-tint": "#7cd0ff",
+              "on-primary-container": "#005979",
+              "error": "#ffb4ab",
+              "secondary-fixed": "#aaf932",
+              "on-error": "#690005",
+              "inverse-primary": "#00668a",
+              "on-background": "#dae2fd",
+              "surface-container-highest": "#2d3449",
+              "on-secondary-fixed": "#112000",
+              "on-primary-fixed": "#001e2c",
+              "primary": "#c3e7ff",
+              "on-primary-fixed-variant": "#004c69",
+              "inverse-on-surface": "#283044",
+              "secondary": "#aaf932",
+              "on-primary": "#00344a",
+              "surface-bright": "#31394d",
+              "primary-fixed": "#c4e7ff",
+              "tertiary-fixed": "#ffdf9f",
+              "on-tertiary-container": "#6a4e00",
+              "on-tertiary-fixed-variant": "#5c4300",
+              "on-tertiary": "#402d00",
+              "on-secondary-fixed-variant": "#314f00",
+              "surface-container-low": "#131b2e",
+              "on-error-container": "#ffdad6",
+              "on-tertiary-fixed": "#261a00",
+              "background": "#0b1326",
+              "secondary-container": "#8fdb01",
+              "surface-container-lowest": "#060e20",
+              "tertiary-fixed-dim": "#f9bd22",
+              "surface-container": "#171f33",
+              "on-secondary": "#203600",
+              "primary-fixed-dim": "#7cd0ff",
+              "surface-dim": "#0b1326",
+              "secondary-fixed-dim": "#8fdb01",
+              "on-surface": "#dae2fd",
+              "on-surface-variant": "#bfc8cf",
+              "outline": "#899299",
+              "tertiary-container": "#f9bd22",
+              "primary-container": "#7bd0ff",
+              "surface": "#0b1326",
+              "surface-variant": "#2d3449"
+            },
+            fontFamily: {
+              "headline": ["Space Grotesk"],
+              "body": ["Inter"],
+              "label": ["Inter"],
+              "mono": ["JetBrains Mono"]
+            },
+            borderRadius: {"DEFAULT": "0.125rem", "lg": "0.25rem", "xl": "0.5rem", "full": "0.75rem"},
+          },
+        },
+      }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        body {
+            background-color: #0b1326;
+            color: #dae2fd;
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #2d3449;
+        }
+    </style>
+</head>
+<body class="font-body selection:bg-primary-container selection:text-on-primary-container bg-slate-950 text-on-surface">
+<!-- TopAppBar -->
+<header class="fixed top-0 w-full h-12 z-50 bg-slate-950/70 backdrop-blur-xl flex items-center justify-between px-6 shadow-2xl shadow-cyan-900/10"><div class="flex items-center gap-6">
+<span class="text-lg font-semibold tracking-tight text-slate-100 font-['Space_Grotesk']">Recall UI</span>
+<div class="hidden md:flex items-center bg-slate-900/80 border border-slate-800/60 px-3 py-1.5 rounded-lg gap-2">
+<span class="material-symbols-outlined text-slate-400 text-sm">search</span>
+<input class="bg-transparent border-none focus:ring-0 text-xs font-['Space_Grotesk'] text-slate-200 w-64 placeholder-slate-500" placeholder="Search episodes..." type="text">
+</div>
+</div>
+<nav class="flex items-center gap-2">
+<button class="p-1.5 text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 transition-colors rounded-lg">
+<span class="material-symbols-outlined text-lg">history</span>
+</button>
+<button class="p-1.5 text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 transition-colors rounded-lg">
+<span class="material-symbols-outlined text-lg">refresh</span>
+</button>
+<button class="p-1.5 text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 transition-colors rounded-lg">
+<span class="material-symbols-outlined text-lg">account_circle</span>
+</button>
+</nav></header>
+<!-- SideNavBar -->
+<aside class="fixed left-0 top-12 bottom-8 w-[220px] z-40 bg-slate-900/50 backdrop-blur-md border-r border-slate-800/30 flex flex-col py-8 px-4 gap-y-6"><div class="mb-2 px-2">
+<div class="font-['Space_Grotesk'] font-bold text-slate-200 text-sm tracking-wide">RECALL</div>
+<div class="font-['JetBrains_Mono'] text-[10px] text-slate-500 tracking-wider mt-0.5">v1.0.4-stable</div>
+</div>
+<nav class="flex flex-col gap-y-1">
+<a class="flex items-center gap-3 py-2 px-3 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-900 font-['JetBrains_Mono'] text-[11px] uppercase tracking-wider transition-all" href="#">
+<span class="material-symbols-outlined text-base">dashboard</span>
+                Dashboard
+            </a>
+<a class="flex items-center gap-3 py-2 px-3 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-900 font-['JetBrains_Mono'] text-[11px] uppercase tracking-wider transition-all" href="#">
+<span class="material-symbols-outlined text-base">account_tree</span>
+                Knowledge Graph
+            </a>
+<a class="flex items-center gap-3 py-2 px-3 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-900 font-['JetBrains_Mono'] text-[11px] uppercase tracking-wider transition-all" href="#">
+<span class="material-symbols-outlined text-base">category</span>
+                Entities
+            </a>
+<a class="flex items-center gap-3 py-2 px-3 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-900 font-['JetBrains_Mono'] text-[11px] uppercase tracking-wider transition-all" href="#">
+<span class="material-symbols-outlined text-base">hub</span>
+                Relations
+            </a>
+<a class="flex items-center gap-3 py-2 px-3 rounded-lg text-primary bg-primary/10 border-l-2 border-primary font-['JetBrains_Mono'] text-[11px] uppercase tracking-wider transition-all" href="#">
+<span class="material-symbols-outlined text-base">history_edu</span>
+                Episodes
+            </a>
+</nav>
+<div class="mt-auto px-1">
+<button class="w-full py-2 px-3 bg-surface-container-high border border-outline-variant/10 text-on-surface font-['Space_Grotesk'] text-xs font-semibold rounded-lg uppercase tracking-wider mb-2 hover:bg-surface-bright transition-colors text-center">
+                Project Scope
+            </button>
+<div class="flex items-center justify-center gap-2 py-1.5 px-3 text-slate-400 hover:text-slate-300 cursor-pointer font-['JetBrains_Mono'] text-[11px] uppercase tracking-wider rounded-lg transition-colors">
+<span class="material-symbols-outlined text-base">public</span>
+                Global Scope
+            </div>
+</div></aside>
+<!-- Main Content -->
+<main class="pl-[220px] pt-12 pb-8 min-h-screen flex">
+<!-- Activity Stream Area -->
+<section class="flex-1 px-10 py-10 overflow-y-auto max-h-[calc(100vh-5rem)] custom-scrollbar">
+<!-- Header with Status -->
+<div class="flex justify-between items-end mb-12"><div>
+<h1 class="font-headline text-3xl font-semibold text-slate-100 tracking-tight mb-1.5">Episodes</h1>
+<p class="font-mono text-[11px] text-slate-400 tracking-[0.15em] uppercase">Chronological Intelligence Stream</p>
+</div>
+<div class="flex items-center gap-2.5 bg-surface-container-low/70 px-3 py-1.5 rounded-full border border-outline-variant/10">
+<span class="relative flex h-2 w-2">
+<span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400/40 opacity-75"></span>
+<span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-400/80"></span>
+</span>
+<span class="font-mono text-[10px] text-slate-300 tracking-wider uppercase font-medium">Actively Indexing</span>
+</div></div>
+<!-- Timeline Rows -->
+<div class="flex items-center gap-2 mb-8"><div class="inline-flex p-1 bg-surface-container-lowest/80 border border-outline-variant/10 rounded-full gap-1">
+<button class="px-4 py-1.5 bg-surface-container-high text-slate-100 font-['Space_Grotesk'] text-[11px] font-semibold rounded-full uppercase tracking-wider transition-colors shadow-sm">
+    Project Scope
+  </button>
+<button class="px-4 py-1.5 text-slate-400 hover:text-slate-200 font-['Space_Grotesk'] text-[11px] font-medium rounded-full uppercase tracking-wider transition-colors">
+    Global Scope
+  </button>
+</div></div><div class="space-y-1"><!-- Log Entry: Selected/Active -->
+<div class="group grid grid-cols-[auto_1fr_auto_auto] items-center gap-4 px-5 py-3.5 bg-surface-container-high/40 border border-primary/25 rounded-xl cursor-pointer transition-all hover:border-primary/40">
+<div class="w-2 h-2 rounded-full bg-primary ring-4 ring-primary/10"></div>
+<div class="flex flex-col min-w-0 pr-4">
+<span class="font-headline text-[13px] font-medium text-slate-100 tracking-tight">feat(auth): add JWT validation middleware</span>
+<div class="flex items-center gap-2.5 mt-1">
+<span class="font-mono text-[9px] px-2 py-0.5 bg-secondary/10 text-secondary rounded font-medium tracking-wide">AI SUMMARY</span>
+<p class="font-mono text-[11px] text-slate-400 truncate max-w-lg">Implemented asymmetric key verification using RS256 algorithm...</p>
+</div>
+</div>
+<div class="flex items-center gap-2">
+<span class="font-mono text-[9px] text-slate-300 px-2.5 py-0.5 bg-slate-800/70 border border-slate-700/40 rounded uppercase tracking-wider">Secret Sanitized</span>
+</div>
+<div class="text-right pl-3">
+<span class="font-mono text-[11px] text-slate-400">2 mins ago</span>
+</div>
+</div>
+<!-- Log Entry -->
+<div class="group grid grid-cols-[auto_1fr_auto_auto] items-center gap-4 px-5 py-3.5 rounded-xl border border-transparent hover:border-outline-variant/10 hover:bg-surface-container-low/40 transition-all cursor-pointer">
+<div class="w-2 h-2 rounded-full bg-slate-500/60"></div>
+<div class="flex flex-col min-w-0 pr-4">
+<span class="font-headline text-[13px] font-medium text-slate-300 group-hover:text-slate-100">docs: update architecture.md with new graph schemas</span>
+<p class="font-mono text-[11px] text-slate-400 mt-1 italic opacity-75">Manual documentation sync for v1.0.4-STABLE core objects.</p>
+</div>
+<div></div>
+<div class="text-right pl-3">
+<span class="font-mono text-[11px] text-slate-400">14 mins ago</span>
+</div>
+</div>
+<!-- Log Entry -->
+<div class="group grid grid-cols-[auto_1fr_auto_auto] items-center gap-4 px-5 py-3.5 rounded-xl border border-transparent hover:border-outline-variant/10 hover:bg-surface-container-low/40 transition-all cursor-pointer">
+<div class="w-2 h-2 rounded-full bg-slate-400/80"></div>
+<div class="flex flex-col min-w-0 pr-4">
+<span class="font-headline text-[13px] font-medium text-slate-300 group-hover:text-slate-100">fix(ingestion): resolve race condition in node creation</span>
+<div class="flex items-center gap-2.5 mt-1">
+<span class="font-mono text-[9px] px-2 py-0.5 bg-secondary/10 text-secondary rounded font-medium tracking-wide">AI SUMMARY</span>
+<p class="font-mono text-[11px] text-slate-400 truncate max-w-lg">Identified overlapping write locks on the global scope entity...</p>
+</div>
+</div>
+<div class="flex items-center gap-2">
+<span class="font-mono text-[9px] text-slate-300 px-2.5 py-0.5 bg-slate-800/70 border border-slate-700/40 rounded uppercase tracking-wider">Secret Sanitized</span>
+</div>
+<div class="text-right pl-3">
+<span class="font-mono text-[11px] text-slate-400">1 hr ago</span>
+</div>
+</div>
+<!-- Log Entry -->
+<div class="group grid grid-cols-[auto_1fr_auto_auto] items-center gap-4 px-5 py-3.5 rounded-xl border border-transparent hover:border-outline-variant/10 hover:bg-surface-container-low/40 transition-all cursor-pointer">
+<div class="w-2 h-2 rounded-full bg-slate-600"></div>
+<div class="flex flex-col min-w-0 pr-4">
+<span class="font-headline text-[13px] font-medium text-slate-300 group-hover:text-slate-100">chore: backup production database to s3 bucket</span>
+<p class="font-mono text-[11px] text-slate-400 mt-1">Automated backup sequence initiated by system cron.</p>
+</div>
+<div></div>
+<div class="text-right pl-3">
+<span class="font-mono text-[11px] text-slate-400">4 hrs ago</span>
+</div>
+</div>
+<!-- Log Entry -->
+<div class="group grid grid-cols-[auto_1fr_auto_auto] items-center gap-4 px-5 py-3.5 rounded-xl border border-transparent hover:border-outline-variant/10 hover:bg-surface-container-low/40 transition-all cursor-pointer">
+<div class="w-2 h-2 rounded-full bg-slate-500/60"></div>
+<div class="flex flex-col min-w-0 pr-4">
+<span class="font-headline text-[13px] font-medium text-slate-300 group-hover:text-slate-100">feat(ui): implement glassmorphism panels for curators</span>
+<div class="flex items-center gap-2.5 mt-1">
+<p class="font-mono text-[11px] text-slate-400 truncate max-w-lg">Applying the new Digital Curator design system guidelines...</p>
+</div>
+</div>
+<div></div>
+<div class="text-right pl-3">
+<span class="font-mono text-[11px] text-slate-400">yesterday</span>
+</div>
+</div></div>
+</section>
+<!-- Sidebar Detail Panel -->
+<aside class="w-[400px] border-l border-outline-variant/10 bg-surface-container-low/50 backdrop-blur-xl p-8 flex flex-col gap-10"><!-- Summary Header -->
+<div class="space-y-3">
+<div class="flex items-center justify-between pb-1">
+<span class="font-mono text-[10px] text-primary tracking-[0.2em] uppercase font-semibold">Episode Details</span>
+<button class="text-slate-400 hover:text-slate-200 p-1 rounded-md transition-colors">
+<span class="material-symbols-outlined text-lg">close</span>
+</button>
+</div>
+<h2 class="font-headline text-lg font-semibold text-slate-100 tracking-tight leading-snug">feat(auth): add JWT validation middleware</h2>
+<div class="flex gap-2 flex-wrap pt-0.5">
+<span class="px-2.5 py-1 bg-surface-container-high border border-outline-variant/10 text-slate-300 font-mono text-[9px] uppercase tracking-wider rounded-md">Module: Authentication</span>
+<span class="px-2.5 py-1 bg-primary/10 text-primary border border-primary/20 font-mono text-[9px] uppercase tracking-wider rounded-md font-medium">Priority: High</span>
+</div>
+</div>
+<!-- AI Summary Card -->
+<div class="bg-surface-container-high/60 rounded-xl p-4 border border-outline-variant/10 shadow-sm">
+<div class="flex items-center gap-2 mb-2">
+<span class="material-symbols-outlined text-primary text-base" style="font-variation-settings: 'FILL' 1;">auto_awesome</span>
+<span class="font-mono text-[10px] text-primary tracking-widest uppercase font-semibold">AI Insights Summary</span>
+</div>
+<p class="font-body text-xs text-slate-300 leading-relaxed">
+    This episode involves the hardening of the primary entry point. The middleware introduces RS256 asymmetric signature verification, significantly reducing the attack surface for spoofed identity tokens. It successfully links <span class="text-primary font-mono text-[11px] bg-primary/10 px-1.5 py-0.5 rounded">UserAuthEdge</span> to <span class="text-primary font-mono text-[11px] bg-primary/10 px-1.5 py-0.5 rounded">SecurityContextNode</span>.
+</p>
+</div>
+<!-- Entities & Edges -->
+<div class="space-y-5">
+<div>
+<h3 class="font-mono text-[10px] text-slate-400 uppercase tracking-[0.2em] mb-2.5 font-medium">Extracted Entities</h3>
+<div class="space-y-2">
+<div class="flex items-center justify-between p-2.5 bg-surface-container-lowest/80 border border-outline-variant/10 rounded-lg group hover:border-primary/30 transition-colors">
+<div class="flex items-center gap-2.5">
+<span class="material-symbols-outlined text-primary text-base">person</span>
+<span class="font-headline text-xs font-medium text-slate-200">AuthMiddleware</span>
+</div>
+<span class="font-mono text-[9px] text-slate-400 bg-slate-900 px-2 py-0.5 rounded border border-outline-variant/10">CLASS</span>
+</div>
+<div class="flex items-center justify-between p-2.5 bg-surface-container-lowest/80 border border-outline-variant/10 rounded-lg group hover:border-primary/30 transition-colors">
+<div class="flex items-center gap-2.5">
+<span class="material-symbols-outlined text-primary text-base">key</span>
+<span class="font-headline text-xs font-medium text-slate-200">JWTSignature</span>
+</div>
+<span class="font-mono text-[9px] text-slate-400 bg-slate-900 px-2 py-0.5 rounded border border-outline-variant/10">OBJECT</span>
+</div>
+</div>
+</div>
+<div>
+<h3 class="font-mono text-[10px] text-slate-400 uppercase tracking-[0.2em] mb-2.5 font-medium">Relational Edges</h3>
+<div class="space-y-2">
+<div class="p-2.5 bg-surface-container-lowest/80 border border-outline-variant/10 rounded-lg">
+<div class="flex items-center justify-between mb-1.5">
+<span class="font-headline text-xs font-medium text-slate-200">Validates</span>
+<span class="font-mono text-[9px] text-emerald-400 bg-emerald-950/40 border border-emerald-500/20 px-1.5 py-0.5 rounded">ACTIVE</span>
+</div>
+<div class="flex items-center gap-2 font-mono text-[10px] text-slate-400">
+<span>AuthMiddleware</span>
+<span class="material-symbols-outlined text-[12px] text-slate-500">arrow_forward</span>
+<span>IdentityToken</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Actions -->
+<div class="mt-auto grid grid-cols-2 gap-3 pt-4 border-t border-outline-variant/10">
+<button class="py-2 px-3 bg-surface-container-high border border-outline-variant/10 text-slate-300 font-headline text-xs font-medium uppercase tracking-wider hover:bg-surface-bright hover:text-slate-100 transition-colors rounded-lg">
+    Inspect Trace
+</button>
+<button class="py-2 px-3 bg-primary-container text-on-primary-container font-headline text-xs font-medium uppercase tracking-wider hover:bg-primary-fixed-dim transition-colors rounded-lg shadow-sm">
+    Open Graph
+</button>
+</div></aside>
+</main>
+<!-- Footer -->
+<footer class="fixed bottom-0 w-full h-8 z-50 bg-slate-950 flex items-center justify-between px-4 border-t border-slate-800"><div class="flex items-center gap-6">
+<span class="font-['JetBrains_Mono'] text-[10px] font-semibold uppercase text-slate-500 tracking-wider">RECALL_CORE_v1</span>
+<div class="flex gap-4">
+<span class="font-['JetBrains_Mono'] text-[10px] text-slate-400 hover:text-slate-200 transition-colors cursor-pointer">ENTITIES: 1,242</span>
+<span class="font-['JetBrains_Mono'] text-[10px] text-slate-400 hover:text-slate-200 transition-colors cursor-pointer">EDGES: 8,490</span>
+<span class="font-['JetBrains_Mono'] text-[10px] text-slate-400 hover:text-slate-200 transition-colors cursor-pointer">EPISODES: 154</span>
+</div>
+</div>
+<div class="flex items-center gap-2.5">
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-400/80"></span>
+<span class="font-['JetBrains_Mono'] text-[10px] uppercase text-slate-400 tracking-wider font-medium">Node Sync Active</span>
+</div></footer>
+</body></html>

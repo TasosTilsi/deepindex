@@ -3,8 +3,9 @@
 
 import type Database from 'better-sqlite3';
 import { z } from 'zod';
-import { searchEntities, getRelatedRecursive } from '../git/search.js';
+import { searchEntities, getRelatedRecursive, type SearchHit } from '../git/search.js';
 import { projectFullGraph } from '../graph/projection.js';
+import { hybridSearch, type HybridHit } from '../semantic/search-hybrid.js';
 
 // --- Tool schemas (zod) ---
 
@@ -20,6 +21,14 @@ export const getEntitySchema = {
 export const getBacklinksSchema = {
   entity_id: z.string().describe('Entity UUID or exact name'),
   hops: z.number().int().min(1).max(5).default(1).optional(),
+};
+
+/** semantic_search (SRSR-02): hybrid RRF search over FTS5 + vec KNN + file
+ *  retrieval. Read-only; lexical degradation is server-side (SRSR-03). */
+export const semanticSearchSchema = {
+  query: z.string().describe('semantic/hybrid query'),
+  limit: z.number().int().min(1).max(100).default(20).optional(),
+  mode: z.enum(['lexical', 'semantic', 'hybrid']).default('hybrid').optional(),
 };
 
 export const typeListSchema = {
@@ -40,6 +49,22 @@ export function searchKnowledge(db: Database.Database, args: { query: string; li
       source_commit: h.commitSha,
       related: h.related.map((r) => ({ id: r.id, name: r.name, type: r.type, relationship: r.relationship })),
     })),
+  };
+}
+
+/** semantic_search — hybrid RRF search (D-28b). ASYNC: the embedder contract
+ *  is async (ONNX inference). The embedder model resolves inside hybridSearch
+ *  from the [semantic] config at the repo (D-24) — no model threading. */
+export async function semanticSearch(
+  db: Database.Database,
+  args: { query: string; limit?: number; mode?: 'lexical' | 'semantic' | 'hybrid' }
+): Promise<{ results: HybridHit[] | SearchHit[] }> {
+  return {
+    results: await hybridSearch(db, args.query, {
+      mode: args.mode,
+      limit: args.limit ?? 20,
+      repoPath: process.cwd(),
+    }),
   };
 }
 

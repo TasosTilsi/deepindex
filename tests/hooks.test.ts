@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { mkdtempSync, rmSync, existsSync, readFileSync } from 'node:fs';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
+import { mkdtempSync, rmSync, existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { initDb, closeDb } from '../src/graph/db.js';
@@ -10,7 +10,17 @@ import { postToolUse } from '../src/hooks/post-tool-use.js';
 import { sessionEnd } from '../src/hooks/session-end.js';
 import { installClaudeSettings } from '../src/mcp/install.js';
 import { createGitFixture } from './helpers/git-fixture.js';
+import type { Embedder } from '../src/semantic/embedder.js';
 import type Database from 'better-sqlite3';
+
+function fakeEmbedder(model = 'fake'): Embedder {
+  return {
+    model,
+    dim: 384,
+    embed: async (texts) =>
+      texts.map((t) => Array.from({ length: 384 }, (_, i) => ((t.length + i) % 89) / 178 - 0.25)),
+  };
+}
 
 describe('hooks', () => {
   let db: Database.Database;
@@ -32,14 +42,14 @@ describe('hooks', () => {
     rmSync(FIXTURE, { recursive: true, force: true });
   });
 
-  it('session-start syncs git (HOOK-01)', () => {
-    const r = sessionStart(FIXTURE, dbPath);
+  it('session-start syncs git (HOOK-01)', async () => {
+    const r = await sessionStart(FIXTURE, dbPath);
     expect(r.ok).toBe(true);
     expect(r.message).toContain('git sync');
   });
 
-  it('session-start returns error for missing repo', () => {
-    const r = sessionStart('/nonexistent/path', dbPath);
+  it('session-start returns error for missing repo', async () => {
+    const r = await sessionStart('/nonexistent/path', dbPath);
     expect(r.ok).toBe(false);
   });
 
@@ -75,5 +85,139 @@ describe('hooks', () => {
     const r2 = installClaudeSettings(proj);
     expect(r2.mcpAdded).toBe(false);
     expect(r2.hooksAdded).toBe(false);
+  });
+});
+
+describe('sessionStart auto-chain (HOOK-04, D-26c/D-29)', () => {
+  let chainDbPath: string;
+  let fixture: string;
+  const tmpChain = mkdtempSync(join(tmpdir(), 'deepindex-hookchain-'));
+
+  beforeAll(() => {
+    chainDbPath = join(tmpChain, 'chain.db');
+    fixture = createGitFixture();
+    // REVIEW-FIX W1: the chain's embed step is gated on [semantic].enabled AND
+    // a cached model — these tests prove the chain end-to-end, so the fixture
+    // opts in and a model-cache marker satisfies the gate without any native
+    // model (the injected loader never reaches getEmbedder's real path).
+    writeFileSync(join(fixture, '.deepindex.toml'), '[semantic]\nenabled = true\n');
+    const cacheDir = join(tmpChain, 'model-cache');
+    mkdirSync(join(cacheDir, 'Xenova', 'all-MiniLM-L6-v2'), { recursive: true });
+    process.env.DEEPINDEX_MODEL_CACHE_DIR = cacheDir;
+  });
+
+  afterAll(() => {
+    delete process.env.DEEPINDEX_MODEL_CACHE_DIR;
+    rmSync(tmpChain, { recursive: true, force: true });
+    rmSync(fixture, { recursive: true, force: true });
+  });
+
+  // (a) Chain order git-sync → index → embed on a fresh session with an
+  // injected loader (fake embedder, zero native code).
+  it('chains git-sync, re-index and embed in order on a fresh session', async () => {
+    const loaderModels: string[] = [];
+    const r = await sessionStart(fixture, chainDbPath, {
+      budgetMs: 60000,
+      loader: async (m) => {
+        loaderModels.push(m);
+        return fakeEmbedder(m);
+      },
+    });
+    expect(r.ok).toBe(true);
+    const syncAt = r.message.indexOf('git sync');
+    const indexAt = r.message.indexOf('indexed');
+    const embedAt = r.message.indexOf('embedded');
+    expect(syncAt).toBeGreaterThanOrEqual(0);
+    expect(indexAt).toBeGreaterThan(syncAt);
+    expect(embedAt).toBeGreaterThan(indexAt);
+    expect(loaderModels.length).toBe(1);
+    // All three stores updated by the single chain (HOOK-04 acceptance).
+    const db = initDb(chainDbPath);
+    try {
+      const commits = db.prepare('SELECT COUNT(*) c FROM commits').get() as { c: number };
+      const files = db.prepare('SELECT COUNT(*) c FROM files').get() as { c: number };
+      const meta = db.prepare('SELECT COUNT(*) c FROM embeddings_meta').get() as { c: number };
+      expect(commits.c).toBeGreaterThan(0);
+      expect(files.c).toBeGreaterThan(0);
+      expect(meta.c).toBeGreaterThan(0);
+    } finally {
+      db.close();
+    }
+  });
+
+  // (b) HOOK-04 acceptance: unchanged second session NEVER loads the model —
+  // the loader spy records zero calls.
+  it('second unchanged session completes without loading the model', async () => {
+    const loader = vi.fn(async (m: string) => fakeEmbedder(m));
+    const r = await sessionStart(fixture, chainDbPath, {
+      budgetMs: 60000,
+      loader,
+    });
+    expect(r.ok).toBe(true);
+    expect(r.message).toContain('embeddings up to date');
+    expect(loader).toHaveBeenCalledTimes(0);
+  });
+
+  // (c) Budget expiry: budgetMs 0 skips the embed step but git sync + index
+  // still apply, ok stays true (cursor/hash guards make deferral safe).
+  it('budgetMs 0 defers the embed step while git sync and index still apply', async () => {
+    const { appendFileSync } = await import('node:fs');
+    appendFileSync(join(fixture, 'src', 'mul.ts'), '// budget test mutation\n');
+    const loader = vi.fn(async (m: string) => fakeEmbedder(m));
+    const r = await sessionStart(fixture, chainDbPath, {
+      budgetMs: 0,
+      loader,
+    });
+    expect(r.ok).toBe(true);
+    expect(r.message).toContain('git sync');
+    expect(r.message).toContain('indexed');
+    expect(r.message).toContain('deferred');
+    expect(loader).toHaveBeenCalledTimes(0);
+  });
+
+  // (d) RSK-4: an embedder/ONNX failure never fails the chain — ok stays
+  // true, index results survive, message names the embed failure.
+  it('loader failure leaves ok true and the index intact', async () => {
+    const r = await sessionStart(fixture, chainDbPath, {
+      budgetMs: 60000,
+      loader: async () => {
+        throw new Error('onnx boom');
+      },
+    });
+    expect(r.ok).toBe(true);
+    expect(r.message).toContain('git sync');
+    expect(r.message).toContain('indexed');
+    expect(r.message).toContain('embed failed: onnx boom');
+  });
+});
+
+// REVIEW-FIX W1: sessionStart step 3 is GATED — default installs (semantic
+// disabled or model uncached) pay no corpus scan and no refusal noise.
+describe('hooks: auto-embed gate (REVIEW finding 1)', () => {
+  const tmpDir2 = mkdtempSync(join(tmpdir(), 'deepindex-hooks-gate-'));
+  const dbPath2 = join(tmpDir2, 'g.db');
+  const FIXTURE2 = createGitFixture();
+
+  afterAll(() => {
+    rmSync(tmpDir2, { recursive: true, force: true });
+    rmSync(FIXTURE2, { recursive: true, force: true });
+  });
+
+  it('semantic disabled: hook completes without embed work and without noise', async () => {
+    const r = await sessionStart(FIXTURE2, join(tmpDir2, 'a.db'));
+    expect(r.ok).toBe(true);
+    expect(r.message).not.toContain('embed');
+    expect(r.message).not.toContain('run deepindex embed');
+  });
+
+  it('semantic enabled + model uncached: no refusal noise, still ok', async () => {
+    writeFileSync(join(FIXTURE2, '.deepindex.toml'), '[semantic]\nenabled = true\n');
+    const loader = vi.fn();
+    const r = await sessionStart(FIXTURE2, join(tmpDir2, 'b.db'), { loader: loader as unknown as (m: string) => Promise<Embedder> });
+    expect(r.ok).toBe(true);
+    expect(r.message).not.toContain('embed failed');
+    expect(r.message).not.toContain('run deepindex embed');
+    expect(loader).not.toHaveBeenCalled();
+    rmSync(join(FIXTURE2, '.deepindex.toml'));
   });
 });

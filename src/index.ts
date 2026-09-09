@@ -35,7 +35,16 @@ export {
   apiSearch,
   apiSymbols,
   apiProjects,
+  apiHealth,
+  apiCommits,
+  apiRelations,
+  apiEntity,
+  apiActivity,
   handleApi,
+  type CommitEntry,
+  type CommitEntity,
+  type RelationEntry,
+  type ActivityWeek,
 } from './dashboard/api.js';
 export {
   loadRegistry,
@@ -87,6 +96,54 @@ export {
   type RelatedEntity,
 } from './git/search.js';
 export { createMcpServer, serveMcp } from './mcp/server.js';
+export {
+  buildCorpus,
+  moduleCards,
+  markdownChunks,
+  type SemanticDoc,
+} from './semantic/knowledge.js';
+export {
+  embed,
+  embedStatus,
+  stalenessScan,
+  autoEmbedStep,
+  type EmbedResult,
+  type EmbedStatusPayload,
+} from './semantic/embed.js';
+export {
+  ensureVecTables,
+  vecSearch,
+  deleteVecRow,
+  EMBEDDING_DIM,
+  type VecTable,
+} from './semantic/vec.js';
+export {
+  loadSemanticConfig,
+  loadHooksConfig,
+  type SemanticConfig,
+  type HooksConfig,
+  DEFAULT_SEMANTIC_CONFIG,
+} from './semantic/config.js';
+export {
+  resolveModelName,
+  hasCachedModel,
+  modelCacheDir,
+  fetchModel,
+  loadRealEmbedder,
+  getEmbedder,
+  FETCH_MODEL_COMMAND,
+  MODEL_CONFIGS,
+  type Embedder,
+  type ModelConfig,
+  SemanticUnavailableError,
+} from './semantic/embedder.js';
+export {
+  hybridSearch,
+  rrfFuse,
+  type HybridHit,
+  type HitKind,
+  type HitSource,
+} from './semantic/search-hybrid.js';
 export {
   searchKnowledge,
   getEntity,

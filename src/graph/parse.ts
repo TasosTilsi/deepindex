@@ -11,6 +11,10 @@ export interface ParsedSymbol {
   endLine: number;
   exported: boolean;
   complexity: number;
+  /** Comment block immediately preceding the declaration (D-27c), stripped
+   *  of comment markers, clamped at 400 chars. '' when none — comment-thin
+   *  repos degrade gracefully (KSRC-03). */
+  docstring: string;
 }
 
 export interface ParsedImport {
@@ -119,7 +123,9 @@ function collectSymbols(node: SyntaxNode, out: ParsedSymbol[], langKey: string):
     if (child) {
       const normalized = config.nodeMap[child.type];
       if (normalized) {
-        const sym = nodeToSymbol(child, langKey);
+        // Docstring comments are siblings of the export_statement itself, not
+        // of the inner declaration — walk from the outer node.
+        const sym = nodeToSymbol(child, langKey, node);
         if (sym) {
           sym.exported = true;
           out.push(sym);
@@ -136,6 +142,7 @@ function collectSymbols(node: SyntaxNode, out: ParsedSymbol[], langKey: string):
               endLine: child.endPosition.row,
               exported: true,
               complexity: 0,
+              docstring: extractDocstring(node),
             });
           }
         }
@@ -160,6 +167,7 @@ function collectSymbols(node: SyntaxNode, out: ParsedSymbol[], langKey: string):
           endLine: node.endPosition.row,
           exported: false,
           complexity: 0,
+          docstring: extractDocstring(node),
         });
       }
     }
@@ -170,6 +178,35 @@ function collectSymbols(node: SyntaxNode, out: ParsedSymbol[], langKey: string):
     const c = node.child(i);
     if (c) collectSymbols(c, out, langKey);
   }
+}
+
+/** Docstring capture (D-27c): walk previousNamedSibling backwards collecting
+ *  consecutive comment nodes, stopping at the first non-comment sibling.
+ *  Strip comment markers per line, drop blank lines, clamp at 400 chars
+ *  (OQ-12 — POC docstring cap). '' when the symbol has no preceding comment
+ *  (comment-thin repos degrade gracefully — KSRC-03). */
+function extractDocstring(node: SyntaxNode): string {
+  const parts: string[] = [];
+  let sibling: SyntaxNode | null = node.previousNamedSibling;
+  while (sibling && sibling.type.includes('comment')) {
+    parts.unshift(sibling.text);
+    sibling = sibling.previousNamedSibling;
+  }
+  if (parts.length === 0) return '';
+  const stripped = parts
+    .join('\n')
+    .split('\n')
+    .map((line) =>
+      line
+        .replace(/^\s*\/\/\s?/, '')
+        .replace(/^\s*\/\*+\s?/, '')
+        .replace(/\s*\*+\/\s*$/, '')
+        .replace(/^\s*\*+\s?/, '')
+        .trimEnd()
+    )
+    .filter((line) => line.length > 0);
+  const text = stripped.join('\n');
+  return text.length > 400 ? text.slice(0, 400) : text;
 }
 
 function calculateComplexity(node: SyntaxNode): number {
@@ -183,7 +220,11 @@ function calculateComplexity(node: SyntaxNode): number {
   return count;
 }
 
-function nodeToSymbol(node: SyntaxNode, langKey: string): ParsedSymbol | null {
+function nodeToSymbol(
+  node: SyntaxNode,
+  langKey: string,
+  docNode: SyntaxNode = node
+): ParsedSymbol | null {
   const config = LANGUAGE_CONFIGS[langKey];
   if (!config) return null;
   let name: string | null = null;
@@ -232,6 +273,7 @@ function nodeToSymbol(node: SyntaxNode, langKey: string): ParsedSymbol | null {
     endLine: node.endPosition.row,
     exported: false,
     complexity: calculateComplexity(node),
+    docstring: extractDocstring(docNode),
   };
 }
 

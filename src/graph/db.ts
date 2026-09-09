@@ -2,7 +2,7 @@ import Database from 'better-sqlite3';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 
-const SCHEMA_VERSION = 5;
+const SCHEMA_VERSION = 6;
 
 const SCHEMA_V2 = `
 CREATE TABLE IF NOT EXISTS health_signals (
@@ -98,6 +98,44 @@ CREATE TRIGGER IF NOT EXISTS entities_fts_au AFTER UPDATE ON entities BEGIN
 END;
 `;
 
+// Phase 8: Semantic Retrieval & Embeddings (schema v6). PLAIN SQL ONLY — the
+// vec0 virtual tables (entity_vecs/symbol_vecs/doc_vecs) are created lazily by
+// src/semantic/vec.ts#ensureVecTables, which loads the sqlite-vec extension per
+// connection. initDb must NEVER require the extension: readonly watcher handles
+// (src/watcher.ts) and serve db copies (src/serve.ts) open connections that
+// must keep working without it. embeddings_meta maps each embedded doc to its
+// vec0 rowid (auto-rowid inserts only — declared-PK inserts are broken in
+// sqlite-vec 0.1.9) and records the model/dim per row.
+const SCHEMA_V6 = `
+CREATE TABLE IF NOT EXISTS embeddings_meta (
+  kind TEXT NOT NULL CHECK(kind IN ('entity','symbol','module','doc')),
+  doc_id TEXT NOT NULL,
+  vec_rowid INTEGER NOT NULL,
+  hash TEXT NOT NULL,
+  model TEXT NOT NULL,
+  dim INTEGER NOT NULL,
+  source_path TEXT,
+  embedded_at INTEGER NOT NULL,
+  label TEXT NOT NULL DEFAULT '',
+  snippet TEXT NOT NULL DEFAULT '',
+  PRIMARY KEY (kind, doc_id)
+);
+CREATE INDEX IF NOT EXISTS idx_embeddings_meta_source
+  ON embeddings_meta(source_path) WHERE source_path IS NOT NULL;
+`;
+
+// Phase 8 REVIEW-FIX (finding 3): label + snippet are persisted AT EMBED TIME
+// so the search request path resolves hits from embeddings_meta alone — no
+// corpus rebuild per query. Same lifecycle as the vector: refreshed on every
+// re-embed, so snippet staleness == vector staleness. Fresh v6 DBs get them
+// from the CREATE TABLE above; pre-existing v6 DBs via the idempotent ladder.
+function addColumnIfMissing(db: Database.Database, table: string, column: string, ddl: string): void {
+  const cols = db.pragma(`table_info(${table})`) as { name: string }[];
+  if (!cols.some((c) => c.name === column)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${ddl}`);
+  }
+}
+
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS files (
   id INTEGER PRIMARY KEY,
@@ -166,6 +204,7 @@ export function initDb(dbPath: string): Database.Database {
   db.exec(SCHEMA_V2);
   db.exec(SCHEMA_V3);
   db.exec(SCHEMA_V5);
+  db.exec(SCHEMA_V6);
   // Idempotent column migration: `complexity` was added to the base CREATE
   // TABLE, but CREATE TABLE IF NOT EXISTS is a no-op on existing DBs, so a
   // pre-existing .deepindex.db lacks the column. Add it if missing. This is the
@@ -175,6 +214,14 @@ export function initDb(dbPath: string): Database.Database {
   if (!cols.some((c) => c.name === 'complexity')) {
     db.exec('ALTER TABLE symbols ADD COLUMN complexity INTEGER DEFAULT 0');
   }
+  // Phase 8 (D-27c): docstring captured by the parser, persisted per symbol.
+  // Same idempotent column-add pattern as `complexity` above.
+  if (!cols.some((c) => c.name === 'docstring')) {
+    db.exec("ALTER TABLE symbols ADD COLUMN docstring TEXT NOT NULL DEFAULT ''");
+  }
+  // REVIEW-FIX W3: label/snippet stored at embed time (see SCHEMA_V6 note).
+  addColumnIfMissing(db, 'embeddings_meta', 'label', "label TEXT NOT NULL DEFAULT ''");
+  addColumnIfMissing(db, 'embeddings_meta', 'snippet', "snippet TEXT NOT NULL DEFAULT ''");
   const v = db.pragma('user_version', { simple: true }) as number;
   if (v < SCHEMA_VERSION) {
     db.pragma(`user_version = ${SCHEMA_VERSION}`);
