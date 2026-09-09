@@ -126,9 +126,17 @@ export function serve(opts: ServeOptions = {}): Promise<ServeHandle> {
         const u = new URL(url, 'http://localhost');
         const projectKey = u.searchParams.get('project');
         let dbForApi = dbPath;
+        // REVIEW-FIX W5: the registry project path is the rootDir for API
+        // handlers (semantic config + md corpus are project-relative). Using
+        // process.cwd() for a remote project read the WRONG .deepindex.toml
+        // and the WRONG markdown corpus.
+        let projectRoot = process.cwd();
         if (projectKey) {
           const proj = getProject(projectKey, registryPath);
-          if (proj) dbForApi = proj.dbPath;
+          if (proj) {
+            dbForApi = proj.dbPath;
+            projectRoot = proj.path;
+          }
         }
         // Opening the db inside the try: an unopenable project db (missing
         // file, a directory, or a db outside a writable area) must answer
@@ -146,16 +154,13 @@ export function serve(opts: ServeOptions = {}): Promise<ServeHandle> {
             }
             openHandles.set(dbForApi, db);
             // Prepare vec capability on this connection (per-connection
-            // sqlite-vec load — RESEARCH §1.6). Non-fatal: initDb itself never
-            // loads the extension (RSK-2); a missing extension only leaves
-            // semantic search degraded, ensureVecTables reports { ok: false }.
-            try {
-              ensureVecTables(db);
-            } catch {
-              // extension load failure must never break the dashboard API
-            }
+            // sqlite-vec load — RESEARCH §1.6). ensureVecTables REPORTS
+            // failure via { ok: false } instead of throwing (RSK-2) — no
+            // try/catch needed; a missing extension only leaves semantic
+            // search degraded.
+            ensureVecTables(db);
           }
-          const r = await handleApi(db, url, registryPath, process.cwd());
+          const r = await handleApi(db, url, registryPath, projectRoot);
           sendJson(res, r.status, r.body);
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
