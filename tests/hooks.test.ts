@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
-import { mkdtempSync, rmSync, existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, rmSync, existsSync, readFileSync, writeFileSync, mkdirSync, appendFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { initDb, closeDb } from '../src/graph/db.js';
@@ -219,5 +219,45 @@ describe('hooks: auto-embed gate (REVIEW finding 1)', () => {
     expect(r.message).not.toContain('run deepindex embed');
     expect(loader).not.toHaveBeenCalled();
     rmSync(join(FIXTURE2, '.deepindex.toml'));
+  });
+});
+
+// Step 4 (D-06/D-29): sessionStart auto-repairs deterministically when health
+// drops below [health] repair_below — no LLM client, no watcher; budget-gated
+// like the other steps. Repair stages are deterministic, so nothing is
+// injected: a broken import (resolved=0) drops consistency → score < the
+// default threshold of 80; a fixture with repair_below = 40 scores 60 → OK.
+describe('hooks: sessionStart auto-repair (step 4, D-06/D-29)', () => {
+  const tmpRepair = mkdtempSync(join(tmpdir(), 'deepindex-hookrepair-'));
+
+  afterAll(() => {
+    rmSync(tmpRepair, { recursive: true, force: true });
+  });
+
+  it('health below threshold triggers deterministic repair (no LLM)', async () => {
+    const fixture = createGitFixture();
+    try {
+      // Broken import → 1/1 imports unresolved → consistency 0, score 40.
+      appendFileSync(join(fixture, 'src', 'mul.ts'), 'import { nope } from "./missing.js";\n');
+      const r = await sessionStart(fixture, join(tmpRepair, 'low.db'));
+      expect(r.ok).toBe(true);
+      expect(r.message).toContain('auto-repair: 3 stages run');
+      expect(r.message).not.toContain('llm');
+    } finally {
+      rmSync(fixture, { recursive: true, force: true });
+    }
+  });
+
+  it('healthy repo logs health OK and runs no repair', async () => {
+    const fixture = createGitFixture();
+    try {
+      writeFileSync(join(fixture, '.deepindex.toml'), '[health]\nrepair_below = 40\n');
+      const r = await sessionStart(fixture, join(tmpRepair, 'ok.db'));
+      expect(r.ok).toBe(true);
+      expect(r.message).toContain('health OK (score 60 >= threshold 40)');
+      expect(r.message).not.toContain('auto-repair');
+    } finally {
+      rmSync(fixture, { recursive: true, force: true });
+    }
   });
 });

@@ -1,9 +1,12 @@
 // Phase 8: SessionStart auto-chain (HOOK-04, D-26c) — git-sync → incremental
-// re-index → staleness-gated lazy re-embed, capped by hooks.session_budget_ms
-// (default 10000). D-29 (D-04 revised for sessionStart ONLY): sessionStart is
-// the ONLY auto-sync/auto-embed point in the codebase. The watcher stays
-// invalidate-only — src/watcher.ts is deliberately NOT touched by this module
-// and nothing here wires into it; manual repair remains the watcher's path.
+// re-index → staleness-gated lazy re-embed → deterministic auto-repair, capped
+// by hooks.session_budget_ms (default 10000). D-29 (D-04 revised for
+// sessionStart ONLY): sessionStart is the ONLY auto-sync/auto-embed/auto-repair
+// point in the codebase. The watcher stays invalidate-only — src/watcher.ts is
+// deliberately NOT touched by this module and nothing here wires into it;
+// manual repair remains the watcher's path. D-06: the repair step NEVER passes
+// an LLM client — repair() runs deterministic stages 1-3 only; stage 4 stays
+// manual/optional.
 
 import { initDb } from '../graph/db.js';
 import { gitSync } from '../git/indexer.js';
@@ -11,6 +14,8 @@ import { buildGraph } from '../graph/build.js';
 import { stalenessScan, embed } from '../semantic/embed.js';
 import { loadHooksConfig, loadSemanticConfig, DEFAULT_SEMANTIC_CONFIG } from '../semantic/config.js';
 import { hasCachedModel, resolveModelName, type Embedder } from '../semantic/embedder.js';
+import { getHealth, loadConfig } from '../health.js';
+import { repair } from '../repair.js';
 import { resolve } from 'node:path';
 import { existsSync } from 'node:fs';
 
@@ -37,8 +42,11 @@ export interface SessionStartOptions {
  *  (3) stalenessScan → re-embed only if stale docs remain AND the budget has
  *      not expired. The model loads lazily here and only here; expiry defers
  *      the re-embed with ok:true (cursor/hash guards make deferral safe).
+ *  (4) getHealth → if score < [health] repair_below, repair(db, absRepo) with
+ *      NO llm client (deterministic stages 1-3; repair() is health-gated per
+ *      stage internally). Budget expiry defers the health check safely.
  *  Any embed/ONNX failure is caught: ok stays true, index results survive
- *  (RSK-4). */
+ *  (RSK-4); a repair failure is caught the same way. */
 export async function sessionStart(
   repoPath: string,
   dbPath = '.deepindex.db',
@@ -95,6 +103,26 @@ export async function sessionStart(
       parts.push(
         `session budget (${budgetMs}ms) expired — re-embed deferred (safe: hash/cursor guards resume it next session)`
       );
+    }
+
+    // Step 4: deterministic auto-repair, budget-gated like the other steps
+    // (D-29: sessionStart is the ONLY auto-repair point; D-06: NO llm client
+    // is ever passed — repair() runs stages 1-3 only, stage 4 stays manual).
+    // Expiry defers the check safely: health is re-scored next session.
+    if (elapsed() < budgetMs) {
+      const hcfg = loadConfig(absRepo);
+      const report = getHealth(db, { config: hcfg });
+      if (report.score < hcfg.repairBelow) {
+        try {
+          const rr = await repair(db, absRepo, { config: hcfg });
+          parts.push(`auto-repair: ${rr.stages.length} stages run`);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          parts.push(`auto-repair failed: ${message}`);
+        }
+      } else {
+        parts.push(`health OK (score ${report.score} >= threshold ${hcfg.repairBelow})`);
+      }
     }
     return { ok: true, message: parts.join('; ') };
   } catch (err) {

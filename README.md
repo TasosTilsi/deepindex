@@ -43,7 +43,7 @@ It is not a vector database or a RAG framework. It is the deterministic, local-f
 - **One database** — a single SQLite store (schema v5) holds the symbol graph, data-flow graph, and temporal knowledge graph.
 - **Local-first** — no SaaS, no API key, no cloud. Runs entirely on your machine.
 - **Multi-harness** — MCP + hooks for Claude Code, Codex, OpenCode, and DeepSeek Harness.
-- **Self-healing** — health scoring + a repair pipeline that re-resolves imports, invalidates cache, probes git history, and (optionally) consults an LLM.
+- **Self-healing** — health scoring + a repair pipeline that re-resolves imports, invalidates cache, probes git history, and (optionally) consults an LLM. Sessions auto-repair deterministically (repair stages 1-3) whenever the health score drops below the configured threshold; the stage-4 LLM consultation stays manual/optional.
 - **Token-efficient** — retrieval assembles minimal context; health gates LLM calls; cache avoids re-computation.
 
 ---
