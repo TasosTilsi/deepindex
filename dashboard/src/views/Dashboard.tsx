@@ -1,6 +1,7 @@
 import { useApi, State } from '../useApi';
 import { withProject, timeAgo } from '../util';
 import type { CommitEntry } from '../DetailPanel';
+import type { ReactNode } from 'react';
 
 interface Overview {
   files: number;
@@ -90,6 +91,10 @@ export default function Dashboard({ qs, onSelectCommit }: { qs: string; onSelect
               </div>
               <div className="progress"><div style={{ width: pct(health.data ? health.data.score / 100 : 0.5) }} /></div>
             </div>
+
+            {/* Semantic Index (DASH-02, UI-SPEC §2.1 + R-W5/R-W8) — 4th card wraps to its
+                own row in grid-3 (U-2 accepted). Read-only: no buttons, no writes (D-28c). */}
+            <SemanticCard qs={qs} />
           </div>
 
           {/* Row 2: nexus activity + velocity */}
@@ -230,6 +235,89 @@ export default function Dashboard({ qs, onSelectCommit }: { qs: string; onSelect
         </>
       )}
     </State>
+  );
+}
+
+interface EmbedStatus {
+  available: boolean;
+  hint?: string;
+  model?: string;
+  dim?: number;
+  lastEmbedAt?: string;
+  coverage?: number;
+  staleCount?: number;
+  corpusCounts?: { entity: number; symbol: number; module: number; doc: number };
+}
+
+/** Overview "Semantic Index" card (UI-SPEC §2 + R-W5/R-W8). Mount-driven
+ *  useApi — refetch on project switch, no polling. States matrix §2.2:
+ *  E-10 (fetch error contained — never trips the outer <State> gate, which
+ *  checks only `overview`), E-11 (coverage clamp 0..1), E-12 (invalid
+ *  lastEmbedAt → '—'). No buttons, no click handlers (D-28c guardrail). */
+function SemanticCard({ qs }: { qs: string }) {
+  const status = useApi<EmbedStatus>(withProject('/api/embed-status', qs));
+  const d = status.data;
+  // E-11: missing/NaN coverage → 0; clamp to [0, 1] before rendering.
+  const coverage =
+    d && typeof d.coverage === 'number' && Number.isFinite(d.coverage)
+      ? Math.min(1, Math.max(0, d.coverage))
+      : 0;
+
+  let statValue = '—';
+  let subLine = '—';
+  let progress = 0;
+  let footLeft: ReactNode = '—';
+  let footRight: ReactNode = '—';
+
+  if (status.loading) {
+    statValue = '…';
+  } else if (status.error) {
+    subLine = 'status unavailable';
+  } else if (d && d.available === false) {
+    subLine = 'not available';
+    footLeft = (
+      <span>
+        hint: <code>deepindex embed --fetch-model</code>
+      </span>
+    );
+  } else if (d) {
+    if (coverage > 0) {
+      statValue = `${Math.round(coverage * 100)}%`;
+      subLine = d.model ? `${d.model} · ${d.dim}d` : '—';
+      progress = coverage;
+      // R-W5: '{n} stale' only when present and > 0; absent + coverage 1 → 'up to date';
+      // absent + coverage < 1 → omit stale text. Never '0 stale'.
+      footLeft =
+        d.staleCount !== undefined && d.staleCount > 0
+          ? `${d.staleCount} stale`
+          : coverage >= 1
+            ? 'up to date'
+            : '';
+    } else {
+      statValue = '0%';
+      subLine = 'not embedded';
+      footLeft = 'run deepindex embed';
+    }
+    // E-12: timeAgo returns '' for absent/invalid ISO → '—'.
+    footRight = d.lastEmbedAt ? timeAgo(d.lastEmbedAt) || '—' : '—';
+  }
+
+  return (
+    <div className="card">
+      <div className="card-title">
+        <div>
+          <p className="stat-label">Semantic Index</p>
+          <h3 className="stat-value">{statValue}</h3>
+        </div>
+        <div className="stat-icon"><span className="material-symbols-outlined">blur_on</span></div>
+      </div>
+      <p className="mono-label" style={{ marginBottom: 8 }}>{subLine}</p>
+      <div className="progress"><div style={{ width: pct(progress) }} /></div>
+      <div className="stat-foot">
+        <span>{footLeft}</span>
+        <span>{footRight}</span>
+      </div>
+    </div>
   );
 }
 
