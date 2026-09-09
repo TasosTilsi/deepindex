@@ -1,0 +1,215 @@
+import type Database from 'better-sqlite3';
+import { createHash } from 'node:crypto';
+import { buildCorpus, type SemanticDoc } from './knowledge.js';
+import {
+  ensureVecTables,
+  deleteVecRow,
+  EMBEDDING_DIM,
+  type VecTable,
+} from './vec.js';
+import {
+  type Embedder,
+  SemanticUnavailableError,
+  MODEL_CONFIGS,
+} from './embedder.js';
+
+// Hash-guarded embedding lifecycle (D-25/D-26/D-21b). Doc texts are pure
+// functions of db rows (+ one fs read per markdown file), so staleness is
+// decidable with sha256 alone — the model is loaded lazily, only when stale
+// docs actually need embedding (D-26c).
+
+export interface EmbedResult {
+  embedded: number;
+  skipped: number;
+  model: string;
+  dim: number;
+  corpusCounts: { entity: number; symbol: number; module: number; doc: number };
+}
+
+export interface EmbedOptions {
+  rootDir: string;
+  /** Fake/injected embedder — wins over every resolution path (D-24b: unit
+   *  tests never touch native code). */
+  embedder?: Embedder;
+  /** Loader-spy injection (HOOK-04): called with the resolved model name. */
+  loader?: (model: string) => Promise<Embedder>;
+  /** Explicit model override; default is config-derived (rewired in Task 2
+   *  to resolveModelName(loadSemanticConfig(rootDir)), D-24). */
+  model?: string;
+  /** Force re-embedding of every doc regardless of hash. */
+  full?: boolean;
+  /** TEST SEAM (plan 01 F-3): forwarded to ensureVecTables so tests can force
+   *  the extension-unavailable degradation without monkey-patching. */
+  vecLoadablePath?: string;
+}
+
+function sha256(text: string): string {
+  return createHash('sha256').update(text).digest('hex');
+}
+
+const KIND_TO_TABLE: Record<SemanticDoc['kind'], VecTable> = {
+  entity: 'entity_vecs',
+  symbol: 'symbol_vecs',
+  module: 'doc_vecs',
+  doc: 'doc_vecs',
+};
+
+function corpusCounts(corpus: SemanticDoc[]): EmbedResult['corpusCounts'] {
+  const counts = { entity: 0, symbol: 0, module: 0, doc: 0 };
+  for (const d of corpus) counts[d.kind]++;
+  return counts;
+}
+
+interface MetaRow {
+  kind: string;
+  doc_id: string;
+  vec_rowid: number;
+  hash: string;
+  model: string;
+  dim: number;
+}
+
+/** Pure staleness check — NEVER loads the model (D-26c). Recomputes doc texts
+ *  (db-only for entity/symbol/module; one fs read per markdown file) and
+ *  compares sha256 against embeddings_meta.hash. Entity rows have sourcePath
+ *  null → always hash-checked, cheap since their text comes from db. */
+export function stalenessScan(
+  db: Database.Database,
+  rootDir: string
+): {
+  stale: Array<{ kind: string; docId: string; sourcePath: string | null }>;
+  corpusCounts: EmbedResult['corpusCounts'];
+} {
+  const corpus = buildCorpus(db, rootDir);
+  const meta = db
+    .prepare('SELECT kind, doc_id, vec_rowid, hash, model, dim FROM embeddings_meta')
+    .all() as MetaRow[];
+  const byKey = new Map(meta.map((m) => [`${m.kind}:${m.doc_id}`, m]));
+  const stale: Array<{ kind: string; docId: string; sourcePath: string | null }> = [];
+  for (const doc of corpus) {
+    const existing = byKey.get(`${doc.kind}:${doc.id}`);
+    if (!existing || existing.hash !== sha256(doc.text)) {
+      stale.push({ kind: doc.kind, docId: doc.id, sourcePath: doc.sourcePath });
+    }
+  }
+  return { stale, corpusCounts: corpusCounts(corpus) };
+}
+
+/** Hash-guarded incremental embedding (POC embed.mjs pattern, EMBD-01/05):
+ *  embed every stale doc, skip the rest. Model/dim mismatch against
+ *  embeddings_meta forces a full re-embed with a warning (D-21b) — never
+ *  silent reuse. Returns early with vec tables untouched when the sqlite-vec
+ *  extension is unavailable (SRSR-03 degradation). */
+export async function embed(
+  db: Database.Database,
+  opts: EmbedOptions
+): Promise<EmbedResult> {
+  const corpus = buildCorpus(db, opts.rootDir);
+  // TASK-1 PLACEHOLDER (D-24): minilm default until config.ts exists — Task 2
+  // rewires this to opts.model ?? resolveModelName(loadSemanticConfig(opts.rootDir)).
+  const model = opts.model ?? MODEL_CONFIGS.minilm.name;
+  const counts = corpusCounts(corpus);
+
+  const metaRows = db
+    .prepare('SELECT kind, doc_id, vec_rowid, hash, model, dim FROM embeddings_meta')
+    .all() as MetaRow[];
+  const byKey = new Map(metaRows.map((m) => [`${m.kind}:${m.doc_id}`, m]));
+
+  // D-21b mismatch guard: any row recorded with a different model or dim
+  // invalidates the whole table (never silently reuse foreign vectors).
+  const mismatch =
+    metaRows.length > 0 &&
+    metaRows.some((m) => m.model !== model || m.dim !== EMBEDDING_DIM);
+  if (mismatch) {
+    console.warn('embed: model/dim mismatch — re-embedding all docs');
+  }
+
+  const staleDocs = opts.full
+    ? corpus
+    : mismatch
+      ? corpus
+      : corpus.filter((doc) => {
+          const existing = byKey.get(`${doc.kind}:${doc.id}`);
+          return !existing || existing.hash !== sha256(doc.text);
+        });
+
+  const result: EmbedResult = {
+    embedded: 0,
+    skipped: corpus.length - staleDocs.length,
+    model,
+    dim: EMBEDDING_DIM,
+    corpusCounts: counts,
+  };
+  if (staleDocs.length === 0) return result;
+
+  const cap = ensureVecTables(db, opts.vecLoadablePath);
+  if (!cap.ok) {
+    console.warn(`embed: ${cap.error} — embedding disabled this run`);
+    result.skipped = corpus.length;
+    return result;
+  }
+
+  // Lazy embedder resolution (D-24b/D-26c): only reached when stale docs
+  // exist and the vec layer is usable. opts.embedder (fake injection) wins;
+  // else the loader-spy seam; the real-model default arrives in Task 2 via
+  // getEmbedder.
+  let embedder: Embedder;
+  if (opts.embedder) {
+    embedder = opts.embedder;
+  } else if (opts.loader) {
+    embedder = await opts.loader(model);
+  } else {
+    throw new SemanticUnavailableError(`no embedder available for model ${model}`);
+  }
+
+  const upsertMeta = db.prepare(
+    `INSERT INTO embeddings_meta (kind, doc_id, vec_rowid, hash, model, dim, source_path, embedded_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(kind, doc_id) DO UPDATE SET
+       vec_rowid = excluded.vec_rowid,
+       hash = excluded.hash,
+       model = excluded.model,
+       dim = excluded.dim,
+       source_path = excluded.source_path,
+       embedded_at = excluded.embedded_at`
+  );
+  const selectMeta = db.prepare(
+    'SELECT vec_rowid FROM embeddings_meta WHERE kind = ? AND doc_id = ?'
+  );
+
+  // One embedder call + one transaction per kind batch.
+  let embedded = 0;
+  for (const kind of ['entity', 'symbol', 'module', 'doc'] as const) {
+    const batch = staleDocs.filter((d) => d.kind === kind);
+    if (batch.length === 0) continue;
+    const table = KIND_TO_TABLE[kind];
+    const vectors = await embedder.embed(batch.map((d) => d.text));
+    const insertVec = db.prepare(`INSERT INTO ${table}(embedding) VALUES (?)`);
+    db.transaction(() => {
+      for (const [i, doc] of batch.entries()) {
+        const existing = selectMeta.get(kind, doc.id) as
+          | { vec_rowid: number }
+          | undefined;
+        if (existing) deleteVecRow(db, table, existing.vec_rowid);
+        const buf = Buffer.from(new Float32Array(vectors[i]!).buffer);
+        const info = insertVec.run(buf);
+        const rowid = Number(info.lastInsertRowid);
+        upsertMeta.run(
+          kind,
+          doc.id,
+          rowid,
+          sha256(doc.text),
+          model,
+          EMBEDDING_DIM,
+          doc.sourcePath,
+          Date.now()
+        );
+        embedded++;
+      }
+    })();
+  }
+
+  result.embedded = embedded;
+  result.skipped = corpus.length - embedded;
+  return result;
+}
