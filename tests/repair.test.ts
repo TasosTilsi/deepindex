@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
+import { execFileSync } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -78,23 +79,29 @@ describe('repair', () => {
       rmSync(dir, { recursive: true, force: true });
     });
 
-    it('detects a // CLAIM: contradiction in the git-managed fixture', () => {
-      // The fixtures/sample-repo has a .git with three commits. The current
-      // // CLAIM: line says "there are 4 worker threads". The history shows
-      // a previous version that said "12 worker threads" (added then removed).
-      // The contradicts() heuristic matches if the claim text appears on a
-      // '-' (removed) line in the diff. We craft the test so the current
-      // claim text is also in a removed diff line.
-      const r = stage3GitHistory(FIXTURE);
+    it('detects a // CLAIM: contradiction in a git-managed fixture (runtime-built)', () => {
+      // REVIEW-CI: this test previously relied on the UNTRACKED .git inside
+      // fixtures/sample-repo (git refuses to track nested .git dirs), so it
+      // passed only on machines with that local state and failed on CI
+      // checkouts. Build the same scenario at runtime instead: claim asserted
+      // as "12 worker threads", then corrected to "4" — the removed
+      // "// CLAIM:" diff line proves the claim changed.
+      const dir = mkdtempSync(join(tmpdir(), 'deepindex-s3-git-'));
+      const git = (args: string[]) => execFileSync('git', args, { cwd: dir, encoding: 'utf8' });
+      git(['init', '-q', '-b', 'main']);
+      git(['config', 'user.email', 'test@example.com']);
+      git(['config', 'user.name', 'Test']);
+      writeFileSync(join(dir, 'outdated-doc.ts'), '// CLAIM: there are 12 worker threads\nexport const X = 1;\n');
+      git(['add', '-A']);
+      git(['commit', '-q', '-m', 'docs: claim 12 worker threads']);
+      writeFileSync(join(dir, 'outdated-doc.ts'), '// CLAIM: there are 4 worker threads\nexport const X = 2;\n');
+      git(['add', '-A']);
+      git(['commit', '-q', '-m', 'fix: correct claim from 12 to 4 worker threads']);
+
+      const r = stage3GitHistory(dir);
       expect(r.ok).toBe(true);
-      // The current claim is "there are 4 worker threads" but the prior
-      // removed line is "there are 12 worker threads". Neither heuristic
-      // matches the *current* claim text in a removed line; instead, the
-      // detector finds that the claim changed by checking for any
-      // removed "// CLAIM:" line in the file's diff (proof that the claim
-      // was once different). The action message identifies the prior
-      // claim text.
       expect(r.actions.some((a) => /12 worker threads/.test(a))).toBe(true);
+      rmSync(dir, { recursive: true, force: true });
     });
   });
 
