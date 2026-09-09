@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
-import { mkdtempSync, rmSync, existsSync, readFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { initDb, closeDb } from '../src/graph/db.js';
@@ -96,9 +96,18 @@ describe('sessionStart auto-chain (HOOK-04, D-26c/D-29)', () => {
   beforeAll(() => {
     chainDbPath = join(tmpChain, 'chain.db');
     fixture = createGitFixture();
+    // REVIEW-FIX W1: the chain's embed step is gated on [semantic].enabled AND
+    // a cached model — these tests prove the chain end-to-end, so the fixture
+    // opts in and a model-cache marker satisfies the gate without any native
+    // model (the injected loader never reaches getEmbedder's real path).
+    writeFileSync(join(fixture, '.deepindex.toml'), '[semantic]\nenabled = true\n');
+    const cacheDir = join(tmpChain, 'model-cache');
+    mkdirSync(join(cacheDir, 'Xenova', 'all-MiniLM-L6-v2'), { recursive: true });
+    process.env.DEEPINDEX_MODEL_CACHE_DIR = cacheDir;
   });
 
   afterAll(() => {
+    delete process.env.DEEPINDEX_MODEL_CACHE_DIR;
     rmSync(tmpChain, { recursive: true, force: true });
     rmSync(fixture, { recursive: true, force: true });
   });
@@ -179,5 +188,36 @@ describe('sessionStart auto-chain (HOOK-04, D-26c/D-29)', () => {
     expect(r.message).toContain('git sync');
     expect(r.message).toContain('indexed');
     expect(r.message).toContain('embed failed: onnx boom');
+  });
+});
+
+// REVIEW-FIX W1: sessionStart step 3 is GATED — default installs (semantic
+// disabled or model uncached) pay no corpus scan and no refusal noise.
+describe('hooks: auto-embed gate (REVIEW finding 1)', () => {
+  const tmpDir2 = mkdtempSync(join(tmpdir(), 'deepindex-hooks-gate-'));
+  const dbPath2 = join(tmpDir2, 'g.db');
+  const FIXTURE2 = createGitFixture();
+
+  afterAll(() => {
+    rmSync(tmpDir2, { recursive: true, force: true });
+    rmSync(FIXTURE2, { recursive: true, force: true });
+  });
+
+  it('semantic disabled: hook completes without embed work and without noise', async () => {
+    const r = await sessionStart(FIXTURE2, join(tmpDir2, 'a.db'));
+    expect(r.ok).toBe(true);
+    expect(r.message).not.toContain('embed');
+    expect(r.message).not.toContain('run deepindex embed');
+  });
+
+  it('semantic enabled + model uncached: no refusal noise, still ok', async () => {
+    writeFileSync(join(FIXTURE2, '.deepindex.toml'), '[semantic]\nenabled = true\n');
+    const loader = vi.fn();
+    const r = await sessionStart(FIXTURE2, join(tmpDir2, 'b.db'), { loader: loader as unknown as (m: string) => Promise<Embedder> });
+    expect(r.ok).toBe(true);
+    expect(r.message).not.toContain('embed failed');
+    expect(r.message).not.toContain('run deepindex embed');
+    expect(loader).not.toHaveBeenCalled();
+    rmSync(join(FIXTURE2, '.deepindex.toml'));
   });
 });

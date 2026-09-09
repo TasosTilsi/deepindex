@@ -9,8 +9,8 @@ import { initDb } from '../graph/db.js';
 import { gitSync } from '../git/indexer.js';
 import { buildGraph } from '../graph/build.js';
 import { stalenessScan, embed } from '../semantic/embed.js';
-import { loadHooksConfig } from '../semantic/config.js';
-import type { Embedder } from '../semantic/embedder.js';
+import { loadHooksConfig, loadSemanticConfig, DEFAULT_SEMANTIC_CONFIG } from '../semantic/config.js';
+import { hasCachedModel, resolveModelName, type Embedder } from '../semantic/embedder.js';
 import { resolve } from 'node:path';
 import { existsSync } from 'node:fs';
 
@@ -63,22 +63,33 @@ export async function sessionStart(
     parts.push(`indexed ${stats.fileCount} files, ${stats.symbolCount} symbols`);
 
     // Step 3: budget-gated staleness-first re-embed (lazy model load, D-26c).
+    // REVIEW-FIX W1: the auto-embed step is GATED before any work — a default
+    // install (semantic disabled, or model never fetched) pays neither the
+    // corpus scan nor vec-table writes nor refusal noise on every session
+    // (D-26b: auto-embed only when semantic.enabled AND model cached).
     if (elapsed() < budgetMs) {
-      try {
-        const scan = stalenessScan(db, absRepo);
-        if (scan.stale.length > 0) {
-          const res = await embed(db, {
-            rootDir: absRepo,
-            embedder: opts.embedder,
-            loader: opts.loader,
-          });
-          parts.push(`embedded ${res.embedded}, skipped ${res.skipped}`);
-        } else {
-          parts.push('embeddings up to date');
+      const cfg = loadSemanticConfig(absRepo) ?? DEFAULT_SEMANTIC_CONFIG;
+      if (cfg.enabled && hasCachedModel(resolveModelName(cfg))) {
+        try {
+          const scan = stalenessScan(db, absRepo);
+          if (scan.stale.length > 0) {
+            const res = await embed(db, {
+              rootDir: absRepo,
+              embedder: opts.embedder,
+              loader: opts.loader,
+            });
+            parts.push(`embedded ${res.embedded}, skipped ${res.skipped}`);
+          } else {
+            parts.push('embeddings up to date');
+          }
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          parts.push(`embed failed: ${message}`);
         }
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        parts.push(`embed failed: ${message}`);
+      } else {
+        // Silent skip — the hint lives in the embed verb and the dashboard
+        // status card; sessions must stay quiet for default installs (REVIEW
+        // finding 1: refusal noise on every session was a regression).
       }
     } else {
       parts.push(
