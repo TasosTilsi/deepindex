@@ -2,7 +2,7 @@ import type Database from 'better-sqlite3';
 import { searchEntities, type SearchHit } from '../git/search.js';
 import { retrieve } from '../retrieve.js';
 import { ensureVecTables, vecSearch, type VecTable } from './vec.js';
-import { buildCorpus, type SemanticDoc } from './knowledge.js';
+import { firstLine } from './knowledge.js';
 import { getEmbedder, resolveModelName, type Embedder } from './embedder.js';
 import { loadSemanticConfig } from './config.js';
 
@@ -74,12 +74,6 @@ function compareHits(a: HybridHit, b: HybridHit): number {
   );
 }
 
-/** First non-blank line of a doc text, clamped ~160 chars (OQ-12). */
-function firstLine(text: string, max = 160): string {
-  const line = (text.split('\n').find((l) => l.trim().length > 0) ?? '').trim();
-  return line.length > max ? `${line.slice(0, max - 3)}...` : line;
-}
-
 function metaRowCount(db: Database.Database): number {
   return (db.prepare('SELECT COUNT(*) c FROM embeddings_meta').get() as { c: number }).c;
 }
@@ -104,49 +98,43 @@ function lexicalFallback(
 /** Vec-only hits for one query vector: KNN per vec table, each rowid mapped
  *  through embeddings_meta filtered by (kind, vec_rowid) — a rowid value
  *  present in two vec tables never cross-maps (SRSR-04 phase-8 form, RSK-6).
- *  Doc text/label come from the corpus source (db rows; module cards
- *  resynthesized; md chunks re-read from source_path, OQ-12). */
+ *  REVIEW-FIX W3: label/snippet/source_path come from embeddings_meta
+ *  (persisted at embed time) — NO corpus rebuild on the request path. A meta
+ *  row without label (pre-extras DB embedded before the migration) degrades
+ *  to an empty label rather than a full corpus read. */
 function vecHits(
   db: Database.Database,
   queryVec: number[],
-  limit: number,
-  repoPath: string
+  limit: number
 ): HybridHit[] {
-  const corpus = new Map(
-    buildCorpus(db, repoPath).map((d) => [`${d.kind}:${d.id}`, d])
-  );
   const resolveExact = db.prepare(
-    `SELECT kind, doc_id FROM embeddings_meta WHERE (kind, vec_rowid) = (?, ?)`
+    `SELECT kind, doc_id, label, snippet, source_path FROM embeddings_meta WHERE (kind, vec_rowid) = (?, ?)`
   );
   const resolveShared = db.prepare(
-    `SELECT kind, doc_id FROM embeddings_meta WHERE vec_rowid = ? AND kind IN ('module','doc')`
+    `SELECT kind, doc_id, label, snippet, source_path FROM embeddings_meta WHERE vec_rowid = ? AND kind IN ('module','doc')`
   );
   const out: HybridHit[] = [];
   for (const table of ['entity_vecs', 'symbol_vecs', 'doc_vecs'] as const) {
     for (const v of vecSearch(db, table, queryVec, limit)) {
       let meta:
-        | { kind: string; doc_id: string }
+        | { kind: string; doc_id: string; label: string; snippet: string; source_path: string | null }
         | undefined;
       if (table === 'doc_vecs') {
-        meta = resolveShared.get(v.rowid) as { kind: string; doc_id: string } | undefined;
+        meta = resolveShared.get(v.rowid) as typeof meta;
       } else {
         const kind = table === 'entity_vecs' ? 'entity' : 'symbol';
-        meta = resolveExact.get(kind, v.rowid) as
-          | { kind: string; doc_id: string }
-          | undefined;
+        meta = resolveExact.get(kind, v.rowid) as typeof meta;
       }
       if (!meta) continue;
-      const doc = corpus.get(`${meta.kind}:${meta.doc_id}`);
-      if (!doc) continue;
       const hit: HybridHit = {
-        kind: doc.kind,
-        id: doc.id,
-        label: doc.label,
+        kind: meta.kind as HybridHit['kind'],
+        id: meta.doc_id,
+        label: meta.label || meta.doc_id,
         score: v.cosine,
-        snippet: firstLine(doc.text),
+        snippet: meta.snippet || undefined,
         source: 'vec',
       };
-      if (doc.sourcePath) hit.path = doc.sourcePath;
+      if (meta.source_path) hit.path = meta.source_path;
       out.push(hit);
     }
   }
@@ -218,7 +206,7 @@ export async function hybridSearch(
         loader: opts.loader,
       });
       const [queryVec] = await embedder.embed([query]);
-      return vecHits(db, queryVec ?? [], limit, repoPath);
+      return vecHits(db, queryVec ?? [], limit);
     } catch (e) {
       console.warn(
         `hybridSearch: semantic layer unavailable (${
@@ -253,7 +241,7 @@ export async function hybridSearch(
           loader: opts.loader,
         });
         const [queryVec] = await embedder.embed([query]);
-        lists.push(vecHits(db, queryVec ?? [], limit, repoPath).map((hit) => ({ hit })));
+        lists.push(vecHits(db, queryVec ?? [], limit).map((hit) => ({ hit })));
       } catch (e) {
         console.warn(
           `hybridSearch: semantic layer unavailable (${

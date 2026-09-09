@@ -1,6 +1,6 @@
 import type Database from 'better-sqlite3';
 import { createHash } from 'node:crypto';
-import { buildCorpus, type SemanticDoc } from './knowledge.js';
+import { buildCorpus, firstLine, type SemanticDoc } from './knowledge.js';
 import {
   ensureVecTables,
   deleteVecRow,
@@ -210,28 +210,62 @@ export async function embed(
   const model = opts.model ?? resolveModelName(loadSemanticConfig(opts.rootDir));
   const counts = corpusCounts(corpus);
 
+  // REVIEW-FIX W2: capability check moved BEFORE the empty-stale early return —
+  // orphan purge below must run even when nothing is stale (deleted/renamed
+  // docs otherwise orphan their meta+vec rows forever).
+  const cap = ensureVecTables(db, opts.vecLoadablePath);
+  if (!cap.ok) {
+    console.warn(`embed: ${cap.error} — embedding disabled this run`);
+    return {
+      embedded: 0,
+      skipped: corpus.length,
+      model,
+      dim: EMBEDDING_DIM,
+      corpusCounts: counts,
+    };
+  }
+
   const metaRows = db
     .prepare('SELECT kind, doc_id, vec_rowid, hash, model, dim FROM embeddings_meta')
     .all() as MetaRow[];
   const byKey = new Map(metaRows.map((m) => [`${m.kind}:${m.doc_id}`, m]));
+  const corpusKeys = new Set(corpus.map((d) => `${d.kind}:${d.id}`));
 
-  // D-21b mismatch guard: any row recorded with a different model or dim
-  // invalidates the whole table (never silently reuse foreign vectors).
-  const mismatch =
-    metaRows.length > 0 &&
-    metaRows.some((m) => m.model !== model || m.dim !== EMBEDDING_DIM);
-  if (mismatch) {
+  // REVIEW-FIX W2: mismatch wipes ALL rows first — rows recorded under the old
+  // model/dim are invalid even when their doc still exists, so a purge-by-
+  // absence alone could never converge (mismatch would stay true forever).
+  // The full re-embed below then repopulates from scratch and the hash guard
+  // converges on the next run.
+  if (metaRows.some((m) => m.model !== model || m.dim !== EMBEDDING_DIM)) {
     console.warn('embed: model/dim mismatch — re-embedding all docs');
+    db.transaction(() => {
+      for (const m of metaRows) deleteVecRow(db, KIND_TO_TABLE[m.kind as SemanticDoc['kind']], m.vec_rowid);
+      db.prepare('DELETE FROM embeddings_meta').run();
+    })();
   }
+
+  // REVIEW-FIX W2: orphan purge — meta rows whose doc no longer exists in the
+  // corpus (deleted/renamed source, dropped entity) are removed together with
+  // their vec rows, so deleted docs stop consuming KNN k-slots and staleCount
+  // /coverage converge. Runs on every embed, cheap (one indexed scan).
+  db.transaction(() => {
+    const del = db.prepare('DELETE FROM embeddings_meta WHERE kind = ? AND doc_id = ?');
+    for (const m of metaRows) {
+      if (corpusKeys.has(`${m.kind}:${m.doc_id}`)) continue;
+      const table = KIND_TO_TABLE[m.kind as SemanticDoc['kind']];
+      if (table) deleteVecRow(db, table, m.vec_rowid);
+      del.run(m.kind, m.doc_id);
+    }
+  })();
 
   const staleDocs = opts.full
     ? corpus
-    : mismatch
-      ? corpus
-      : corpus.filter((doc) => {
-          const existing = byKey.get(`${doc.kind}:${doc.id}`);
-          return !existing || existing.hash !== sha256(doc.text);
-        });
+    : corpus.filter((doc) => {
+        const existing = byKey.get(`${doc.kind}:${doc.id}`);
+        const nowMismatched =
+          existing && (existing.model !== model || existing.dim !== EMBEDDING_DIM);
+        return !existing || existing.hash !== sha256(doc.text) || nowMismatched;
+      });
 
   const result: EmbedResult = {
     embedded: 0,
@@ -241,13 +275,6 @@ export async function embed(
     corpusCounts: counts,
   };
   if (staleDocs.length === 0) return result;
-
-  const cap = ensureVecTables(db, opts.vecLoadablePath);
-  if (!cap.ok) {
-    console.warn(`embed: ${cap.error} — embedding disabled this run`);
-    result.skipped = corpus.length;
-    return result;
-  }
 
   // Lazy embedder resolution via the shared resolver (D-24b/D-26c): only
   // reached when stale docs exist and the vec layer is usable. opts.embedder
@@ -259,15 +286,17 @@ export async function embed(
   });
 
   const upsertMeta = db.prepare(
-    `INSERT INTO embeddings_meta (kind, doc_id, vec_rowid, hash, model, dim, source_path, embedded_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO embeddings_meta (kind, doc_id, vec_rowid, hash, model, dim, source_path, embedded_at, label, snippet)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(kind, doc_id) DO UPDATE SET
        vec_rowid = excluded.vec_rowid,
        hash = excluded.hash,
        model = excluded.model,
        dim = excluded.dim,
        source_path = excluded.source_path,
-       embedded_at = excluded.embedded_at`
+       embedded_at = excluded.embedded_at,
+       label = excluded.label,
+       snippet = excluded.snippet`
   );
   const selectMeta = db.prepare(
     'SELECT vec_rowid FROM embeddings_meta WHERE kind = ? AND doc_id = ?'
@@ -298,7 +327,9 @@ export async function embed(
           model,
           EMBEDDING_DIM,
           doc.sourcePath,
-          Date.now()
+          Date.now(),
+          doc.label,
+          firstLine(doc.text)
         );
         embedded++;
       }

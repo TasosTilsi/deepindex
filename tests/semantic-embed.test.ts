@@ -223,3 +223,68 @@ describe('semantic embed lifecycle (hash guard + file-scoped re-embed)', () => {
     }
   });
 });
+// ─── REVIEW-FIX (code-review findings 1/2/3) ────────────────────────────────
+
+describe('review-fix W2: orphan purge + mismatch convergence', () => {
+  const tmpDir = mkdtempSync(join(tmpdir(), 'deepindex-embed-purge-'));
+  const dbPath = join(tmpDir, 'test.db');
+  const fixtureCopy = join(tmpDir, 'repo');
+  let db: Database.Database;
+
+  beforeAll(async () => {
+    cpSync(FIXTURE, fixtureCopy, { recursive: true });
+    db = initDb(dbPath);
+    await buildGraph(db, fixtureCopy);
+    db.prepare(
+      `INSERT INTO entities (id, type, name, content) VALUES ('e-purge', 'decision', 'purge target', 'will be deleted')`
+    ).run();
+    await embed(db, { rootDir: fixtureCopy, embedder: fakeEmbedder() });
+  });
+
+  afterAll(() => rmSync(tmpDir, { recursive: true, force: true }));
+
+  it('meta count converges to corpus count after embed', () => {
+    const corpus = buildCorpus(db, fixtureCopy);
+    const metaCount = (db.prepare('SELECT COUNT(*) c FROM embeddings_meta').get() as { c: number }).c;
+    expect(metaCount).toBe(corpus.length);
+  });
+
+  it('deleting a doc purges its meta + vec rows (no orphan KNN slots)', async () => {
+    db.prepare("DELETE FROM entities WHERE id = 'e-purge'").run();
+    await embed(db, { rootDir: fixtureCopy, embedder: fakeEmbedder() });
+    const orphan = db
+      .prepare("SELECT COUNT(*) c FROM embeddings_meta WHERE doc_id = 'e-purge'")
+      .get() as { c: number };
+    expect(orphan.c).toBe(0);
+    // meta count still equals corpus count — converged
+    const corpus = buildCorpus(db, fixtureCopy);
+    const metaCount = (db.prepare('SELECT COUNT(*) c FROM embeddings_meta').get() as { c: number }).c;
+    expect(metaCount).toBe(corpus.length);
+  });
+
+  it('model switch converges: after switching to model B and re-embedding, a further run embeds 0 (mismatch does not persist)', async () => {
+    const corpus = buildCorpus(db, fixtureCopy);
+    const total = corpus.length;
+    const resB1 = await embed(db, { rootDir: fixtureCopy, model: 'bge', embedder: fakeEmbedder('bge') });
+    expect(resB1.model).toBe('bge');
+    expect(resB1.embedded).toBe(total);
+    const metaModel = (db.prepare('SELECT DISTINCT model m FROM embeddings_meta').get() as { m: string }).m;
+    expect(metaModel).toBe('bge');
+    const resB2 = await embed(db, { rootDir: fixtureCopy, model: 'bge', embedder: fakeEmbedder('bge') });
+    expect(resB2.embedded).toBe(0);
+  });
+
+  it('snippet + label are persisted at embed time (W3: request path needs no corpus)', async () => {
+    db.prepare(
+      `INSERT INTO entities (id, type, name, content) VALUES ('e-snip', 'pattern', 'snippet source', 'persisted label probe')`
+    ).run();
+    await embed(db, { rootDir: fixtureCopy, model: 'bge', embedder: fakeEmbedder('bge') });
+    const row = db
+      .prepare("SELECT label, snippet FROM embeddings_meta WHERE kind = 'entity' AND doc_id = 'e-snip'")
+      .get() as { label: string; snippet: string };
+    expect(row.label).toBe('x'.length >= 0 ? 'snippet source' : row.label);
+    expect(row.label.length).toBeGreaterThan(0);
+    expect(row.snippet.length).toBeGreaterThan(0);
+    expect(row.snippet).not.toContain('\n');
+  });
+});

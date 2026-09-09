@@ -178,6 +178,14 @@ function walkMarkdown(root: string): string[] {
   return out;
 }
 
+/** First non-blank line of a doc text, clamped ~160 chars (OQ-12). Lives here
+ *  (corpus-utility layer) so embed.ts and search-hybrid.ts share one copy
+ *  (REVIEW-FIX: embed persists it at embed time; vecHits reads it from meta). */
+export function firstLine(text: string, max = 160): string {
+  const line = (text.split('\n').find((l) => l.trim().length > 0) ?? '').trim();
+  return line.length > max ? `${line.slice(0, max - 3)}...` : line;
+}
+
 /** Full embedded corpus: entities + symbols + module cards + markdown docs
  *  (POC arithmetic: 628 = 377 entity+symbol docs + 57 code-file cards + 194
  *  md chunks on this repo). */
