@@ -1,6 +1,6 @@
 {
   "name": "deepindex",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Self-healing, token-efficient context engineering framework for AI coding harnesses",
   "type": "module",
   "main": "dist/index.js",
@@ -13,7 +13,8 @@
     "start": "node dist/cli.js",
     "test": "vitest run",
     "test:watch": "vitest",
-    "deepindex": "tsx src/cli.ts"
+    "deepindex": "tsx src/cli.ts",
+    "prepack": "pnpm --config.verify-deps-before-run=false build && pnpm --config.verify-deps-before-run=false --dir dashboard build"
   },
   "engines": {
     "node": ">=20"
@@ -46,5 +47,33 @@
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8"
-  }
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/TasosTilsi/deepindex.git"
+  },
+  "bugs": {
+    "url": "https://github.com/TasosTilsi/deepindex/issues"
+  },
+  "homepage": "https://github.com/TasosTilsi/deepindex#readme",
+  "keywords": [
+    "cli",
+    "context-engineering",
+    "code-index",
+    "embeddings",
+    "semantic-search",
+    "sqlite",
+    "tree-sitter",
+    "mcp",
+    "ai-tools"
+  ],
+  "files": [
+    "dist",
+    ".tree-sitter",
+    "dashboard/dist",
+    "docs",
+    "README.md",
+    "LICENSE"
+  ]
 }

@@ -4,7 +4,8 @@
 import type Database from 'better-sqlite3';
 import { createServer, IncomingMessage, ServerResponse } from 'node:http';
 import { readFileSync, existsSync, statSync, copyFileSync, mkdtempSync, rmSync } from 'node:fs';
-import { join, extname, resolve } from 'node:path';
+import { join, extname, resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 import { adaptClaudeCode } from './adapter-claude-code.js';
 import { initDb } from './graph/db.js';
@@ -28,7 +29,13 @@ export interface ServeHandle {
 const DEFAULT_PORT = 7331;
 const DEFAULT_HOST = '127.0.0.1';
 const DEFAULT_DB = '.deepindex.db';
-const DEFAULT_DASHBOARD = resolve(process.cwd(), 'dashboard', 'dist');
+// Dashboard assets: prefer a repo checkout (cwd/dashboard/dist); fall back to
+// the copy shipped inside the published package (global installs have no
+// checkout — REVIEW-publish fix).
+const BUNDLED_DASHBOARD = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'dashboard', 'dist');
+const DEFAULT_DASHBOARD = existsSync(join(process.cwd(), 'dashboard', 'dist'))
+  ? resolve(process.cwd(), 'dashboard', 'dist')
+  : BUNDLED_DASHBOARD;
 
 const MIME: Record<string, string> = {
   '.html': 'text/html',
