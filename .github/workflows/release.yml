@@ -48,13 +48,7 @@ jobs:
         run: |
           RESP=$(curl -sS -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
             "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=npm_registry")
-          echo "$RESP" | jq -r '.value' | cut -d. -f2 | python3 -c "
-import sys, base64, json
-s = sys.stdin.read().strip()
-s += '=' * (-len(s) % 4)
-claims = json.loads(base64.urlsafe_b64decode(s))
-keep = ['iss', 'aud', 'repository_owner', 'repository', 'workflow', 'ref', 'ref_type', 'event_name', 'job_workflow_ref']
-print(json.dumps({k: claims.get(k) for k in keep}, indent=1))"
+          echo "$RESP" | jq -r '.value' | cut -d. -f2 | python3 -c "import sys,base64,json; s=sys.stdin.read().strip(); s+='='*(-len(s)%4); c=json.loads(base64.urlsafe_b64decode(s)); print(json.dumps({k:c.get(k) for k in ['iss','aud','repository_owner','repository','workflow','ref','ref_type','event_name','job_workflow_ref']},indent=1))"
       - name: Publish (npm trusted publishing — OIDC)
         # Mirrors docs.npmjs.com/trusted-publishers example: setup-node@v6 +
         # node 24 (bundled npm >= 11.5.1) + registry-url. id-token: write
