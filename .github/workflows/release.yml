@@ -51,22 +51,33 @@ jobs:
           echo "$RESP" | jq -r '.value' | cut -d. -f2 | python3 -c "import sys,base64,json; s=sys.stdin.read().strip(); s+='='*(-len(s)%4); c=json.loads(base64.urlsafe_b64decode(s)); print(json.dumps({k:c.get(k) for k in ['iss','aud','repository_owner','repository','workflow','ref','ref_type','event_name','job_workflow_ref']},indent=1))"
           echo "npm $(npm --version) / node $(node --version)"
           echo "=== npm config userconfig:"; cat "$NPM_CONFIG_USERCONFIG" 2>/dev/null || echo "(none)"
-      - name: Publish (npm trusted publishing — NPM_ID_TOKEN)
-        # npm 11.19's automatic OIDC detection does not engage on this runner
-        # (EENEEDAUTH across 5 iterations); the documented manual path is
-        # NPM_ID_TOKEN (docs.npmjs.com/trusted-publishers — CircleCI section):
-        # mint an OIDC token with aud "npm:registry.npmjs.org" and export it,
-        # npm exchanges it for a short-lived publish credential. Strips the
-        # setup-node placeholder (actions/setup-node#1551). npm pinned to
-        # 11.6.2 — the version proven working in npm/cli#9088.
+      - name: Publish experiments (diagnostic)
         run: |
           [ -f "$NPM_CONFIG_USERCONFIG" ] && sed -i '/_authToken/d' "$NPM_CONFIG_USERCONFIG" || true
-          npm install -g npm@11.6.2
+          echo "userconfig after strip:"; cat "$NPM_CONFIG_USERCONFIG" 2>/dev/null || echo "(none)"
           RESP=$(curl -sS -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
             "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=npm:registry.npmjs.org")
-          export NPM_ID_TOKEN=$(echo "$RESP" | jq -r '.value')
-          npm publish
+          echo "OIDC response length: $(echo -n "$RESP" | wc -c)"
+          TOKEN=$(echo "$RESP" | jq -r '.value')
+          echo "token length: ${#TOKEN} (empty mint would be 4 for 'null')"
+          echo "=== attempt 1: npm 11.6.2 + NPM_ID_TOKEN"
+          npm install -g npm@11.6.2 >/dev/null 2>&1
+          export NPM_ID_TOKEN="$TOKEN"
+          npm publish; echo "ATTEMPT1_EXIT=$?"
+          echo "=== attempt 2: npm@latest + NPM_ID_TOKEN"
+          npm install -g npm@latest >/dev/null 2>&1
+          npm --version
+          npm publish; echo "ATTEMPT2_EXIT=$?"
+          true
+      - name: Dump npm debug logs
+        if: always()
+        run: grep -ihE "oidc|id.?token|eneedauth|need auth|trusted" /home/runner/.npm/_logs/*-debug-0.log 2>/dev/null | cut -c1-160 | head -40 || true
       - name: GitHub release from tag
-        run: gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes
+        # Gate on the registry: only cut the release if this version actually
+        # published (the diagnostic publish step succeeds even when both
+        # attempts fail, so the job can proceed to the log dump).
+        run: |
+          curl -fsSL https://registry.npmjs.org/deepindex | grep -q '"0.3.4"'
+          gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
