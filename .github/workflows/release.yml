@@ -30,7 +30,7 @@ jobs:
     needs: verify
     runs-on: ubuntu-latest
     permissions:
-      id-token: write   # npm provenance
+      id-token: write   # npm trusted publishing (OIDC) + provenance — no token secret
       contents: read
     steps:
       - uses: actions/checkout@v4
@@ -40,14 +40,15 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          registry-url: https://registry.npmjs.org/
           cache: pnpm
       - name: Install
         run: pnpm install --frozen-lockfile
-      - name: Publish
-        run: npm publish
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Publish (npm trusted publishing — OIDC)
+        # Node 22 ships npm 10.x, too old for OIDC publish; trusted publishing
+        # needs npm >= 11.5. Token bypasses (classic Automation, GAT
+        # bypass-2FA) were deprecated/revoked by npm — OIDC is the sanctioned
+        # CI publish path.
+        run: npm install -g npm@11 && npm publish
       - name: GitHub release from tag
         run: gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes
         env:
