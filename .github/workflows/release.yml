@@ -45,10 +45,9 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Publish (npm trusted publishing — OIDC)
         # Node 22 ships npm 10.x, too old for OIDC publish; trusted publishing
-        # needs npm >= 11.5. Token bypasses (classic Automation, GAT
-        # bypass-2FA) were deprecated/revoked by npm — OIDC is the sanctioned
-        # CI publish path.
-        run: npm install -g npm@11 && npm publish
+        # needs npm >= 11.5.1 and Node >= 22.14. Pin 11.6.2 — npm/cli#9088:
+        # later 11.x releases can fail the OIDC flow masked as ENEEDAUTH.
+        run: npm install -g npm@11.6.2 && npm publish
       - name: GitHub release from tag
         run: gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes
         env:
