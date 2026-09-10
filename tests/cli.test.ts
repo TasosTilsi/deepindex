@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { mkdtempSync, rmSync, existsSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, existsSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawn, type ChildProcess } from 'node:child_process';
@@ -48,6 +48,36 @@ describe('cli', { timeout: 30_000 }, () => {
     expect(r.stdout).toMatch(/indexed/);
     expect(r.stdout).toMatch(/\d+ files/);
     expect(existsSync(dbPath)).toBe(true);
+  });
+
+  it('index prints a progress line to stdout before the final stats', async () => {
+    const r = await run(['index', FIXTURE, '--db', dbPath]);
+    expect(r.code).toBe(0);
+    // Progress first (long verb must signal life early), stats after.
+    expect(r.stdout.indexOf('indexing')).toBeGreaterThanOrEqual(0);
+    expect(r.stdout).toMatch(/indexing .* \.\.\./);
+  });
+
+  it('bare invocation prints help to stdout and exits 0', async () => {
+    const r = await run([]);
+    expect(r.code).toBe(0);
+    expect(r.stdout).toContain('Usage: deepindex');
+  });
+
+  it('--version prints the package.json version', async () => {
+    const pkg = JSON.parse(
+      readFileSync(resolve(process.cwd(), 'package.json'), 'utf8')
+    ) as { version: string };
+    const r = await run(['--version']);
+    expect(r.code).toBe(0);
+    expect(r.stdout.trim()).toBe(pkg.version);
+  });
+
+  it('unknown command errors on stderr with exit 1 (not help-swallowed)', async () => {
+    const r = await run(['bogus']);
+    expect(r.code).toBe(1);
+    expect(r.stderr).toMatch(/unknown command/);
+    expect(r.stdout).not.toContain('Usage: deepindex');
   });
 
   it('health emits JSON health after a build', async () => {

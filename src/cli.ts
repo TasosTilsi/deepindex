@@ -34,9 +34,30 @@ import {
   SemanticUnavailableError,
 } from './semantic/embedder.js';
 import { loadSemanticConfig } from './semantic/config.js';
-import { resolve, basename } from 'node:path';
-import { existsSync } from 'node:fs';
+import { resolve, basename, dirname } from 'node:path';
+import { existsSync, readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import type Database from 'better-sqlite3';
+
+// ESM __dirname shim (same pattern as src/graph/parse.ts) — resolves to src/
+// under tsx and dist/ in the published tarball; package.json sits one level
+// up in both layouts.
+const __dirname = dirname(fileURLToPath(import.meta.url));
+
+/** Package version read from package.json — the tarball always ships it
+ * next to dist/, so --version stays in sync per release instead of a
+ * drifting hardcoded literal. Falls back to 'unknown' if unreadable. */
+function readVersion(): string {
+  try {
+    return (
+      JSON.parse(readFileSync(resolve(__dirname, '..', 'package.json'), 'utf8')) as {
+        version?: string;
+      }
+    ).version ?? 'unknown';
+  } catch {
+    return 'unknown';
+  }
+}
 
 const program = new Command();
 
@@ -77,7 +98,7 @@ function syncBeforeQuery(db: Database.Database, repoPath: string): void {
 program
   .name('deepindex')
   .description('DeepIndex — self-healing context engineering framework')
-  .version('0.1.0');
+  .version(readVersion());
 
 program
   .command('index')
@@ -92,12 +113,17 @@ program
       process.exit(2);
     }
     const dbPath = resolve(opts.db);
+    // Long verb — signal life on stdout before the (potentially minutes-long)
+    // parse so an npx one-shot doesn't look dead. stdout (not stderr) per
+    // user decision: guaranteed visible even in stderr-swallowing contexts.
+    console.log(`indexing ${repoPath} ...`);
     const db = initDb(dbPath);
     try {
       const stats = await buildGraph(db, repoPath, { force: opts.rebuild });
       // Also index git history into the knowledge graph (entities, backlinks).
       // Non-fatal: symbol indexing succeeds even if the repo isn't a git repo.
       let gitStats: IndexResult | null = null;
+      console.log('indexing git history ...');
       try {
         gitStats = gitIndex(db, repoPath);
       } catch {
@@ -836,6 +862,15 @@ Additional advanced commands (hidden from this list) are available:
   requirements: sync-requirements, check-req-coverage
   internal:    git-index, git-sync, hook
 See docs/USAGE.md 'Advanced commands' for how to use them.`);
+
+// Bare invocation (the typical npx one-shot entry): print help to stdout and
+// exit 0. Commander's default is help-on-stderr + exit 1, which reads as
+// "did nothing" in stderr-swallowing contexts. Handled BEFORE parseAsync so
+// commander's own routing — including the unknown-command error path —
+// stays completely untouched.
+if (process.argv.slice(2).length === 0) {
+  program.help(); // stdout, exit 0
+}
 
 program.parseAsync(process.argv).catch((err) => {
   console.error(err);
