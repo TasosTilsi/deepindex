@@ -51,14 +51,20 @@ jobs:
           echo "$RESP" | jq -r '.value' | cut -d. -f2 | python3 -c "import sys,base64,json; s=sys.stdin.read().strip(); s+='='*(-len(s)%4); c=json.loads(base64.urlsafe_b64decode(s)); print(json.dumps({k:c.get(k) for k in ['iss','aud','repository_owner','repository','workflow','ref','ref_type','event_name','job_workflow_ref']},indent=1))"
           echo "npm $(npm --version) / node $(node --version)"
           echo "=== npm config userconfig:"; cat "$NPM_CONFIG_USERCONFIG" 2>/dev/null || echo "(none)"
-      - name: Publish (npm trusted publishing — OIDC)
-        # setup-node@v6 + registry-url writes an empty ${NODE_AUTH_TOKEN}
-        # placeholder into the temp .npmrc (actions/setup-node#1551) — npm
-        # then uses the empty token instead of engaging OIDC. Strip auth
-        # lines so npm falls through to the OIDC flow (npm/cli#9088).
+      - name: Publish (npm trusted publishing — NPM_ID_TOKEN)
+        # npm 11.19's automatic OIDC detection does not engage on this runner
+        # (EENEEDAUTH across 5 iterations); the documented manual path is
+        # NPM_ID_TOKEN (docs.npmjs.com/trusted-publishers — CircleCI section):
+        # mint an OIDC token with aud "npm:registry.npmjs.org" and export it,
+        # npm exchanges it for a short-lived publish credential. Strips the
+        # setup-node placeholder (actions/setup-node#1551). npm pinned to
+        # 11.6.2 — the version proven working in npm/cli#9088.
         run: |
-          [ -f "$NPM_CONFIG_USERCONFIG" ] && sed -i '/_authToken/d' "$NPM_CONFIG_USERCONFIG"
-          cat "$NPM_CONFIG_USERCONFIG" 2>/dev/null || true
+          [ -f "$NPM_CONFIG_USERCONFIG" ] && sed -i '/_authToken/d' "$NPM_CONFIG_USERCONFIG" || true
+          npm install -g npm@11.6.2
+          RESP=$(curl -sS -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=npm:registry.npmjs.org")
+          export NPM_ID_TOKEN=$(echo "$RESP" | jq -r '.value')
           npm publish
       - name: GitHub release from tag
         run: gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes
