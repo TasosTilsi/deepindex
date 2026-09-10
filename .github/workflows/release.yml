@@ -37,17 +37,24 @@ jobs:
       - uses: pnpm/action-setup@v4
         with:
           version: 10
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
-          node-version: 22
-          cache: pnpm
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+          package-manager-cache: false
       - name: Install
         run: pnpm install --frozen-lockfile
+      - name: Debug OIDC identity
+        run: |
+          echo "ACTIONS_ID_TOKEN_REQUEST_URL set: ${ACTIONS_ID_TOKEN_REQUEST_URL:+yes}"
+          curl -sS -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=npm_registry" | head -c 400; echo
       - name: Publish (npm trusted publishing — OIDC)
-        # Node 22 ships npm 10.x, too old for OIDC publish; trusted publishing
-        # needs npm >= 11.5.1 and Node >= 22.14. Pin 11.6.2 — npm/cli#9088:
-        # later 11.x releases can fail the OIDC flow masked as ENEEDAUTH.
-        run: npm install -g npm@11.6.2 && npm publish
+        # Mirrors docs.npmjs.com/trusted-publishers example: setup-node@v6 +
+        # node 24 (bundled npm >= 11.5.1) + registry-url. id-token: write
+        # above drives the OIDC exchange. Verify job keeps node 22 (vitest
+        # worker crash on node 24 — bc21dbf); publish runs no vitest.
+        run: npm publish
       - name: GitHub release from tag
         run: gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes
         env:
