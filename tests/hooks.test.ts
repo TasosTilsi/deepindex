@@ -78,8 +78,11 @@ describe('hooks', () => {
     const r = installClaudeSettings(proj);
     expect(r.mcpAdded).toBe(true);
     expect(r.hooksAdded).toBe(true);
+    // DI-05b: the MCP entry lives in the project-shareable root .mcp.json;
+    // settings.json keeps the hooks.
+    const mcp = JSON.parse(readFileSync(join(proj, '.mcp.json'), 'utf8'));
+    expect(mcp.mcpServers.deepindex).toBeTruthy();
     const settings = JSON.parse(readFileSync(r.path, 'utf8'));
-    expect(settings.mcpServers.deepindex).toBeTruthy();
     expect(settings.hooks.SessionStart).toBeTruthy();
     // Second install is a no-op (additive, no clobber).
     const r2 = installClaudeSettings(proj);

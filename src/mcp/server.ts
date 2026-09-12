@@ -4,6 +4,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import type Database from 'better-sqlite3';
+import { readVersion } from '../version.js';
 import {
   searchKnowledge,
   semanticSearch,
@@ -28,7 +29,9 @@ const DEFAULT_DB = '.deepindex.db';
 /** Create the MCP server with 6 read-only tools registered. */
 export function createMcpServer(db: Database.Database): McpServer {
   const server = new McpServer(
-    { name: 'deepindex', version: '0.1.0' },
+    // N-01: serverInfo must report the real package version (was a stale
+    // hardcoded '0.1.0' literal while --version already read package.json).
+    { name: 'deepindex', version: readVersion() },
     {
       instructions:
         'deepindex is an engineering knowledge graph built from this repository. ' +
