@@ -4,6 +4,7 @@
 import type Database from 'better-sqlite3';
 import { z } from 'zod';
 import { searchEntities, getRelatedRecursive, type SearchHit } from '../git/search.js';
+import { syncSafe } from '../git/indexer.js';
 import { projectFullGraph } from '../graph/projection.js';
 import { hybridSearch, type HybridHit } from '../semantic/search-hybrid.js';
 
@@ -37,8 +38,11 @@ export const typeListSchema = {
 
 // --- Tool implementations ---
 
-/** search_knowledge — FTS5 search across entity name+content. */
+/** search_knowledge — FTS5 search across entity name+content.
+ *  DI-06: sync first — long-lived MCP sessions must see commits made after
+ *  serve start (syncSafe is non-fatal; stderr stays protocol-clean). */
 export function searchKnowledge(db: Database.Database, args: { query: string; limit?: number }) {
+  syncSafe(db, process.cwd());
   const hits = searchEntities(db, args.query, args.limit ?? 20);
   return {
     results: hits.map((h) => ({
@@ -59,6 +63,7 @@ export async function semanticSearch(
   db: Database.Database,
   args: { query: string; limit?: number; mode?: 'lexical' | 'semantic' | 'hybrid' }
 ): Promise<{ results: HybridHit[] | SearchHit[] }> {
+  syncSafe(db, process.cwd());
   return {
     results: await hybridSearch(db, args.query, {
       mode: args.mode,
@@ -69,8 +74,10 @@ export async function semanticSearch(
 }
 
 /** get_entity — fetch by UUID first, fallback to exact name. Enriched with
- *  linked symbols + data-flow context (D-11, MCP-03). */
+ *  linked symbols + data-flow context (D-11, MCP-03). Syncs first (DI-06) —
+ *  an entity from a fresh commit must be findable by name. */
 export function getEntity(db: Database.Database, args: { entity_id: string }) {
+  syncSafe(db, process.cwd());
   const row = db
     .prepare('SELECT id, type, name, content, commit_sha, created_at, last_seen FROM entities WHERE id = ?')
     .get(args.entity_id) as EntityRow | undefined;
@@ -84,8 +91,9 @@ export function getEntity(db: Database.Database, args: { entity_id: string }) {
 }
 
 /** get_backlinks — multi-hop traversal with cycle guard. Enriched with
- *  linked symbols + data-flow (D-11). */
+ *  linked symbols + data-flow (D-11). Syncs first (DI-06). */
 export function getBacklinks(db: Database.Database, args: { entity_id: string; hops?: number }) {
+  syncSafe(db, process.cwd());
   const row = db.prepare('SELECT id FROM entities WHERE id = ? OR name = ?').get(args.entity_id, args.entity_id) as
     | { id: string }
     | undefined;
@@ -104,8 +112,10 @@ export function getBacklinks(db: Database.Database, args: { entity_id: string; h
   };
 }
 
-/** Type-filtered entity lists. */
+/** Type-filtered entity lists. Syncs first (DI-06) — covers the
+ *  get_decisions/get_bugs/get_patterns tools. */
 export function listByType(db: Database.Database, type: string, limit: number) {
+  syncSafe(db, process.cwd());
   const rows = db
     .prepare('SELECT id, type, name, content, commit_sha FROM entities WHERE type = ? ORDER BY created_at DESC LIMIT ?')
     .all(type, limit) as EntityRow[];

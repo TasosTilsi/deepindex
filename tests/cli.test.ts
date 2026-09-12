@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { mkdtempSync, rmSync, existsSync, writeFileSync, readFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, existsSync, writeFileSync, readFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawn, type ChildProcess } from 'node:child_process';
@@ -56,6 +56,20 @@ describe('cli', { timeout: 30_000 }, () => {
     // Progress first (long verb must signal life early), stats after.
     expect(r.stdout.indexOf('indexing')).toBeGreaterThanOrEqual(0);
     expect(r.stdout).toMatch(/indexing .* \.\.\./);
+  });
+
+  // DI-07: `index` on a directory that exists but is NOT a git repo must
+  // warn loudly on stderr (the knowledge-graph layer silently degrades
+  // today, which integrators misread) — while still exiting 0 (degradation,
+  // not failure).
+  it('index on a non-git directory warns on stderr and still exits 0 (DI-07)', async () => {
+    const plain = join(dir, 'plain-repo');
+    mkdirSync(plain, { recursive: true });
+    writeFileSync(join(plain, 'a.ts'), 'export const a = 1;\n');
+    const r = await run(['index', plain, '--db', join(dir, 'plain.db')]);
+    expect(r.code).toBe(0);
+    expect(r.stderr).toMatch(/not a git repository/i);
+    expect(r.stderr).toMatch(/knowledge[- ]graph/i);
   });
 
   it('bare invocation prints help to stdout and exits 0', async () => {

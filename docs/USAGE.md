@@ -57,6 +57,58 @@ deepindex repair <repo>
 
 `deepindex retrieve` and `deepindex search` run an **incremental git-sync** (from the last indexed commit) before querying, so entities are always current.
 
+### Retrieval tips
+
+`retrieve` matches queries against **file paths and symbol names** (exact + substring, case-insensitive) and ranks by TF-IDF + graph proximity. Phrase queries with both a concept and a likely identifier/path term:
+
+```bash
+# Path term recovers a symbol-free config file
+deepindex retrieve "persistence application.properties"
+
+# Identifier term finds the domain type even from a concept-heavy query
+deepindex retrieve "monetary amount Money"
+```
+
+Plural/singular variants are probed automatically — `validations` also matches `validation`. Near-synonym phrasing that shares no vocabulary with paths or symbols (e.g. "cash value object" for `Money`) needs semantic mode; see [Semantic mode](#semantic-mode).
+
+## Measured token savings
+
+Measured on THIS repository (169 indexed files, 1,788 symbols; 140 tracked code+docs files, ~674 KB), against a fresh `deepindex index` of the repo, over five pre-declared representative queries:
+
+| Context strategy (per task) | Avg tokens | vs DeepIndex |
+|---|---|---|
+| Whole-repo dump (read all tracked code+docs) | ~168,500 | 12.6× more |
+| Grep-fallback (grep query terms, read every matched file) | ~90,900 (28–83 matched files/query) | 6.8× more |
+| `deepindex retrieve --json --top-k 10` (output alone) | ~6,200 | — |
+| **retrieve + read the top-3 files it points to (realistic agent usage)** | **~13,400** | **baseline** |
+
+**Headline: ~85% fewer context tokens per task than the grep-fallback workflow (~92% vs dumping the whole repo).** Per-query range vs grep-fallback: 72%–96%.
+
+Method: token counts are bytes/4 (ASCII-dominant source heuristic — not a model-specific tokenizer; exact byte counts were verified alongside). Grep-fallback = `git grep -il` over stopword-filtered query terms, every matched file read fully. Protocol: index the repo, `deepindex retrieve <query> --top-k 10 --json`, sum the output plus the top-3 pointed files; compare against the grep-matched file set and the whole-repo dump.
+
+Caveats — read before quoting these numbers:
+
+- The sample queries follow the recommended phrasing (concept + identifier/path term — see [Retrieval tips](#retrieval-tips)). Cross-vocabulary phrasing is weaker lexically: the on-record A/B measured 3/5 precision on a 7-file Java demo (`docs/ISSUES.md` DI-08); near-synonym phrasing needs semantic mode.
+- Savings are only useful if the retrieval is relevant: hits were 7–10 files/query here; a total miss returns nothing and the agent falls back to grep — which then costs MORE overall.
+- Single-repo sample (~170 files). Whether the gap widens on larger repos is plausible but unmeasured — needs-a-run on a bigger codebase before claiming it.
+
+## Semantic mode
+
+```bash
+# Explicit opt-in bootstrap — downloads the embedding model (the ONLY network path)
+deepindex embed --fetch-model
+
+# Enable per repo (.deepindex.toml)
+[semantic]
+enabled = true
+# model = bge   # optional: Xenova/bge-small-en-v1.5 (default: minilm)
+```
+
+- **Dependency**: `@huggingface/transformers` ships as an `optionalDependency` — installed by default, so pinned `npx -y deepindex@<version>` consumers get the vector layer. Escape hatch: `npm i --omit=optional` / `pnpm i --no-optional`. Without it every semantic feature degrades to a warning + lexical fallback — never a crash.
+- **Model**: `Xenova/all-MiniLM-L6-v2` (Apache-2.0, [huggingface.co/Xenova/all-MiniLM-L6-v2](https://huggingface.co/Xenova/all-MiniLM-L6-v2)) — 384-dim MiniLM; `Xenova/bge-small-en-v1.5` is selectable. Inference is local-only — code snippets never leave the machine; only the one-time model fetch touches the network.
+- **Reproducibility pin**: the model revision is pinned per release (commit sha recorded in `MODEL_CONFIGS` in the source) and passed to every pipeline fetch/load — two machines running the same deepindex version fetch identical weights. A cached model fetched under a different revision triggers a stderr warning on load; re-run `deepindex embed --fetch-model` to re-pin.
+- **Supply chain**: fetched LFS weight files are sha256-verified against the HuggingFace tree listing at fetch time; the verified digests + revision are recorded in `<cache>/<model>/.deepindex-model.json`. NOTE for audit tooling: the weights arrive via this explicit out-of-band download and are NOT visible to CycloneDX / osv-scanner SBOMs — account for the artifact via the marker file. Cache location: `~/.deepindex/models` (override: `DEEPINDEX_MODEL_CACHE_DIR`).
+
 ## Data-Flow & Requirements
 
 ```bash
@@ -158,10 +210,12 @@ deepindex install --harness deepseek-harness
 
 | Harness | What's installed |
 |---------|------------------|
-| Claude Code | `.claude/settings.json` — MCP server + 4 hooks (SessionStart, UserPromptSubmit, PostToolUse, SessionEnd) |
+| Claude Code | root `.mcp.json` — MCP server + `.claude/settings.json` — 4 hooks (SessionStart, UserPromptSubmit, PostToolUse, SessionEnd) |
 | Codex | `.codex/hooks.json` (4 hooks) + `.codex/config.toml` (MCP) |
-| OpenCode | `.opencode/plugins/deepindex/index.ts` (event-based plugin) |
+| OpenCode | root `opencode.json` — `mcp.deepindex` entry + `.opencode/plugins/deepindex/index.ts` (event plugin) |
 | DeepSeek Harness | `~/.dsh/cordis.patch.yml` — `dsh-mcp-client` entry |
+
+Every generated command is pinned `npx -y deepindex@<version>` (version read from package.json at install time) — safe for pinned-npx consumers; a bare `deepindex` command would assume a global install.
 
 ## Watcher
 
@@ -169,6 +223,21 @@ deepindex install --harness deepseek-harness
 # Watch files and invalidate the summary cache on change
 deepindex watch --debounce 250
 ```
+
+## Exit codes & preconditions
+
+| Verb | 0 | 1 | 2 |
+|------|---|---|---|
+| `index <repo>` | indexed (warnings may appear on stderr) | parse/build error | repo path not found |
+| `health <repo>` | score ≥ `repair_below` | score **below** `repair_below` | **no index** (`--db` file missing) or repo path not found |
+| `retrieve <query>` | results printed (possibly none) | query error | no index, or invalid `--top-k` |
+| `search <query>` | results printed (possibly none) | query error | no index, or invalid `--limit`/`--mode` |
+| `embed [repo]` | embedded — **or semantic layer unavailable** (deliberate: a missing optional dependency is a warning + lexical fallback, never a failure) | other errors | repo path not found / no index |
+| `git-index` / `git-sync <repo>` | synced | sync error | repo path not found |
+| `mcp serve` | runs until stdin closes | server error | no index |
+| `install` | installed | — | unknown harness |
+
+**Preconditions:** `index` accepts any existing directory — git history is optional. Outside a git repo the knowledge-graph layer is skipped with a loud stderr warning (`not a git repository — knowledge-graph layer skipped`); the symbol/import graph is still fully built, and `git-sync`/`search`/MCP entity tools will be empty for that repo. The `health` 1-vs-2 distinction: 1 means the index exists but scored below `repair_below` (run `deepindex repair`); 2 means there is nothing to score yet (run `deepindex index <repo>`).
 
 ## Configuration
 

@@ -44,7 +44,7 @@ It is not a vector database or a RAG framework. It is the deterministic, local-f
 - **Local-first** — no SaaS, no API key, no cloud. Runs entirely on your machine.
 - **Multi-harness** — MCP + hooks for Claude Code, Codex, OpenCode, and DeepSeek Harness.
 - **Self-healing** — health scoring + a repair pipeline that re-resolves imports, invalidates cache, probes git history, and (optionally) consults an LLM. Sessions auto-repair deterministically (repair stages 1-3) whenever the health score drops below the configured threshold; the stage-4 LLM consultation stays manual/optional.
-- **Token-efficient** — retrieval assembles minimal context; health gates LLM calls; cache avoids re-computation.
+- **Token-efficient** — retrieval assembles minimal context; health gates LLM calls; cache avoids re-computation. Measured ~85% fewer context tokens per task than grep-fallback on this repo (method + caveats: [USAGE → Measured token savings](docs/USAGE.md#measured-token-savings)).
 
 ---
 
@@ -57,7 +57,8 @@ npm install -g deepindex   # or: pnpm add -g deepindex
 # Index a repository
 deepindex index <repo>
 
-# Retrieve context for a task
+# Retrieve context for a task (matches file paths + symbol names —
+# include a likely identifier or path term alongside the concept)
 deepindex retrieve "how does auth work"
 
 # Check index health
@@ -80,7 +81,8 @@ deepindex install
 
 ## Documentation
 
-- **[Usage](docs/USAGE.md)** — full CLI reference, harness integration, dashboard.
+- **[Usage](docs/USAGE.md)** — full CLI reference, harness integration, dashboard, exit codes & preconditions.
+- **[Known issues](docs/ISSUES.md)** — upstream findings, fixes, and their evidence record.
 - **[Design](docs/DESIGN.md)** — architecture, data model, retrieval, repair, phases.
 - **[ADRs](docs/adr/)** — architecture decision records.
 - **[Planning](.planning/)** — GSD planning state (phases, plans, verification).

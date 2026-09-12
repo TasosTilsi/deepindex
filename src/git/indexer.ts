@@ -189,3 +189,15 @@ export function gitSync(db: Database.Database, repoRoot: string): IndexResult {
     relationshipsWritten: r.relationships,
   };
 }
+
+/** Non-fatal freshness seam (DI-06): the CLI retrieve/search verbs and every
+ *  MCP tool handler run this before querying, so entities stay current in
+ *  long-lived sessions without a manual `git-sync`. Not a git repo / any sync
+ *  failure → swallow (the query still runs on the existing store). */
+export function syncSafe(db: Database.Database, repoRoot: string): void {
+  try {
+    gitSync(db, repoRoot);
+  } catch {
+    // not a git repo or sync failed — ignore
+  }
+}

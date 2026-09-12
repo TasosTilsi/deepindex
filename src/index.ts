@@ -11,6 +11,7 @@ export {
   DEFAULT_HEALTH_CONFIG,
 } from './health.js';
 export { tokenize, tfidf, retrieve, DEFAULT_TOP_K } from './retrieve.js';
+export { readVersion, npxArgs, npxCommand } from './version.js';
 export {
   repair,
   stage1Rebuild,
@@ -86,7 +87,7 @@ export {
   type ExtractionResult,
 } from './git/extract.js';
 export { sanitizeDiff, shannonEntropy } from './git/sanitize.js';
-export { gitIndex, gitSync, deriveCommitType, type IndexResult } from './git/indexer.js';
+export { gitIndex, gitSync, syncSafe, deriveCommitType, type IndexResult } from './git/indexer.js';
 export {
   searchEntities,
   getRelated,
@@ -126,8 +127,11 @@ export {
 } from './semantic/config.js';
 export {
   resolveModelName,
+  resolveModelRevision,
   hasCachedModel,
   modelCacheDir,
+  modelMarkerPath,
+  readModelMarker,
   fetchModel,
   loadRealEmbedder,
   getEmbedder,
@@ -135,6 +139,8 @@ export {
   MODEL_CONFIGS,
   type Embedder,
   type ModelConfig,
+  type ModelMarker,
+  type ModelTreeFile,
   SemanticUnavailableError,
 } from './semantic/embedder.js';
 export {

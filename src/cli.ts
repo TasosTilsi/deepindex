@@ -14,7 +14,7 @@ import { getImpact, findParallelStorage } from './graph/sql-impact.js';
 import { syncRequirements } from './requirements/sync.js';
 import { calculateReqCoverage } from './requirements/coverage.js';
 import { initRequirementsDb } from './requirements/setup.js';
-import { gitIndex, gitSync, type IndexResult } from './git/indexer.js';
+import { gitIndex, gitSync, syncSafe, type IndexResult } from './git/indexer.js';
 import { searchEntities, type SearchHit } from './git/search.js';
 import { hybridSearch, type HybridHit } from './semantic/search-hybrid.js';
 import { serveMcp } from './mcp/server.js';
@@ -34,30 +34,10 @@ import {
   SemanticUnavailableError,
 } from './semantic/embedder.js';
 import { loadSemanticConfig } from './semantic/config.js';
-import { resolve, basename, dirname } from 'node:path';
-import { existsSync, readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { readVersion } from './version.js';
+import { resolve, basename, join } from 'node:path';
+import { existsSync } from 'node:fs';
 import type Database from 'better-sqlite3';
-
-// ESM __dirname shim (same pattern as src/graph/parse.ts) — resolves to src/
-// under tsx and dist/ in the published tarball; package.json sits one level
-// up in both layouts.
-const __dirname = dirname(fileURLToPath(import.meta.url));
-
-/** Package version read from package.json — the tarball always ships it
- * next to dist/, so --version stays in sync per release instead of a
- * drifting hardcoded literal. Falls back to 'unknown' if unreadable. */
-function readVersion(): string {
-  try {
-    return (
-      JSON.parse(readFileSync(resolve(__dirname, '..', 'package.json'), 'utf8')) as {
-        version?: string;
-      }
-    ).version ?? 'unknown';
-  } catch {
-    return 'unknown';
-  }
-}
 
 const program = new Command();
 
@@ -85,14 +65,10 @@ function withDb<T>(  verb: string,
   }
 }
 
-/** Incremental git-sync before a query so entities are current. Non-fatal:
- *  if the repo isn't a git repo or sync fails, the query still runs. */
+/** Freshness seam for read-only query verbs: delegates to git/syncSafe (DI-06).
+ *  Non-fatal: if the repo isn't a git repo or sync fails, the query still runs. */
 function syncBeforeQuery(db: Database.Database, repoPath: string): void {
-  try {
-    gitSync(db, repoPath);
-  } catch {
-    // not a git repo or sync failed — ignore
-  }
+  syncSafe(db, repoPath);
 }
 
 program
@@ -122,7 +98,14 @@ program
       const stats = await buildGraph(db, repoPath, { force: opts.rebuild });
       // Also index git history into the knowledge graph (entities, backlinks).
       // Non-fatal: symbol indexing succeeds even if the repo isn't a git repo.
+      // DI-07: degrade LOUDLY — a silently missing knowledge graph reads as a
+      // broken install to scripted consumers.
       let gitStats: IndexResult | null = null;
+      if (!existsSync(join(repoPath, '.git'))) {
+        console.error(
+          `deepindex index: not a git repository — knowledge-graph layer skipped (git-sync, search, and MCP entity tools will be empty for ${repoPath})`
+        );
+      }
       console.log('indexing git history ...');
       try {
         gitStats = gitIndex(db, repoPath);
