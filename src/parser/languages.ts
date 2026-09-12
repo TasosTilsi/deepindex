@@ -43,6 +43,11 @@ export const LANGUAGE_CONFIGS: Record<string, LanguageConfig> = {
     extensions: ['.java'],
     nodeMap: {
       'class_declaration': 'class',
+      // DI-02: records are the modern-Java domain-type idiom — capture them
+      // as class symbols alongside class_declaration. Enums are the same
+      // nodeMap gap in the same language.
+      'record_declaration': 'class',
+      'enum_declaration': 'enum',
       'method_declaration': 'method',
       'interface_declaration': 'interface',
     },

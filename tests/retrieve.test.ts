@@ -243,4 +243,36 @@ describe('retrieve', () => {
       rmSync(dir, { recursive: true, force: true });
     });
   });
+
+  // DI-08(a): the lexical retrieve path must seed from file PATH tokens too
+  // (symbol-only seeding made symbol-free files unreachable), and must try
+  // light plural-stripped variants of query tokens alongside the raw token.
+  describe('path-token seeding + light variants (DI-08a)', () => {
+    it('recovers a symbol-free file via a path token', () => {
+      const dir = mkdtempSync(join(tmpdir(), 'deepindex-pathseed-'));
+      const db = initDb(join(dir, 'test.db'));
+      db.exec(`INSERT INTO files (path, hash, mtime, size, language, parsed_at)
+               VALUES ('src/main/resources/application.properties', 'h1', 1, 1, 'properties', 1)`);
+      // application.properties has NO symbols — only its PATH can seed it.
+      const r = retrieve(db, 'application properties datasource', { topK: 5 });
+      expect(r.map((h) => h.path)).toContain('src/main/resources/application.properties');
+      db.close();
+      rmSync(dir, { recursive: true, force: true });
+    });
+
+    it('plural query variant matches a singular path/symbol term', () => {
+      const dir = mkdtempSync(join(tmpdir(), 'deepindex-variant-'));
+      const db = initDb(join(dir, 'test.db'));
+      db.exec(`INSERT INTO files (path, hash, mtime, size, language, parsed_at)
+               VALUES ('src/validation/ValidationService.java', 'h1', 1, 1, 'java', 1)`);
+      const fid = (db.prepare(`SELECT id FROM files WHERE path = 'src/validation/ValidationService.java'`).get() as { id: number }).id;
+      db.prepare(`INSERT INTO symbols (file_id, name, kind, start_line, end_line, exported) VALUES (?, 'validatePayout', 'method', 1, 2, 1)`).run(fid);
+      // 'validations' is a near-miss today: exact name miss, and neither the
+      // symbol 'validatePayout' nor the path contains the plural substring.
+      const r = retrieve(db, 'validations', { topK: 5 });
+      expect(r.map((h) => h.path)).toContain('src/validation/ValidationService.java');
+      db.close();
+      rmSync(dir, { recursive: true, force: true });
+    });
+  });
 });

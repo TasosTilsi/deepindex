@@ -22,6 +22,28 @@ export function tokenize(text: string): string[] {
   return out;
 }
 
+/** Light plural variants (DI-08a): each token plus its plural-stripped form
+ *  when plausible (len > 3, ends in 's' but not 'ss'). ADDITIVE only — the
+ *  raw token is always tried, so exact behavior is never narrowed. */
+function seedVariants(tokens: string[]): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const t of tokens) {
+    if (!seen.has(t)) {
+      seen.add(t);
+      out.push(t);
+    }
+    if (t.length > 3 && t.endsWith('s') && !t.endsWith('ss')) {
+      const stripped = t.slice(0, -1);
+      if (!seen.has(stripped)) {
+        seen.add(stripped);
+        out.push(stripped);
+      }
+    }
+  }
+  return out;
+}
+
 export function tfidf(query: string[], docs: string[][]): number[] {
   const N = docs.length;
   const df = new Map<string, number>();
@@ -72,10 +94,16 @@ export function retrieve(
   const tokens = tokenize(query);
   if (tokens.length === 0) return [];
 
-  // 1) Find seed symbols. Combine exact-match (case-insensitive) with LIKE substring match.
+  // 1) Find seed symbols. Combine exact-match (case-insensitive) with LIKE
+  // substring match, probing light plural variants of each token additively
+  // (DI-08a). File PATHS seed too — a symbol-free file (config, .properties)
+  // is reachable via a path term instead of being invisible to retrieve.
+  const seedTerms = seedVariants(tokens);
   const seedSymbolIds = new Set<number>();
   const allSeedRows: SymbolLite[] = [];
-  for (const t of tokens) {
+  const fileDepth = new Map<number, number>();
+  const pathLike = db.prepare('SELECT id FROM files WHERE LOWER(path) LIKE ?');
+  for (const t of seedTerms) {
     const exact = getSymbolByName(db, t);
     for (const r of exact) {
       if (seedSymbolIds.has(r.id)) continue;
@@ -117,12 +145,16 @@ export function retrieve(
         exported: r.exported === 1,
       });
     }
+    for (const r of pathLike.all(`%${t}%`) as { id: number }[]) {
+      if (!fileDepth.has(r.id)) fileDepth.set(r.id, 0);
+    }
   }
-  if (seedSymbolIds.size === 0) return [];
+  if (seedSymbolIds.size === 0 && fileDepth.size === 0) return [];
 
   // 2) Graph BFS: depth 1 + depth 2 dependents. Bucket by depth.
-  const fileDepth = new Map<number, number>();
-  for (const s of allSeedRows) fileDepth.set(s.fileId, 0);
+  for (const s of allSeedRows) {
+    if (!fileDepth.has(s.fileId)) fileDepth.set(s.fileId, 0);
+  }
   for (const s of allSeedRows) {
     const d1 = getDependents(db, s.id, 1);
     for (const id of d1) {

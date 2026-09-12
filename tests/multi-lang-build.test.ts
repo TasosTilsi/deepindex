@@ -88,3 +88,56 @@ describe('multi-language build (walker-level e2e)', () => {
     expect(symbols.some((s) => s.language === 'c' && s.name === 'do_thing' && s.kind === 'method')).toBe(true);
   });
 });
+
+/**
+ * DI-02: Java records and enums must be captured as symbols at walker level.
+ * Records are the modern-Java domain-type idiom (the upstream A/B demo's
+ * `Money` record was invisible to retrieve); enums are the same one-line
+ * nodeMap gap in the same language.
+ */
+describe('java record + enum symbols at walker level (DI-02)', () => {
+  let db: Database.Database;
+  let tmpDir: string;
+
+  beforeAll(async () => {
+    tmpDir = mkdtempSync(join(tmpdir(), 'deepindex-java-rec-'));
+    const srcDir = join(tmpDir, 'src');
+    mkdirSync(srcDir, { recursive: true });
+    writeFileSync(
+      join(srcDir, 'Money.java'),
+      'import java.math.BigDecimal;\n\n' +
+        'public record Money(BigDecimal amount, String currency) {\n' +
+        '  public Money add(Money other) { return new Money(amount.add(other.amount), currency); }\n' +
+        '}\n',
+    );
+    writeFileSync(
+      join(srcDir, 'Status.java'),
+      'public enum Status {\n  ACTIVE,\n  CLOSED\n}\n',
+    );
+    db = initDb(join(tmpDir, 'test.db'));
+    await buildGraph(db, tmpDir);
+  });
+
+  afterAll(() => {
+    closeDb();
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('indexes the record type as a class symbol', () => {
+    const rows = db
+      .prepare(
+        `SELECT s.name, s.kind FROM symbols s JOIN files f ON s.file_id = f.id WHERE f.language = 'java'`,
+      )
+      .all() as { name: string; kind: string }[];
+    expect(rows.some((s) => s.name === 'Money' && s.kind === 'class')).toBe(true);
+  });
+
+  it('indexes the enum type as an enum symbol', () => {
+    const rows = db
+      .prepare(
+        `SELECT s.name, s.kind FROM symbols s JOIN files f ON s.file_id = f.id WHERE f.language = 'java'`,
+      )
+      .all() as { name: string; kind: string }[];
+    expect(rows.some((s) => s.name === 'Status' && s.kind === 'enum')).toBe(true);
+  });
+});
