@@ -25,7 +25,9 @@
       "esbuild",
       "tree-sitter",
       "tree-sitter-javascript",
-      "tree-sitter-typescript"
+      "tree-sitter-typescript",
+      "onnxruntime-node",
+      "sharp"
     ]
   },
   "dependencies": {
@@ -38,6 +40,9 @@
     "sqlite-vec": "0.1.9",
     "web-tree-sitter": "^0.26.11",
     "zod": "^4.4.3"
+  },
+  "optionalDependencies": {
+    "@huggingface/transformers": "3.8.1"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.12",

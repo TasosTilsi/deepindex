@@ -1,7 +1,9 @@
-import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync } from 'node:fs';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { load as yamlLoad } from 'js-yaml';
 import type Database from 'better-sqlite3';
 import { initDb } from '../src/graph/db.js';
 import { buildGraph } from '../src/graph/build.js';
@@ -207,5 +209,145 @@ describe('review-fix W4: embedder memoization', () => {
     const b = await loadRealEmbedder(MODEL_CONFIGS.minilm.name);
     expect(pipelineCalls).toBe(1);
     expect(a.embed).toBe(b.embed);
+  });
+});
+
+// DI-01: the vector layer must be reachable for pinned-npx consumers —
+// @huggingface/transformers ships as an optionalDependency (default-installed;
+// --omit=optional escape) instead of a missing manual install step.
+describe('packaging (DI-01)', () => {
+  it('declares @huggingface/transformers in optionalDependencies with an exact pin', () => {
+    const pkg = JSON.parse(readFileSync(join(process.cwd(), 'package.json'), 'utf8'));
+    const pin = pkg.optionalDependencies?.['@huggingface/transformers'];
+    expect(typeof pin).toBe('string');
+    expect(pin).toMatch(/^\d+\.\d+\.\d+$/); // exact version, no range
+  });
+
+  it('pnpm-workspace.yaml allows builds for the transformers native deps', () => {
+    const ws = yamlLoad(readFileSync(join(process.cwd(), 'pnpm-workspace.yaml'), 'utf8')) as {
+      onlyBuiltDependencies?: string[];
+    };
+    expect(ws.onlyBuiltDependencies ?? []).toEqual(
+      expect.arrayContaining(['onnxruntime-node', 'sharp'])
+    );
+  });
+
+  it('package.json pnpm.onlyBuiltDependencies also lists the native deps (pnpm<10 reads package.json)', () => {
+    const pkg = JSON.parse(readFileSync(join(process.cwd(), 'package.json'), 'utf8'));
+    expect(pkg.pnpm?.onlyBuiltDependencies ?? []).toEqual(
+      expect.arrayContaining(['onnxruntime-node', 'sharp'])
+    );
+  });
+});
+
+// DI-03: fetchModel must pin the HuggingFace revision (two machines fetching
+// at different times otherwise get different weights → non-reproducible
+// embeddings) and record it in a cache marker. DI-04: LFS weights must be
+// sha256-verified at fetch time. All via seams — CI never touches the network.
+describe('model revision pin + checksum marker (DI-03/DI-04)', () => {
+  const MINILM = MODEL_CONFIGS.minilm.name;
+  const MINILM_REV = '751bff37182d3f1213fa05d7196b954e230abad9';
+  const BGE_REV = 'ea104dacec62c0de699686887e3f920caeb4f3e3';
+  let tmp: string;
+
+  beforeEach(() => {
+    tmp = mkdtempSync(join(tmpdir(), 'deepindex-rev-'));
+    process.env.DEEPINDEX_MODEL_CACHE_DIR = join(tmp, 'cache');
+  });
+
+  afterEach(() => {
+    delete process.env.DEEPINDEX_MODEL_CACHE_DIR;
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it('MODEL_CONFIGS pins revisions for both models (DI-03)', () => {
+    expect(MODEL_CONFIGS.minilm.revision).toBe(MINILM_REV);
+    expect(MODEL_CONFIGS.bge.revision).toBe(BGE_REV);
+  });
+
+  it('resolveModelRevision maps model name → pin, undefined for unknown (DI-03)', async () => {
+    const mod = await import('../src/semantic/embedder.js');
+    expect(mod.resolveModelRevision?.(MINILM)).toBe(MINILM_REV);
+    expect(mod.resolveModelRevision?.('Xenova/unknown')).toBeUndefined();
+  });
+
+  it('fetchModel passes the pinned revision to the pipeline and writes the marker (DI-03)', async () => {
+    const mod = await import('../src/semantic/embedder.js');
+    const seen: Array<{ task: string; model: string; opts?: { revision?: string } }> = [];
+    const factory = async (task: string, model: string, opts?: { revision?: string }): Promise<unknown> => {
+      seen.push({ task, model, opts });
+      mkdirSync(join(tmp, 'cache', model), { recursive: true });
+      return {};
+    };
+    await mod.fetchModel(MINILM, { pipelineFactory: factory });
+    expect(seen).toEqual([
+      { task: 'feature-extraction', model: MINILM, opts: { revision: MINILM_REV } },
+    ]);
+    const markerPath = join(tmp, 'cache', MINILM, '.deepindex-model.json');
+    expect(existsSync(markerPath)).toBe(true);
+    const marker = JSON.parse(readFileSync(markerPath, 'utf8'));
+    expect(marker.model).toBe(MINILM);
+    expect(marker.revision).toBe(MINILM_REV);
+  });
+
+  it('fetchModel sha256-verifies present LFS weights against the tree listing (DI-04)', async () => {
+    const mod = await import('../src/semantic/embedder.js');
+    const sha = createHash('sha256').update('weights-bytes').digest('hex');
+    const factory = async (_task: string, model: string): Promise<unknown> => {
+      const dir = join(tmp, 'cache', model);
+      mkdirSync(join(dir, 'onnx'), { recursive: true });
+      writeFileSync(join(dir, 'onnx', 'model.onnx'), 'weights-bytes');
+      writeFileSync(join(dir, 'config.json'), '{}');
+      return {};
+    };
+    const tree = [
+      { path: 'onnx/model.onnx', sha256: sha },
+      { path: 'config.json' }, // non-LFS → no sha, skipped
+    ];
+    await mod.fetchModel(MINILM, { pipelineFactory: factory, treeFetch: async () => tree });
+    const marker = JSON.parse(
+      readFileSync(join(tmp, 'cache', MINILM, '.deepindex-model.json'), 'utf8')
+    );
+    expect(marker.verified).toEqual([{ path: 'onnx/model.onnx', sha256: sha }]);
+  });
+
+  it('fetchModel refuses on a checksum mismatch (DI-04)', async () => {
+    const mod = await import('../src/semantic/embedder.js');
+    const factory = async (_task: string, model: string): Promise<unknown> => {
+      const dir = join(tmp, 'cache', model);
+      mkdirSync(join(dir, 'onnx'), { recursive: true });
+      writeFileSync(join(dir, 'onnx', 'model.onnx'), 'tampered-bytes');
+      return {};
+    };
+    const sha = createHash('sha256').update('weights-bytes').digest('hex');
+    await expect(
+      mod.fetchModel(MINILM, {
+        pipelineFactory: factory,
+        treeFetch: async () => [{ path: 'onnx/model.onnx', sha256: sha }],
+      })
+    ).rejects.toThrow(/checksum mismatch/);
+  });
+
+  it('loadRealEmbedder warns when the cached marker revision differs from the pin (DI-03)', async () => {
+    const mod = await import('../src/semantic/embedder.js');
+    const dir = join(tmp, 'cache', 'Xenova/bge-small-en-v1.5');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, '.deepindex-model.json'),
+      JSON.stringify({
+        model: 'Xenova/bge-small-en-v1.5',
+        revision: 'deadbeef',
+        verified: [],
+        fetchedAt: '2020-01-01T00:00:00Z',
+      })
+    );
+    const warnSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    // The behavior under test is the WARNING firing before any load work.
+    // Whether the load then succeeds (transformers mocked by an earlier
+    // describe) or rejects (not installed) is environment-dependent — catch
+    // both, assert the warning.
+    await mod.loadRealEmbedder('Xenova/bge-small-en-v1.5').catch(() => undefined);
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('revision'));
+    warnSpy.mockRestore();
   });
 });

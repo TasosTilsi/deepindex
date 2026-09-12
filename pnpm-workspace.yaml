@@ -14,3 +14,7 @@ onlyBuiltDependencies:
   - tree-sitter
   - tree-sitter-javascript
   - tree-sitter-typescript
+  # DI-01: @huggingface/transformers (optionalDependency) pulls these native
+  # prebuilt-binary installers — pnpm 10 gates their build scripts here.
+  - onnxruntime-node
+  - sharp
