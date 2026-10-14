@@ -22,12 +22,9 @@ describe('git walker', () => {
     expect(commits[commits.length - 1].message).toContain('div');
   });
 
-  it('skips merge commits', () => {
-    const commits = walkCommits(FIXTURE);
-    for (const c of commits) {
-      expect(c.message.startsWith('Merge ')).toBe(false);
-    }
-  });
+  // The merge-commit behaviour lives in tests/git-walker-merge.test.ts. The version that
+  // used to sit here asserted over a fixture that contains no merges at all, so it could
+  // never fail (issue #3); the replacement builds one and checks both directions.
 
   it('populates commit metadata', () => {
     const commits = walkCommits(FIXTURE);

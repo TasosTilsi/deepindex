@@ -55,14 +55,19 @@ function parseLog(raw: string): Array<{
   for (const recRaw of raw.split('\x1e')) {
     const rec = recRaw.trim();
     if (!rec) continue;
-    const [sha, author, authorDate, committerDate, parentSha, message] = rec.split('\x1f');
+    const [sha, author, authorDate, committerDate, parentList, message] = rec.split('\x1f');
     if (!sha) continue;
+    // Issue #3: %P lists EVERY parent, space-separated. Taking the raw string made a
+    // merge commit hand git "<p1> <p2>" as one argv element (fatal: ambiguous
+    // argument), losing that commit's files, entities and backlinks. Diff against the
+    // first parent, as the function comment below already promised.
+    const parents = (parentList ?? '').split(' ').filter(Boolean);
     out.push({
       sha,
       author: author ?? '',
       authorDate: authorDate ?? '',
       committerDate: committerDate ?? '',
-      parentSha: parentSha || null,
+      parentSha: parents[0] ?? null,
       message: (message ?? '').trim(),
     });
   }
@@ -102,9 +107,9 @@ export function walkCommits(repoRoot: string): CommitRecord[] {
 export function fetchDiff(repoRoot: string, sha: string, parentSha: string | null): string {
   let diff: string;
   if (parentSha) {
-    diff = git(repoRoot, ['diff', parentSha, sha]);
+    diff = git(repoRoot, ['diff', parentSha, sha, '--']);
   } else {
-    diff = git(repoRoot, ['show', '--stat', sha]);
+    diff = git(repoRoot, ['show', '--stat', sha, '--']);
   }
   return diff.slice(0, DIFF_MAX_CHARS);
 }
@@ -112,8 +117,8 @@ export function fetchDiff(repoRoot: string, sha: string, parentSha: string | nul
 /** Changed file paths for a commit (via --name-only). */
 export function fetchFilesChanged(repoRoot: string, sha: string, parentSha: string | null): string[] {
   const raw = parentSha
-    ? git(repoRoot, ['diff', '--name-only', parentSha, sha])
-    : git(repoRoot, ['show', '--name-only', '--format=', sha]);
+    ? git(repoRoot, ['diff', '--name-only', parentSha, sha, '--'])
+    : git(repoRoot, ['show', '--name-only', '--format=', sha, '--']);
   return raw ? raw.split('\n').filter(Boolean) : [];
 }
 
