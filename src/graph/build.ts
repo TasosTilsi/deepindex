@@ -3,7 +3,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 import { createHash } from 'node:crypto';
 import { parseFile } from './parse.js';
-import { resolveImport } from './resolve.js';
+import { isExternalSpecifier, resolveImport } from './resolve.js';
 import { extractSql } from '../parser/sql-extractor.js';
 import { EXT_TO_LANG, langForExt } from '../parser/languages.js';
 
@@ -71,8 +71,8 @@ export async function buildGraph(
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
   );
   const insertImport = db.prepare(
-    `INSERT INTO imports (file_id, source, resolved_file_id, resolved)
-     VALUES (?, ?, ?, ?)`
+    `INSERT INTO imports (file_id, source, resolved_file_id, resolved, external)
+     VALUES (?, ?, ?, ?, ?)`
   );
   const getFileByPath = db.prepare('SELECT id FROM files WHERE path = ?');
   const getFileHash = db.prepare('SELECT hash FROM files WHERE path = ?');
@@ -156,17 +156,26 @@ export async function buildGraph(
     }
 
     for (const imp of imports) {
+      if (isExternalSpecifier(imp.source)) {
+        // No in-repo target exists by definition. Recorded as resolved AND
+        // flagged external so nothing downstream reads it as a broken import
+        // (issue #8). Its resolved_file_id stays NULL, which is what every
+        // edge consumer already filters on.
+        insertImport.run(fileId, imp.source, null, 1, 1);
+        continue;
+      }
+      const external = 0;
       const resolved = resolveImport(absRoot, relPath, imp.source, files);
       if (resolved) {
         const targetRow = getFileByPath.get(resolved) as { id: number } | undefined;
         if (targetRow) {
-          insertImport.run(fileId, imp.source, targetRow.id, 1);
+          insertImport.run(fileId, imp.source, targetRow.id, 1, external);
         } else {
-          insertImport.run(fileId, imp.source, null, 0);
+          insertImport.run(fileId, imp.source, null, 0, external);
           brokenImportCount++;
         }
       } else {
-        insertImport.run(fileId, imp.source, null, 0);
+        insertImport.run(fileId, imp.source, null, 0, external);
         brokenImportCount++;
       }
     }

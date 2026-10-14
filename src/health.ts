@@ -88,10 +88,20 @@ export function getHealth(
   const parsedRecently = parsedRecentRow.c;
 
   const totalImportsRow = db.prepare(`SELECT COUNT(*) AS c FROM imports`).get() as { c: number };
+  const externalImportsRow = db
+    .prepare(`SELECT COUNT(*) AS c FROM imports WHERE external = 1`)
+    .get() as { c: number };
   const brokenImportsRow = db
     .prepare(`SELECT COUNT(*) AS c FROM imports WHERE resolved = 0`)
     .get() as { c: number };
   const totalImports = totalImportsRow.c;
+  /**
+   * In-repo imports only. An external specifier (node builtin, package id,
+   * workspace alias) can never have a target here, so keeping it in the
+   * denominator dilutes the ratio and hides genuinely broken internal
+   * imports (issue #8). Broken imports are relative by construction.
+   */
+  const inRepoImports = Math.max(0, totalImports - externalImportsRow.c);
   const brokenImports = brokenImportsRow.c;
 
   // Dimensions
@@ -105,10 +115,11 @@ export function getHealth(
   }
 
   let consistency: number;
-  if (totalImports === 0) {
+  if (inRepoImports === 0) {
+    // Nothing internal to check: neutral, like any dimension without data.
     consistency = 0.5;
   } else {
-    consistency = clamp01(1 - brokenImports / totalImports);
+    consistency = clamp01(1 - brokenImports / inRepoImports);
   }
 
   const signals = getSignals(db);
@@ -132,7 +143,7 @@ export function getHealth(
   const coverage = clamp01(testsRate * lintFactor);
 
   const importsResolvedRate =
-    totalImports === 0 ? 0.5 : clamp01(1 - brokenImports / totalImports);
+    inRepoImports === 0 ? 0.5 : clamp01(1 - brokenImports / inRepoImports);
   const testsPassRate = typeof testsPass === 'number' ? clamp01(testsPass) : 0.5;
   const confidence = clamp01(0.5 * importsResolvedRate + 0.5 * testsPassRate);
 

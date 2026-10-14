@@ -3,14 +3,25 @@ import { dirname, join, relative, resolve } from 'node:path';
 
 const EXT_TRY = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs'];
 
+/**
+ * A specifier that cannot have a target inside this repository: a node:
+ * builtin, a bare package id, or a workspace alias. Such an import is
+ * EXTERNAL - legitimately absent from the in-repo graph, and therefore not
+ * a broken import (issue #8). The rule lives here so exactly one place
+ * owns it.
+ */
+export function isExternalSpecifier(importSource: string): boolean {
+  return !importSource.startsWith('.') && !importSource.startsWith('/');
+}
+
 export function resolveImport(
   repoRoot: string,
   fromFile: string,
   importSource: string,
   knownFiles: ReadonlyArray<{ absPath: string }>
 ): string | null {
-  // External / bare module — not resolvable in our graph.
-  if (!importSource.startsWith('.')) return null;
+  // External / bare module — not resolvable in our graph (see isExternalSpecifier).
+  if (isExternalSpecifier(importSource)) return null;
 
   const fromAbs = resolve(repoRoot, fromFile);
   const fromDir = dirname(fromAbs);

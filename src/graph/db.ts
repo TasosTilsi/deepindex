@@ -163,7 +163,11 @@ CREATE TABLE IF NOT EXISTS imports (
   file_id INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
   source TEXT NOT NULL,
   resolved_file_id INTEGER REFERENCES files(id),
-  resolved INTEGER NOT NULL
+  resolved INTEGER NOT NULL,
+  -- 1 = a specifier that cannot have an in-repo target (node builtin,
+  -- package id, workspace alias). Explicit so no consumer has to infer it
+  -- from a NULL resolved_file_id (issue #8).
+  external INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_imports_file ON imports(file_id);
 CREATE TABLE IF NOT EXISTS edges (
@@ -222,6 +226,9 @@ export function initDb(dbPath: string): Database.Database {
   // REVIEW-FIX W3: label/snippet stored at embed time (see SCHEMA_V6 note).
   addColumnIfMissing(db, 'embeddings_meta', 'label', "label TEXT NOT NULL DEFAULT ''");
   addColumnIfMissing(db, 'embeddings_meta', 'snippet', "snippet TEXT NOT NULL DEFAULT ''");
+  // Issue #8: import classification. Same idempotent column-add pattern as
+  // above, so an existing database picks the column up on open.
+  addColumnIfMissing(db, 'imports', 'external', 'external INTEGER NOT NULL DEFAULT 0');
   const v = db.pragma('user_version', { simple: true }) as number;
   if (v < SCHEMA_VERSION) {
     db.pragma(`user_version = ${SCHEMA_VERSION}`);
