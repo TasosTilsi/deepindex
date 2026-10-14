@@ -74,6 +74,93 @@ Fixes landed in this checkout (0.3.4-dev), each driven red→green: a failing te
 - **Evidence correction (verified against the code):** the original claim — "a path term in a query can recover a file with no matching symbols" — was FALSE against the pre-fix engine: `retrieve()` seeds exclusively from symbol matches and early-returns `[]` otherwise, and FTS5 indexes git-derived entities only. `application.properties` was unreachable by ANY lexical phrasing before this pass. The DI-08(a) path-seeding fix makes the claim true; the docs were written only after the behavior existed.
 - **Status:** FIXED in 0.3.4-dev — USAGE "Retrieval tips" + README document path+symbol matching and the concept-plus-identifier phrasing advice, with the measured A/B caveat noted for near-synonym phrasing (needs semantic mode).
 
+## Issues — found in the 0.3.5 pass (GitHub #3–#17)
+
+Tracked individually on GitHub with full analyses; the ones already fixed are recorded here with their
+measured evidence. Branch `fix/backlog-v0.3.5`.
+
+### DI-10 — Non-relative imports counted as broken imports (HIGH)
+
+- **Evidence (measured):** every non-relative specifier was written `resolved = 0`, because `resolveImport`
+  returns null for anything not starting with `.`. On this repository's own index that flagged **456 of
+  482 imports (94.6%)** — `node:fs 52`, `node:path 49`, `better-sqlite3 42`, `vitest 32`, `node:os 31`,
+  plus packages and workspace aliases. `consistency` sat at **0.054**; `confidence` was halved.
+- **Impact:** the 0.3-weighted consistency dimension was near zero on any real repository, and the issue
+  list was dominated by false positives — what a consumer sees first.
+- **Fix:** `isExternalSpecifier()` in `resolve.ts` owns the rule; `imports.external` is an explicit column
+  (in the DDL and via the idempotent `addColumnIfMissing` ladder, so existing databases migrate on open).
+  Externals are stored `resolved = 1, external = 1, resolved_file_id = NULL`. `health.ts` computes
+  `consistency` and `importsResolvedRate` over **in-repo** imports only, so external mass can neither
+  dilute the ratio nor hide a genuine break.
+- **Measured:** 485 → 213 unresolved on this repository; `consistency` 0.0509 → 0.1088.
+- **Status:** FIXED in 0.3.5-dev (`6c1db4c`). An existing index needs `deepindex index . --rebuild` for the
+  classification to reach unchanged files — the hash cache skips them by design.
+
+### DI-11 — Health report truncated its issue list silently (MEDIUM)
+
+- **Evidence:** `if (issues.length > 100) issues.length = 100;` with nothing in `HealthReport` to say so —
+  here that hid 356 of 456 rows. The repair LLM prompt embedded the report, including the truncated list,
+  twice.
+- **Impact:** CLI, dashboard, adapter context and the repair prompt all presented a partial evidence set
+  as if it were complete.
+- **Fix:** `HealthReport` gained `issuesTotal`, `issuesTruncated` and `issueSummary` (top 10 groups by
+  `(type, message)` over the **full** set). `getHealth({ issueLimit, issueOffset })` returns a page, and
+  `deepindex health --issues-limit/--issues-offset` exposes it. The repair prompt sends the state plus the
+  grouped summary instead of the raw dump.
+- **Status:** FIXED in 0.3.5-dev (`a9a7ffa`).
+
+### DI-12 — The signal contract was misleading (MEDIUM)
+
+- **Evidence:** `recordSignal` enforces `value ∈ [0,1]`, and the reader divided by `Math.max(1, x)` — so
+  `tests_total`/`lint_total` were presence flags whose values were ignored. Requiring them made a lone
+  `tests_pass` raise `confidence` (read alone) while `coverage` stayed neutral at 0.25. Separately,
+  `coverage_lines` was written by tests and read by nothing (`grep` in `src/` and `dashboard/`: no hits).
+- **Impact:** a working signal looked inert, and integrators wrote counts the store cannot hold.
+- **Fix:** the reader consumes the numerator directly (`testsRate = tests_pass`,
+  `lintFactor = 1 - lint_errors`); the `_total` keys stay accepted and ignored so existing writers keep
+  working. `recordSignal` documents the ratio contract and which keys the score reads. `parseCoverageJson`
+  documents that it is not wired into the score (kept public — redefining `coverage` is a separate
+  decision). USAGE gained a "health score and what moves it" section, including the tests-only ceiling.
+- **Status:** FIXED in 0.3.5-dev (`6beca68`).
+
+### DI-13 — The walk honored no ignore file and could not be extended (MEDIUM)
+
+- **Evidence (measured on ai-ready-nx-workspace):** 7 `.nx/workspace-data` rows and 20 gitignored `tmp/`
+  rows, the latter including a packed copy of deepindex itself — duplicate docs and a second symbol graph
+  for a tool that is not part of that repository. The workaround was to run `nx reset` before indexing.
+- **Fix:** new `src/graph/ignore.ts` owns one ignore set shared by the index walk **and** the markdown
+  corpus walk; defaults extended with `.nx`, `.turbo`, `.output`, `.gradle`, `.idea`, `tmp`; repos extend it
+  with `[index] ignore = [...]`; a malformed value is ignored rather than fatal.
+- **Deferred:** full `.gitignore` semantics (negations, nested files) — a parser, not needed for the
+  reported cases.
+- **Status:** FIXED in 0.3.5-dev (`aa3d4d5`).
+
+### DI-14 — Relative imports with the emitted extension never resolved (HIGH)
+
+- **Evidence (measured):** TypeScript's NodeNext convention writes `./db.js` for `db.ts`; the resolver
+  appended extensions to the literal specifier (`./db.js.ts`), so nothing matched. Here **213 of 239
+  in-repo imports** were false negatives (`../src/graph/db.js` ×20, `../src/graph/build.js` ×13,
+  `src/cli.ts` alone 29). The convention is documented in this repo's own `tests/AGENTS.md`.
+- **Impact:** the graph had no edges for a TS/ESM project, so dependency queries, backlinks, module cards
+  and the MCP tools built on them were empty — `consistency` measured the resolver, not the code.
+- **Fix:** an emitted-extension → source-extension mapping in `resolve.ts`, applied **after** the literal
+  candidates (a real file always wins), longest suffix first so `.mjs` is never read as `.js` (the first
+  implementation got that wrong; the test caught it). `.mts`/`.cts` added to the TypeScript extensions —
+  without which a resolved `.mjs` specifier has no indexed file and is recorded broken anyway.
+- **Measured:** 213 → **1** unresolved; `consistency` 0.1088 → **0.9959**; score 44 → **80**. The remaining
+  one is `fixtures/sample-repo/src/c.ts` → `./missing`, the fixture's deliberate broken import.
+- **Status:** FIXED in 0.3.5-dev (`1af37fe`).
+
+### DI-15 — The auto-embed gate suite depended on the machine (LOW)
+
+- **Evidence:** the suite asserted the "model uncached" branch without controlling the cache location, so
+  it only held where `embed --fetch-model` had never run. With a warm cache the gate opened, the `vi.fn()`
+  loader returned undefined, and the run failed with
+  `embed failed: Cannot read properties of undefined (reading 'embed')`.
+- **Fix:** `tests/hooks.test.ts` pins `DEEPINDEX_MODEL_CACHE_DIR` to an empty directory for that describe
+  and restores it — the mirror of the pattern the chain describe already uses.
+- **Status:** FIXED in 0.3.5-dev (`4cef6df`).
+
 ## Fixed — for the record
 
 - **Stale `0.1.0` version literal** in `--version`/`serverInfo` — fixed in 0.3.3 (version read from package.json). **Correction found during the 0.3.4-dev pass:** the 0.3.3 fix only covered `--version`; the MCP serverInfo still hardcoded `'0.1.0'` (`src/mcp/server.ts`) — an MCP client saw a stale version in the initialize handshake. Now fixed via the shared `src/version.ts` `readVersion()` with a handshake-level test.
