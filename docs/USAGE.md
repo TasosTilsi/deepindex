@@ -330,7 +330,7 @@ command returns:
 | `package.json` | `di:index`, `di:health`, `di:serve`, `di:retrieve`, pinned to the same `npx -y deepindex@<version>` the wiring uses. Skip with `--no-scripts` |
 | Backup | every file it may rewrite is copied to `.deepindex-backup/<timestamp>/` first |
 | First index | `index` + `health` on the current repository. Skip with `--no-index` |
-| `CLAUDE.md` | with `--claude-md`, appends a retrieval nudge once (marker-guarded). Off by default |
+| Instructions file | **asks first**, then appends a short section on how to use deepindex — `CLAUDE.md` for Claude Code, `AGENTS.md` for the other harnesses, reusing whichever of the two the repository already has. `--guidance` answers yes without asking, `--skip-guidance` never asks, and a non-interactive run skips it and says how to ask |
 
 Two guarantees worth knowing:
 
@@ -339,7 +339,8 @@ Two guarantees worth knowing:
   otherwise replace the whole file with one holding only its own hooks. When the four hook
   events already exist, they are named on stderr before they are replaced, and the backup
   holds the previous file.
-- **It is idempotent.** A second run adds nothing: same config, same gitignore, same scripts.
+- **It is idempotent.** A second run adds nothing: same config, same gitignore, same scripts,
+  and the instructions text is marker-guarded so it can never be duplicated.
 
 | Harness | What's installed |
 |---------|------------------|

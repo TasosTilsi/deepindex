@@ -181,21 +181,5 @@ describe('install: the whole onboarding', () => {
     }
   });
 
-  it('appends the retrieval nudge only with --claude-md, and only once', async () => {
-    const repo = tempRepo();
-    try {
-      await run(['install', '--harness', 'claude-code', '--no-index'], repo);
-      expect(existsSync(join(repo, 'CLAUDE.md'))).toBe(false);
-
-      await run(['install', '--harness', 'claude-code', '--no-index', '--claude-md'], repo);
-      const first = readFileSync(join(repo, 'CLAUDE.md'), 'utf8');
-      expect(first).toContain('deepindex:retrieval-nudge');
-
-      await run(['install', '--harness', 'claude-code', '--no-index', '--claude-md'], repo);
-      const second = readFileSync(join(repo, 'CLAUDE.md'), 'utf8');
-      expect(second).toBe(first);
-    } finally {
-      rmSync(repo, { recursive: true, force: true });
-    }
-  });
+  // The guidance file (CLAUDE.md / AGENTS.md) has its own suite: tests/install-guidance.test.ts.
 });

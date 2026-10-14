@@ -19,9 +19,11 @@ import { projectFullGraph, validateProjection } from './graph/projection.js';
 import { getImpact, findParallelStorage } from './graph/sql-impact.js';
 import { syncRequirements, upsertRequirements } from './requirements/sync.js';
 import {
+  appendGuidance,
   backupFiles,
   existingTargets,
   guardClaudeSettings,
+  guidanceTarget,
   scaffoldRepo,
 } from './scaffold.js';
 import {
@@ -995,14 +997,16 @@ program
     .option('--dry-run', 'report what would change and write nothing', false)
     .option('--no-index', 'skip the initial index and health run')
     .option('--no-scripts', 'do not add the di:* npm scripts')
-    .option('--claude-md', 'append the deepindex nudge to CLAUDE.md', false)
+    .option('--guidance', 'document deepindex in CLAUDE.md/AGENTS.md without asking', false)
+    .option('--skip-guidance', 'never document it, and do not ask')
     .action(
       async (opts: {
         harness?: string;
         dryRun: boolean;
         index: boolean;
         scripts: boolean;
-        claudeMd: boolean;
+        guidance: boolean;
+        skipGuidance?: boolean;
       }) => {
         const projectRoot = process.cwd();
         const say = (line: string) => console.log(opts.dryRun ? `[dry-run] ${line}` : line);
@@ -1043,9 +1047,33 @@ program
         }
 
         // 4. The repo envelope: config, gitignore, npm scripts, optional CLAUDE.md nudge.
+        // Ask before touching a file a human owns. --guidance says yes, --skip-guidance says
+        // no, and a non-interactive run (CI, a pipe) is never asked: it is told how to ask.
+        const target = guidanceTarget(projectRoot, opts.harness);
+        let wantsGuidance = false;
+        if (opts.guidance) wantsGuidance = true;
+        else if (!opts.skipGuidance) {
+          if (process.stdin.isTTY && process.stdout.isTTY) {
+            const { createInterface } = await import('node:readline/promises');
+            const rl = createInterface({ input: process.stdin, output: process.stdout });
+            try {
+              const answer = await rl.question(
+                `Document how to use deepindex in ${target}? [y/N] `
+              );
+              wantsGuidance = /^y(es)?$/i.test(answer.trim());
+            } finally {
+              rl.close();
+            }
+          } else {
+            console.log(
+              `deepindex install: not documenting deepindex in ${target} (no terminal to ask) — re-run with --guidance to add it`
+            );
+          }
+        }
+
         for (const action of scaffoldRepo(projectRoot, readVersion(), {
           dryRun: opts.dryRun,
-          claudeMd: opts.claudeMd,
+          guidance: wantsGuidance ? opts.harness : null,
           scripts: opts.scripts,
         }).actions) {
           say(action);

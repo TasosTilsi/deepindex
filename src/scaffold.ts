@@ -46,8 +46,8 @@ enabled = false          # local embeddings (opt-in; \`deepindex embed --fetch-m
 # ignore = ["vendor", "generated"]   # extra directories the index walk must skip
 `;
 
-const CLAUDE_NUDGE_MARKER = '<!-- deepindex:retrieval-nudge -->';
-const CLAUDE_NUDGE = `${CLAUDE_NUDGE_MARKER}
+const GUIDANCE_MARKER = '<!-- deepindex:retrieval-nudge -->';
+const GUIDANCE = `${GUIDANCE_MARKER}
 ## Codebase knowledge (deepindex)
 
 This repository is indexed by deepindex. For questions about existing code, prefer the
@@ -64,8 +64,8 @@ When using \`retrieve\`, phrase a query as a concept **plus** a likely identifie
 export interface ScaffoldOptions {
   /** Report what would change and write nothing. */
   dryRun?: boolean;
-  /** Append the retrieval nudge to CLAUDE.md (marker-guarded, never duplicated). */
-  claudeMd?: boolean;
+  /** Append the usage guidance to the repository's instructions file (never duplicated). */
+  guidance?: string | null;
   /** Add the di:* npm scripts when a package.json exists. */
   scripts?: boolean;
 }
@@ -197,15 +197,36 @@ export function ensurePackageScripts(repoRoot: string, dryRun: boolean, version:
   return added;
 }
 
-/** Appends the retrieval nudge once. Returns true when it wrote (or would write) it. */
-export function appendClaudeNudge(repoRoot: string, dryRun: boolean): boolean {
-  const path = join(repoRoot, 'CLAUDE.md');
+/**
+ * Which instructions file to document deepindex in.
+ *
+ * Claude Code reads CLAUDE.md, the other harnesses read AGENTS.md — but a repository that
+ * already has one of them has made its choice, and creating a second convention next to it
+ * would be worse than appending to what is there.
+ */
+export function guidanceTarget(repoRoot: string, harness?: string): string {
+  const preferred = harness === 'claude-code' ? 'CLAUDE.md' : 'AGENTS.md';
+  const other = preferred === 'CLAUDE.md' ? 'AGENTS.md' : 'CLAUDE.md';
+  if (existsSync(join(repoRoot, preferred))) return preferred;
+  if (existsSync(join(repoRoot, other))) return other;
+  return preferred;
+}
+
+/** Appends the guidance once. Returns the file it wrote, or null when it was already there. */
+export function appendGuidance(
+  repoRoot: string,
+  harness?: string,
+  dryRun = false
+): string | null {
+  const name = guidanceTarget(repoRoot, harness);
+  const path = join(repoRoot, name);
   const text = existsSync(path) ? readFileSync(path, 'utf8') : '';
-  if (text.includes(CLAUDE_NUDGE_MARKER)) return false;
-  if (dryRun) return true;
-  const prefix = text === '' || text.endsWith('\n\n') ? text : `${text.replace(/\n*$/, '')}\n\n`;
-  writeFileSync(path, `${prefix}${CLAUDE_NUDGE}`);
-  return true;
+  if (text.includes(GUIDANCE_MARKER)) return null;
+  if (!dryRun) {
+    const prefix = text === '' ? '' : `${text.replace(/\n*$/, '')}\n\n`;
+    writeFileSync(path, `${prefix}${GUIDANCE}`);
+  }
+  return name;
 }
 
 /** The repo-level envelope: everything install does beyond harness wiring. */
@@ -229,8 +250,9 @@ export function scaffoldRepo(
     const scripts = ensurePackageScripts(repoRoot, dryRun, version);
     if (scripts.length > 0) actions.push(label(`add npm scripts: ${scripts.join(', ')}`));
   }
-  if (opts.claudeMd && appendClaudeNudge(repoRoot, dryRun)) {
-    actions.push(label('append the deepindex nudge to CLAUDE.md'));
+  if (opts.guidance !== null && opts.guidance !== undefined) {
+    const written = appendGuidance(repoRoot, opts.guidance, dryRun);
+    if (written) actions.push(label(`document deepindex in ${written}`));
   }
   return { actions, warnings: [], backupDir: null };
 }
