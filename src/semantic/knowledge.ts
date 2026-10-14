@@ -1,7 +1,7 @@
 import type Database from 'better-sqlite3';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { IGNORED_DIRS } from '../graph/build.js';
+import { ignoredDirs } from '../graph/ignore.js';
 
 // Knowledge-source corpus builders (D-25/D-27/D-27b/D-27c): pure functions of
 // db rows (+ one fs read per markdown file). The embedded text for every doc
@@ -110,14 +110,14 @@ export function moduleCards(db: Database.Database): SemanticDoc[] {
 
 const MD_CHUNK_CAP = 700;
 
-/** Markdown docs (KSRC-02, D-27b): walk disk for *.md, skip IGNORED_DIRS and
+/** Markdown docs (KSRC-02, D-27b): walk disk for *.md, skip the shared ignore set and
  *  every dot-directory, split at #{1,3} heading boundaries, chunk = heading
  *  + body prefixed with the path, clamped at 700 chars (POC values, OQ-12).
- *  Reuses the exported IGNORED_DIRS from build.ts so the corpus walk never
- *  diverges from the index walk. */
+ *  Reuses the shared ignore set (graph/ignore.ts) so the corpus walk never
+ *  diverges from the index walk, including any `[index] ignore` a repo sets. */
 export function markdownChunks(rootDir: string): SemanticDoc[] {
   const chunks: SemanticDoc[] = [];
-  for (const relPath of walkMarkdown(rootDir)) {
+  for (const relPath of walkMarkdown(rootDir, ignoredDirs(rootDir))) {
     const raw = readFileSync(join(rootDir, relPath), 'utf8');
     const lines = raw.split('\n');
     const groups: string[][] = [];
@@ -147,7 +147,7 @@ export function markdownChunks(rootDir: string): SemanticDoc[] {
   return chunks;
 }
 
-function walkMarkdown(root: string): string[] {
+function walkMarkdown(root: string, ignore: ReadonlySet<string>): string[] {
   const out: string[] = [];
   const stack: string[] = [root];
   while (stack.length) {
@@ -159,7 +159,7 @@ function walkMarkdown(root: string): string[] {
       continue;
     }
     for (const name of entries) {
-      if (IGNORED_DIRS.has(name)) continue;
+      if (ignore.has(name)) continue;
       if (name.startsWith('.')) continue;
       const full = join(dir, name);
       let st;

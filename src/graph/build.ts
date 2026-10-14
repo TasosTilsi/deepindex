@@ -4,6 +4,7 @@ import { join, relative, resolve } from 'node:path';
 import { createHash } from 'node:crypto';
 import { parseFile } from './parse.js';
 import { isExternalSpecifier, resolveImport } from './resolve.js';
+import { ignoredDirs } from './ignore.js';
 import { extractSql } from '../parser/sql-extractor.js';
 import { EXT_TO_LANG, langForExt } from '../parser/languages.js';
 
@@ -21,25 +22,6 @@ export interface BuildOptions {
   force?: boolean;
 }
 
-// Exported for the phase-8 markdown chunker (D-27b) so the corpus walk never
-// diverges from the index walk.
-export const IGNORED_DIRS = new Set([
-  'node_modules',
-  '.git',
-  'dist',
-  'build',
-  'coverage',
-  '.omc',
-  '.planning',
-  '.claude',
-  '.next',
-  'out',
-  'target',
-  '__pycache__',
-  '.venv',
-  'venv',
-  '.cache',
-]);
 
 // Supported extensions = every tree-sitter language (single source:
 // EXT_TO_LANG from languages.ts) + '.sql' (handled by extractSql, not a
@@ -54,7 +36,7 @@ export async function buildGraph(
 ): Promise<BuildStats> {
   const start = Date.now();
   const absRoot = resolve(repoPath);
-  const files = walk(absRoot);
+  const files = walk(absRoot, ignoredDirs(repoPath));
 
   const insertFile = db.prepare(
     `INSERT INTO files (path, hash, mtime, size, language, parsed_at)
@@ -249,7 +231,8 @@ function buildFileLevelEdges(db: Database.Database): void {
 }
 
 function walk(
-  root: string
+  root: string,
+  ignore: ReadonlySet<string>
 ): Array<{ absPath: string; ext: string; mtime: number; size: number }> {
   const out: Array<{ absPath: string; ext: string; mtime: number; size: number }> = [];
   const stack = [root];
@@ -262,7 +245,7 @@ function walk(
       continue;
     }
     for (const name of entries) {
-      if (IGNORED_DIRS.has(name)) continue;
+      if (ignore.has(name)) continue;
       const full = join(dir, name);
       let st;
       try {
