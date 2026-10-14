@@ -78,6 +78,7 @@
     ".tree-sitter",
     "dashboard/dist",
     "docs",
+    "CHANGELOG.md",
     "README.md",
     "LICENSE"
   ]
