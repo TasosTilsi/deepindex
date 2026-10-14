@@ -1,5 +1,8 @@
 import { existsSync, statSync } from 'node:fs';
-import { dirname, join, relative, resolve } from 'node:path';
+import { dirname, extname, join, relative, resolve } from 'node:path';
+import { langForExt } from '../parser/languages.js';
+import type { JavaClassIndex } from './java-resolve.js';
+import { javaResolve } from './java-resolve.js';
 
 const EXT_TRY = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs'];
 
@@ -36,14 +39,33 @@ export function isExternalSpecifier(importSource: string): boolean {
   return !importSource.startsWith('.') && !importSource.startsWith('/');
 }
 
+/** Per-call resolution context. One object, so adding a language later cannot break
+ *  this signature again. */
+export interface ResolveContext {
+  /** In-tree Java class map, built once per index run (issue #5). */
+  javaIndex?: JavaClassIndex;
+  /** The specifier came from an `import static …` declaration. */
+  isStatic?: boolean;
+}
+
 export function resolveImport(
   repoRoot: string,
   fromFile: string,
   importSource: string,
-  knownFiles: ReadonlyArray<{ absPath: string }>
+  knownFiles: ReadonlyArray<{ absPath: string }>,
+  ctx: ResolveContext = {}
 ): string | null {
-  // External / bare module — not resolvable in our graph (see isExternalSpecifier).
-  if (isExternalSpecifier(importSource)) return null;
+  // External / bare module — not resolvable in our graph (see isExternalSpecifier),
+  // with one exception: for a Java source a non-relative specifier may be an in-tree
+  // FQN. Consulted BEFORE any external classification, because in a multi-module Maven
+  // repository an in-tree class and a declared artifact can share a prefix. A miss here
+  // still returns null, and classifying it stays the caller's decision (issue #5).
+  if (isExternalSpecifier(importSource)) {
+    if (ctx.javaIndex && langForExt(extname(fromFile)) === 'java') {
+      return javaResolve(ctx.javaIndex, importSource, ctx.isStatic === true);
+    }
+    return null;
+  }
 
   const fromAbs = resolve(repoRoot, fromFile);
   const fromDir = dirname(fromAbs);

@@ -5,6 +5,12 @@ export interface LanguageConfig {
   extensions: string[];
   nodeMap: Record<string, NormalizedKind>;
   nameFields: string[];
+  /**
+   * True for languages without an `export` keyword (issue #13): their members are
+   * importable by default, so a symbol is exported unless a `private` modifier says
+   * otherwise. JS/TS keep using `export_statement`, exactly as before.
+   */
+  exportedByDefault?: boolean;
 }
 
 export const LANGUAGE_CONFIGS: Record<string, LanguageConfig> = {
@@ -41,6 +47,7 @@ export const LANGUAGE_CONFIGS: Record<string, LanguageConfig> = {
   java: {
     wasmFile: 'tree-sitter-java.wasm',
     extensions: ['.java'],
+    exportedByDefault: true,
     nodeMap: {
       'class_declaration': 'class',
       // DI-02: records are the modern-Java domain-type idiom — capture them

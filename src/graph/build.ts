@@ -5,6 +5,7 @@ import { createHash } from 'node:crypto';
 import { parseFile } from './parse.js';
 import { isExternalSpecifier, resolveImport } from './resolve.js';
 import { ignoredDirs } from './ignore.js';
+import { buildJavaClassIndex, javaFqnFor } from './java-resolve.js';
 import { extractSql } from '../parser/sql-extractor.js';
 import { EXT_TO_LANG, langForExt } from '../parser/languages.js';
 
@@ -83,6 +84,7 @@ export async function buildGraph(
   let fileCount = 0;
   let symbolCount = 0;
   let brokenImportCount = 0;
+  const javaEntries: Array<{ fqn: string; relPath: string }> = [];
   const changedFiles: string[] = [];
   const needsParse: Array<{ relPath: string; fileId: number; content: string; absPath: string; ext: string }> = [];
 
@@ -91,6 +93,13 @@ export async function buildGraph(
     const relPath = relative(absRoot, file.absPath);
     const content = readFileSync(file.absPath, 'utf8');
     const hash = createHash('sha256').update(content).digest('hex');
+
+    if (langForExt(file.ext) === 'java') {
+      // Issue #5: the class map must cover EVERY Java file, including the unchanged
+      // ones the hash-cache check below skips — otherwise an incremental run would lose
+      // the classes of every file it did not re-parse. The content is already in hand.
+      javaEntries.push({ fqn: javaFqnFor(relPath, content), relPath });
+    }
 
     const existing = getFileHash.get(relPath) as { hash: string } | undefined;
 
@@ -106,6 +115,11 @@ export async function buildGraph(
     changedFiles.push(relPath);
     fileCount++;
   }
+
+  // Deterministic map: the walk is a LIFO stack over readdir order, so without this
+  // sort the duplicate-FQN rule would depend on the filesystem.
+  javaEntries.sort((a, b) => (a.relPath < b.relPath ? -1 : a.relPath > b.relPath ? 1 : 0));
+  const javaIndex = buildJavaClassIndex(javaEntries);
 
   // Second pass: parse + extract symbols/imports. All file rows exist now.
   for (const { relPath, fileId, content, absPath, ext } of needsParse) {
@@ -138,28 +152,37 @@ export async function buildGraph(
     }
 
     for (const imp of imports) {
-      if (isExternalSpecifier(imp.source)) {
-        // No in-repo target exists by definition. Recorded as resolved AND
-        // flagged external so nothing downstream reads it as a broken import
-        // (issue #8). Its resolved_file_id stays NULL, which is what every
-        // edge consumer already filters on.
-        insertImport.run(fileId, imp.source, null, 1, 1);
-        continue;
-      }
-      const external = 0;
-      const resolved = resolveImport(absRoot, relPath, imp.source, files);
+      // Resolve first, classify second (issues #5 and #8). Order matters: for Java a
+      // non-relative specifier may be an in-tree FQN, so classifying before the resolver
+      // ran would mark every Java import external and the class map would never be
+      // consulted.
+      const resolved = resolveImport(absRoot, relPath, imp.source, files, {
+        javaIndex,
+        isStatic: imp.isStatic,
+      });
       if (resolved) {
         const targetRow = getFileByPath.get(resolved) as { id: number } | undefined;
         if (targetRow) {
-          insertImport.run(fileId, imp.source, targetRow.id, 1, external);
+          insertImport.run(fileId, imp.source, targetRow.id, 1, 0);
         } else {
-          insertImport.run(fileId, imp.source, null, 0, external);
+          // Resolved to a path the walk did not index: we cannot link it, so it counts
+          // as broken rather than silently disappearing.
+          insertImport.run(fileId, imp.source, null, 0, 0);
           brokenImportCount++;
         }
-      } else {
-        insertImport.run(fileId, imp.source, null, 0, external);
-        brokenImportCount++;
+        continue;
       }
+
+      if (isExternalSpecifier(imp.source)) {
+        // No in-repo target exists by definition. Recorded as resolved AND flagged
+        // external so nothing downstream reads it as a broken import (issue #8). Its
+        // resolved_file_id stays NULL, which is what every edge consumer filters on.
+        insertImport.run(fileId, imp.source, null, 1, 1);
+        continue;
+      }
+
+      insertImport.run(fileId, imp.source, null, 0, 0);
+      brokenImportCount++;
     }
 
     // SQL extraction: only run on code files (which may embed SQL strings) and

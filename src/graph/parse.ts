@@ -2,7 +2,7 @@ import { Parser, Language, type Node as SyntaxNode } from 'web-tree-sitter';
 import { readFileSync, existsSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { LANGUAGE_CONFIGS, langForExt, type NormalizedKind } from '../parser/languages.js';
+import { LANGUAGE_CONFIGS, langForExt, type LanguageConfig, type NormalizedKind } from '../parser/languages.js';
 
 export interface ParsedSymbol {
   name: string;
@@ -19,6 +19,8 @@ export interface ParsedSymbol {
 
 export interface ParsedImport {
   source: string;
+  /** Java only: `import static a.b.C.member;` — the last segment is a member. */
+  isStatic?: boolean;
 }
 
 export interface ParseResult {
@@ -93,7 +95,7 @@ export async function parseFile(
     const imports: ParsedImport[] = [];
 
     collectSymbols(tree.rootNode, symbols, langKey);
-    collectImports(tree.rootNode, imports);
+    collectImports(tree.rootNode, imports, langKey);
 
     return { symbols, imports };
   } catch (e) {
@@ -220,6 +222,19 @@ function calculateComplexity(node: SyntaxNode): number {
   return count;
 }
 
+/**
+ * Issue #13: a language without an `export` keyword never produces an
+ * `export_statement`, so its symbols stayed exported = false and the edge builder —
+ * which needs an exported symbol on both sides — skipped every one of its files. A
+ * Java member is importable unless it is private.
+ */
+function isExportedByDefault(node: SyntaxNode, config: LanguageConfig): boolean {
+  if (!config.exportedByDefault) return false;
+  const modifiers =
+    node.childForFieldName('modifiers') ?? node.namedChildren.find((c) => c.type === 'modifiers');
+  return modifiers ? !/\bprivate\b/.test(modifiers.text) : true;
+}
+
 function nodeToSymbol(
   node: SyntaxNode,
   langKey: string,
@@ -271,13 +286,13 @@ function nodeToSymbol(
     kind: config.nodeMap[node.type] || 'unknown',
     startLine: node.startPosition.row,
     endLine: node.endPosition.row,
-    exported: false,
+    exported: isExportedByDefault(node, config),
     complexity: calculateComplexity(node),
     docstring: extractDocstring(docNode),
   };
 }
 
-function collectImports(node: SyntaxNode, out: ParsedImport[]): void {
+function collectImports(node: SyntaxNode, out: ParsedImport[], langKey: string): void {
   if (node.type === 'import_statement') {
     const src = node.childForFieldName('source');
     if (src) {
@@ -286,8 +301,25 @@ function collectImports(node: SyntaxNode, out: ParsedImport[]): void {
     }
     return;
   }
+
+  // Issue #5: Java emits `import_declaration` with a `scoped_identifier` child and no
+  // `source` field, so before this branch Java contributed no import rows at all. Gated
+  // on the language: tree-sitter-scala also emits `import_declaration`, with different
+  // children.
+  if (langKey === 'java' && node.type === 'import_declaration') {
+    const scoped = node.namedChildren.find((child) => child.type === 'scoped_identifier');
+    if (scoped) {
+      const wildcard = node.namedChildren.some((child) => child.type === 'asterisk');
+      out.push({
+        source: wildcard ? `${scoped.text}.*` : scoped.text,
+        isStatic: /^import\s+static\s/.test(node.text),
+      });
+    }
+    return;
+  }
+
   for (let i = 0; i < node.childCount; i++) {
     const c = node.child(i);
-    if (c) collectImports(c, out);
+    if (c) collectImports(c, out, langKey);
   }
 }
