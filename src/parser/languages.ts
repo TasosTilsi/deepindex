@@ -10,7 +10,7 @@ export interface LanguageConfig {
 export const LANGUAGE_CONFIGS: Record<string, LanguageConfig> = {
   typescript: {
     wasmFile: 'tree-sitter-typescript.wasm',
-    extensions: ['.ts', '.tsx'],
+    extensions: ['.ts', '.tsx', '.mts', '.cts'],
     nodeMap: {
       'class_declaration': 'class',
       'function_declaration': 'method',
