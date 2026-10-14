@@ -19,6 +19,12 @@ import { projectFullGraph, validateProjection } from './graph/projection.js';
 import { getImpact, findParallelStorage } from './graph/sql-impact.js';
 import { syncRequirements, upsertRequirements } from './requirements/sync.js';
 import {
+  backupFiles,
+  existingTargets,
+  guardClaudeSettings,
+  scaffoldRepo,
+} from './scaffold.js';
+import {
   normalizeRequirements,
   type NormalizeReport,
   type RequirementFormat,
@@ -49,7 +55,7 @@ import {
 } from './semantic/embedder.js';
 import { loadSemanticConfig } from './semantic/config.js';
 import { readVersion } from './version.js';
-import { basename, join, resolve } from 'node:path';
+import { basename, join, relative, resolve } from 'node:path';
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import type Database from 'better-sqlite3';
 
@@ -984,28 +990,87 @@ program
 
   program
     .command('install')
-    .description('Install DeepIndex into an AI harness (Claude Code, Codex, OpenCode)')
-    .option('--harness <name>', 'harness to install (claude-code | codex | opencode) — omit for interactive prompt')
-    .action(async (opts: { harness?: string }) => {
-      const projectRoot = process.cwd();
-      if (opts.harness) {
-        const valid: Harness[] = ['claude-code', 'codex', 'opencode', 'deepseek-harness'];
-        if (!valid.includes(opts.harness as Harness)) {
-          console.error(`deepindex install: unknown harness: ${opts.harness} (expected ${valid.join(' | ')})`);
-          process.exit(2);
+    .description('Onboard a repository: config, gitignore, scripts, harness wiring, first index')
+    .option('--harness <name>', 'harness to install (claude-code | codex | opencode | deepseek-harness) — omit for interactive prompt')
+    .option('--dry-run', 'report what would change and write nothing', false)
+    .option('--no-index', 'skip the initial index and health run')
+    .option('--no-scripts', 'do not add the di:* npm scripts')
+    .option('--claude-md', 'append the deepindex nudge to CLAUDE.md', false)
+    .action(
+      async (opts: {
+        harness?: string;
+        dryRun: boolean;
+        index: boolean;
+        scripts: boolean;
+        claudeMd: boolean;
+      }) => {
+        const projectRoot = process.cwd();
+        const say = (line: string) => console.log(opts.dryRun ? `[dry-run] ${line}` : line);
+
+        // 1. Guard BEFORE anything writes. installClaudeSettings swallows a parse failure and
+        //    would replace the whole file, losing whatever the user had in it.
+        const guard = guardClaudeSettings(projectRoot);
+        for (const warning of guard.warnings) console.warn(`deepindex install: ${warning}`);
+        if (guard.blocked) {
+          console.error(`deepindex install: ${guard.message}`);
+          process.exit(1);
         }
-        const r = installHarness(projectRoot, opts.harness as Harness);
-        console.log(r.message);
-        return;
+
+        if (opts.harness) {
+          const valid: Harness[] = ['claude-code', 'codex', 'opencode', 'deepseek-harness'];
+          if (!valid.includes(opts.harness as Harness)) {
+            console.error(`deepindex install: unknown harness: ${opts.harness} (expected ${valid.join(' | ')})`);
+            process.exit(2);
+          }
+        }
+
+        // 2. Back up everything install may rewrite, before it rewrites it.
+        const targets = existingTargets(projectRoot);
+        const backupDir = backupFiles(projectRoot, targets, opts.dryRun);
+        if (backupDir) {
+          say(`backed up ${targets.length} file(s) -> ${relative(projectRoot, backupDir)}/`);
+        }
+
+        // 3. Harness wiring — the part install always did.
+        if (opts.dryRun) {
+          say(`would install the ${opts.harness ?? 'selected'} harness wiring`);
+        } else if (opts.harness) {
+          console.log(installHarness(projectRoot, opts.harness as Harness).message);
+        } else {
+          const results = await installInteractive(projectRoot);
+          for (const r of results) console.log(r.message);
+          if (results.length === 0) console.log('no harness selected — nothing installed');
+        }
+
+        // 4. The repo envelope: config, gitignore, npm scripts, optional CLAUDE.md nudge.
+        for (const action of scaffoldRepo(projectRoot, readVersion(), {
+          dryRun: opts.dryRun,
+          claudeMd: opts.claudeMd,
+          scripts: opts.scripts,
+        }).actions) {
+          say(action);
+        }
+
+        // 5. First index + health, so the repository is usable when the command returns.
+        if (!opts.index || opts.dryRun) return;
+        const db = initDb(join(projectRoot, '.deepindex.db'));
+        try {
+          const stats = await buildGraph(db, projectRoot);
+          try {
+            gitIndex(db, projectRoot);
+          } catch {
+            // Not a git repository: the symbol graph still built, which is the point.
+          }
+          const health = getHealth(db, { config: loadConfig(projectRoot) });
+          console.log(`indexed ${stats.fileCount} files, ${stats.symbolCount} symbols — health ${health.score}`);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          console.error(`deepindex install: index failed: ${message}`);
+        } finally {
+          db.close();
+        }
       }
-      const results = await installInteractive(projectRoot);
-      for (const r of results) {
-        console.log(r.message);
-      }
-      if (results.length === 0) {
-        console.log('no harness selected — nothing installed');
-      }
-    });
+    );
 
   program
     .command('mcp')

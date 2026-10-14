@@ -303,16 +303,43 @@ The MCP server exposes 6 read-only tools: `search_knowledge`, `get_entity`, `get
 
 ## Harness Integration
 
+`deepindex install` onboards the repository and wires your harness in one command. Run it
+from the repository root:
+
 ```bash
-# Interactive install — choose harness(es)
+# Interactive — choose harness(es)
 deepindex install
 
-# Or install for a specific harness
+# Or name one
 deepindex install --harness claude-code
 deepindex install --harness codex
 deepindex install --harness opencode
 deepindex install --harness deepseek-harness
+
+# See what it would do, and write nothing
+deepindex install --harness claude-code --dry-run
 ```
+
+Beyond the harness wiring it creates or updates, so the repository is usable the moment the
+command returns:
+
+| Step | Detail |
+| --- | --- |
+| `.deepindex.toml` | created when absent — `repair_below`, the hooks session budget, the semantic flag, an `[index] ignore` placeholder. An existing file is never touched |
+| `.gitignore` | `.deepindex.db`, its WAL/SHM siblings and the backup root. Idempotent |
+| `package.json` | `di:index`, `di:health`, `di:serve`, `di:retrieve`, pinned to the same `npx -y deepindex@<version>` the wiring uses. Skip with `--no-scripts` |
+| Backup | every file it may rewrite is copied to `.deepindex-backup/<timestamp>/` first |
+| First index | `index` + `health` on the current repository. Skip with `--no-index` |
+| `CLAUDE.md` | with `--claude-md`, appends a retrieval nudge once (marker-guarded). Off by default |
+
+Two guarantees worth knowing:
+
+- **It refuses rather than destroys.** If `.claude/settings.json` is not valid JSON (JSONC or
+  comments), install stops with exit 1 and writes nothing at all — the installer would
+  otherwise replace the whole file with one holding only its own hooks. When the four hook
+  events already exist, they are named on stderr before they are replaced, and the backup
+  holds the previous file.
+- **It is idempotent.** A second run adds nothing: same config, same gitignore, same scripts.
 
 | Harness | What's installed |
 |---------|------------------|
