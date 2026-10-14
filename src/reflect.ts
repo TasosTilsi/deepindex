@@ -10,6 +10,13 @@ export interface VitestSummary {
   durationMs: number;
 }
 
+export interface JunitSummary {
+  total: number;
+  fail: number;
+  skip: number;
+  pass: number;
+}
+
 export interface EslintSummary {
   errors: number;
   warnings: number;
@@ -93,6 +100,35 @@ interface IstanbulFileEntry {
  * The parser is kept as a public helper — changing what `coverage` means is a
  * separate decision, not a side effect of a bug fix.
  */
+/**
+ * Parses JUnit XML (maven-surefire, pytest --junit-xml, Gradle, dotnet, cargo-nextest
+ * all emit this de-facto schema). Only six scalar attributes matter, so a hand-rolled
+ * scan is enough and this repo needs no XML dependency.
+ *
+ * The scan requires whitespace after `testsuite` on purpose: many writers also put
+ * tests/failures counters on the `<testsuites>` root, and matching that would count
+ * every test twice.
+ */
+export function parseJunitXml(xml: string): JunitSummary {
+  const suites = xml.match(/<testsuite\s[^>]*>/g) ?? [];
+  if (suites.length === 0) {
+    throw new TypeError('parseJunitXml: no <testsuite> element found');
+  }
+  const attr = (tag: string, name: string): number => {
+    const match = tag.match(new RegExp('\\b' + name + '\\s*=\\s*"([0-9]+)"'));
+    return match?.[1] ? Number.parseInt(match[1], 10) : 0;
+  };
+  let total = 0;
+  let fail = 0;
+  let skip = 0;
+  for (const tag of suites) {
+    total += attr(tag, 'tests');
+    fail += attr(tag, 'failures') + attr(tag, 'errors');
+    skip += attr(tag, 'skipped');
+  }
+  return { total, fail, skip, pass: Math.max(0, total - fail - skip) };
+}
+
 export function parseCoverageJson(json: unknown): CoverageSummary {
   if (!json || typeof json !== 'object' || Array.isArray(json)) {
     throw new TypeError('parseCoverageJson: input must be a non-null object');

@@ -3,7 +3,13 @@ import { Command } from 'commander';
 import { buildGraph } from './graph/build.js';
 import { initDb } from './graph/db.js';
 import { cacheStats, cacheDelete } from './cache.js';
-import { DEFAULT_HEALTH_CONFIG, DEFAULT_ISSUE_LIMIT, getHealth, loadConfig } from './health.js';
+import {
+  DEFAULT_HEALTH_CONFIG,
+  DEFAULT_ISSUE_LIMIT,
+  getHealth,
+  loadConfig,
+  recordSignal,
+} from './health.js';
 import { retrieve, DEFAULT_TOP_K } from './retrieve.js';
 import { repair } from './repair.js';
 import { createWatcher } from './watcher.js';
@@ -14,6 +20,8 @@ import { getImpact, findParallelStorage } from './graph/sql-impact.js';
 import { syncRequirements } from './requirements/sync.js';
 import { calculateReqCoverage } from './requirements/coverage.js';
 import { initRequirementsDb } from './requirements/setup.js';
+import { clearSignals, normaliseSignalPairs } from './health.js';
+import { parseEslintJson, parseJunitXml, parseVitestJson } from './reflect.js';
 import { gitIndex, gitSync, syncSafe, type IndexResult } from './git/indexer.js';
 import { searchEntities, type SearchHit } from './git/search.js';
 import { hybridSearch, type HybridHit } from './semantic/search-hybrid.js';
@@ -35,8 +43,8 @@ import {
 } from './semantic/embedder.js';
 import { loadSemanticConfig } from './semantic/config.js';
 import { readVersion } from './version.js';
-import { resolve, basename, join } from 'node:path';
-import { existsSync } from 'node:fs';
+import { basename, join, resolve } from 'node:path';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import type Database from 'better-sqlite3';
 
 const program = new Command();
@@ -182,6 +190,138 @@ program
       process.exit(2);
     }
   });
+
+program
+  .command('signal')
+  .description('Record test/lint signals into the health store')
+  .argument('[signals...]', 'key=value pairs, e.g. tests_pass=148 tests_total=150')
+  .option('-d, --db <path>', 'SQLite database path', '.deepindex.db')
+  .option('--from-vitest <path>', 'parse a vitest JSON report (--reporter=json)')
+  .option('--from-eslint <path>', 'parse an ESLint JSON report (-f json)')
+  .option('--from-junit <path>', 'parse a JUnit XML file, or a directory of them')
+  .option('--reset', 'delete every stored signal', false)
+  .action(
+    (
+      signalArgs: string[],
+      opts: {
+        db: string;
+        fromVitest?: string;
+        fromEslint?: string;
+        fromJunit?: string;
+        reset: boolean;
+      }
+    ) => {
+      // Parse and validate BEFORE opening the database: a usage error must never touch the
+      // store, and the normalisation stays unit-testable (issue #4).
+      const pairs: Record<string, number> = {};
+      for (const raw of signalArgs) {
+        const eq = raw.indexOf('=');
+        const key = eq > 0 ? raw.slice(0, eq).trim() : '';
+        const rawValue = eq > 0 ? raw.slice(eq + 1).trim() : '';
+        const value = Number(rawValue);
+        if (!key || rawValue === '' || !Number.isFinite(value)) {
+          console.error(
+            `deepindex signal: invalid signal pair: ${raw} (expected key=value)`
+          );
+          process.exit(2);
+        }
+        pairs[key] = value;
+      }
+
+      const reportFlags = [opts.fromVitest, opts.fromEslint, opts.fromJunit].filter(Boolean);
+      if (opts.reset && (Object.keys(pairs).length > 0 || reportFlags.length > 0)) {
+        console.error(
+          'deepindex signal: --reset cannot be combined with signals or a report flag'
+        );
+        process.exit(2);
+      }
+
+      let source = 'cli';
+      const readReport = (path: string): string => {
+        if (!existsSync(path)) {
+          console.error(`deepindex signal: report not found: ${path}`);
+          process.exit(2);
+        }
+        return readFileSync(path, 'utf8');
+      };
+
+      try {
+        if (opts.fromVitest) {
+          source = 'vitest';
+          const summary = parseVitestJson(JSON.parse(readReport(opts.fromVitest)));
+          if (summary.total === 0) {
+            // Same class as `tests_total=0` on the command line: the input cannot be
+            // used, which is a usage error (exit 2), not a runtime failure.
+            console.error('deepindex signal: ' + opts.fromVitest + ' contains no tests');
+            process.exit(2);
+          }
+          pairs.tests_pass = summary.pass;
+          pairs.tests_total = summary.total;
+        }
+        if (opts.fromEslint) {
+          source = 'eslint';
+          const summary = parseEslintJson(JSON.parse(readReport(opts.fromEslint)));
+          pairs.lint_errors = summary.errors;
+          // A clean run reports zero problems; the sentinel keeps the division safe.
+          pairs.lint_total = Math.max(1, summary.total);
+        }
+        if (opts.fromJunit) {
+          source = 'junit';
+          const path = opts.fromJunit;
+          if (!existsSync(path)) {
+            console.error('deepindex signal: report not found: ' + path);
+            process.exit(2);
+          }
+          const files = statSync(path).isDirectory()
+            ? readdirSync(path)
+                .filter((name) => name.endsWith('.xml'))
+                .map((name) => join(path, name))
+            : [path];
+          if (files.length === 0) throw new TypeError(path + ' contains no .xml reports');
+          let total = 0;
+          let pass = 0;
+          for (const file of files) {
+            const summary = parseJunitXml(readFileSync(file, 'utf8'));
+            total += summary.total;
+            pass += summary.pass;
+          }
+          if (total === 0) {
+            console.error('deepindex signal: ' + path + ' contains no tests');
+            process.exit(2);
+          }
+          pairs.tests_pass = pass;
+          pairs.tests_total = total;
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error(`deepindex signal: ${message}`);
+        process.exit(1);
+      }
+
+      let normalised: Record<string, number>;
+      try {
+        normalised = normaliseSignalPairs(pairs);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error(`deepindex signal: ${message}`);
+        process.exit(2);
+      }
+
+      withDb('signal', opts, (db) => {
+        if (opts.reset) {
+          const cleared = clearSignals(db);
+          console.log(`cleared ${cleared} signal${cleared === 1 ? '' : 's'}`);
+          return;
+        }
+        const entries = Object.entries(normalised);
+        for (const [key, value] of entries) recordSignal(db, key, value, source);
+        const rendered = entries.map(([key, value]) => `${key}=${value.toFixed(3)}`).join(', ');
+        console.log(
+          `recorded ${entries.length} signal${entries.length === 1 ? '' : 's'}: ${rendered}`
+        );
+      });
+    }
+  );
 
 program
   .command('repair')
@@ -855,6 +995,7 @@ Additional advanced commands (hidden from this list) are available:
   data-flow:   build-graph, list-tables, find-table-usage, summarize-graph,
                analyze-impact, check-parallel-storage
   requirements: sync-requirements, check-req-coverage
+  health:       signal (feed test/lint results into the score)
   internal:    git-index, git-sync, hook
 See docs/USAGE.md 'Advanced commands' for how to use them.`);
 

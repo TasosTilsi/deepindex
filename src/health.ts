@@ -56,6 +56,54 @@ export function recordSignal(
   insertSignal(db).run(key, value, source, Date.now());
 }
 
+/** Numerator/denominator pairs the score understands. */
+const SIGNAL_PAIRS: ReadonlyArray<readonly [string, string]> = [
+  ['tests_pass', 'tests_total'],
+  ['lint_errors', 'lint_total'],
+];
+
+/**
+ * Turns CLI input into what the store holds (issues #4 and #12): values are RATIOS in
+ * [0,1]. A numerator given with its partner is divided by it; a numerator given alone
+ * is already a ratio. The partner key is always written as the sentinel 1.0, so a reader
+ * that still divides by it — including 0.3.4 and earlier — gets the same answer.
+ * Unknown keys pass through untouched: recorded, and inert for the score.
+ */
+export function normaliseSignalPairs(pairs: Record<string, number>): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const [numerator, denominator] of SIGNAL_PAIRS) {
+    const n = pairs[numerator];
+    const d = pairs[denominator];
+    if (n === undefined) {
+      if (d !== undefined) {
+        throw new TypeError(denominator + ' without ' + numerator);
+      }
+      continue;
+    }
+    if (d !== undefined) {
+      if (d <= 0) throw new TypeError(denominator + ' must be greater than 0');
+      out[numerator] = n / d;
+    } else {
+      out[numerator] = n;
+    }
+    const value = out[numerator];
+    if (value < 0 || value > 1) {
+      throw new TypeError(numerator + ' must be in [0,1] when no ' + denominator + ' is given');
+    }
+    out[denominator] = 1.0;
+  }
+  for (const [key, value] of Object.entries(pairs)) {
+    if (!(key in out)) out[key] = value;
+  }
+  return out;
+}
+
+/** Deletes every stored signal. Returns how many rows were removed. */
+export function clearSignals(db: Database.Database): number {
+  const info = db.prepare('DELETE FROM health_signals').run();
+  return info.changes;
+}
+
 export function getSignals(db: Database.Database): Record<string, number> {
   const out: Record<string, number> = {};
   for (const row of selectAllSignals(db)) {

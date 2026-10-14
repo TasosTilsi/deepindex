@@ -8,7 +8,10 @@ export {
   getHealth,
   recordSignal,
   getSignals,
+  clearSignals,
+  normaliseSignalPairs,
   DEFAULT_HEALTH_CONFIG,
+  DEFAULT_ISSUE_LIMIT,
 } from './health.js';
 export { tokenize, tfidf, retrieve, DEFAULT_TOP_K } from './retrieve.js';
 export { readVersion, npxArgs, npxCommand } from './version.js';
@@ -22,7 +25,7 @@ export {
   repairCacheKey,
   REPAIR_CACHE_PREFIX,
 } from './repair.js';
-export { parseVitestJson, parseEslintJson, parseCoverageJson } from './reflect.js';
+export { parseVitestJson, parseEslintJson, parseCoverageJson, parseJunitXml } from './reflect.js';
 export {
   createWatcher,
   type WatcherOptions,

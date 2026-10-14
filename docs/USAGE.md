@@ -89,6 +89,26 @@ deepindex health <repo> --issues-limit 50 --issues-offset 50
 | `lint_errors` | share of lint problems that are errors, e.g. `0 errors / 40 problems → 0` |
 | `lint_total` | accepted for compatibility; ignored like `tests_total` |
 
+`deepindex signal` is the supported way to feed them — it does the division for you:
+
+```bash
+# counts, straight from a CI step
+deepindex signal tests_pass=148 tests_total=150
+
+# or let it parse a report
+deepindex signal --from-vitest test-results/vitest.json     # vitest --reporter=json
+deepindex signal --from-eslint eslint-output.json           # eslint -f json
+deepindex signal --from-junit target/surefire-reports/      # a file or a directory
+
+# a ratio is accepted as-is when no denominator is given
+deepindex signal lint_errors=0.05
+
+# forget everything (back to the neutral fallbacks)
+deepindex signal --reset
+```
+
+A numerator is divided by its denominator when both are given; the partner key is then stored as the sentinel `1.0`, so older readers that still divide by it get the same answer. Exit codes follow the other verbs: `2` for a missing index, an unreadable or empty report, a malformed pair, `tests_total=0`, or `--reset` combined with signals; `1` for a report that parses but is malformed.
+
 Two consequences worth knowing before you wire this into CI:
 
 - **A missing factor is neutral, not ignored.** With no test signal, `tests_rate` is `0.5`; with no lint signal, `lint_factor` is `0.5` — so a tests-only CI caps `coverage` at `0.5`, and the score at `80` (the default `repair_below`). Feed both to clear the ceiling.
