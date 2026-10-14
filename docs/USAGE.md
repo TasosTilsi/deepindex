@@ -10,6 +10,19 @@ pnpm add -g deepindex
 
 The `deepindex` binary is the CLI. It reads/writes a single SQLite database (default `.deepindex.db` in the current directory).
 
+## Upgrading
+
+The import classification (which specifiers count as broken) is written when a file is
+parsed, and the incremental indexer skips files whose hash is unchanged. After upgrading:
+
+```bash
+deepindex index . --rebuild
+```
+
+Without it an existing index keeps the previous readings: on one repository an incremental
+re-index left 310 imports unresolved where a full rebuild left 1, and the score reflected
+the stale rows rather than the code.
+
 ## Indexing
 
 ```bash

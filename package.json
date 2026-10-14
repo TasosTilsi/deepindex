@@ -1,6 +1,6 @@
 {
   "name": "deepindex",
-  "version": "0.3.4",
+  "version": "0.3.5",
   "description": "Self-healing, token-efficient context engineering framework for AI coding harnesses",
   "type": "module",
   "main": "dist/index.js",
