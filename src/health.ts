@@ -25,6 +25,19 @@ const selectAllSignals = (db: Database.Database) =>
     value: number;
   }[];
 
+/**
+ * Stores one health signal.
+ *
+ * CONTRACT (issue #12): `value` is a RATIO in [0,1], not a count — it is enforced
+ * below, and the reader consumes it directly. Keys the score reads:
+ * `tests_pass`, `tests_total`, `lint_errors`, `lint_total`.
+ *
+ * `tests_total` and `lint_total` are accepted for compatibility and otherwise
+ * ignored: since the value cannot exceed 1, the reader has no denominator to
+ * divide by. A writer that has counts must divide them itself (and may record
+ * `1.0` under the partner key for older readers). Recording any other key is
+ * allowed but has no effect on the score — `coverage_lines` is the live example.
+ */
 export function recordSignal(
   db: Database.Database,
   key: string,
@@ -134,23 +147,14 @@ export function getHealth(
   }
 
   const signals = getSignals(db);
-  // Per CONTEXT: coverage = tests_rate * lint_factor; missing factor -> 0.5
+  // Per CONTEXT: coverage = tests_rate * lint_factor; a missing factor is neutral.
+  // Issue #12: the stored value is already the ratio (recordSignal enforces
+  // [0,1]), so the numerator alone is enough. Requiring the `_total` partner made
+  // a lone `tests_pass` move confidence while silently leaving coverage at 0.25.
   const testsPass = signals.tests_pass;
-  const testsTotal = signals.tests_total;
-  let testsRate: number;
-  if (typeof testsPass === 'number' && typeof testsTotal === 'number') {
-    testsRate = testsPass / Math.max(1, testsTotal);
-  } else {
-    testsRate = 0.5;
-  }
+  const testsRate = typeof testsPass === 'number' ? clamp01(testsPass) : 0.5;
   const lintErrors = signals.lint_errors;
-  const lintTotal = signals.lint_total;
-  let lintFactor: number;
-  if (typeof lintErrors === 'number' && typeof lintTotal === 'number') {
-    lintFactor = clamp01(1 - lintErrors / Math.max(1, lintTotal));
-  } else {
-    lintFactor = 0.5;
-  }
+  const lintFactor = typeof lintErrors === 'number' ? clamp01(1 - lintErrors) : 0.5;
   const coverage = clamp01(testsRate * lintFactor);
 
   const importsResolvedRate =

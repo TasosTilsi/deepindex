@@ -57,6 +57,43 @@ deepindex repair <repo>
 
 `deepindex retrieve` and `deepindex search` run an **incremental git-sync** (from the last indexed commit) before querying, so entities are always current.
 
+### The health score, and what moves it
+
+`deepindex health <repo>` prints a JSON report:
+
+```
+score = round(100 * (0.3*freshness + 0.3*consistency + 0.2*coverage + 0.2*confidence))
+```
+
+| Dimension | Meaning | Neutral value |
+| --- | --- | --- |
+| `freshness` | share of indexed files parsed in the last 24h | 0.5 |
+| `consistency` | resolved ÷ **in-repo** imports (external specifiers are not counted — they can never have a target here) | 0.5 with no internal imports |
+| `coverage` | `tests_rate × lint_factor`, both from signals | 0.25 with no signals |
+| `confidence` | `0.5 × importsResolvedRate + 0.5 × testsPassRate` | 0.5 |
+
+The issue list is **paged, not capped silently**: the report always carries `issuesTotal` and `issuesTruncated` alongside the returned `issues` page, plus `issueSummary` (the ten most frequent `(type, message)` groups counted over the whole set) for consumers that cannot page.
+
+```bash
+deepindex health <repo> --issues-limit 50 --issues-offset 50
+```
+
+#### Feeding signals
+
+`coverage` and `confidence` read four keys from the `health_signals` table. Values are **ratios in `[0,1]`**, not counts — `recordSignal()` rejects anything else:
+
+| Key | Meaning |
+| --- | --- |
+| `tests_pass` | test pass rate, e.g. `148/150 → 0.9867` |
+| `tests_total` | accepted for compatibility; **ignored** by the score (the value already is the ratio) |
+| `lint_errors` | share of lint problems that are errors, e.g. `0 errors / 40 problems → 0` |
+| `lint_total` | accepted for compatibility; ignored like `tests_total` |
+
+Two consequences worth knowing before you wire this into CI:
+
+- **A missing factor is neutral, not ignored.** With no test signal, `tests_rate` is `0.5`; with no lint signal, `lint_factor` is `0.5` — so a tests-only CI caps `coverage` at `0.5`, and the score at `80` (the default `repair_below`). Feed both to clear the ceiling.
+- **`coverage_lines` is not part of the score.** Recording a coverage summary (line percentage) has no effect on any dimension; the `coverage` dimension is the test/lint product above. The parser is available (`parseCoverageJson`) but wiring it in would change what `coverage` means — a separate decision.
+
 ### Retrieval tips
 
 `retrieve` matches queries against **file paths and symbol names** (exact + substring, case-insensitive) and ranks by TF-IDF + graph proximity. Phrase queries with both a concept and a likely identifier/path term:
