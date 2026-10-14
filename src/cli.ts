@@ -444,12 +444,14 @@ program
         console.log('Requirements Coverage Report');
         console.log('==================================================');
 
-        console.log(`\\nOrphan Requirements (no linked code): ${report.orphanRequirements.length}`);
+        console.log('');
+        console.log(`Orphan Requirements (no linked code): ${report.orphanRequirements.length}`);
         for (const req of report.orphanRequirements) {
           console.log(`- [${req.id}] ${req.title}`);
         }
 
-        console.log(`\\nUntracked Code (no linked requirement): ${report.untrackedCode.length}`);
+        console.log('');
+        console.log(`Untracked Code (no linked requirement): ${report.untrackedCode.length}`);
         for (const code of report.untrackedCode) {
           console.log(`- ${code.filePath} [${code.symbol}]`);
         }

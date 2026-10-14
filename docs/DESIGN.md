@@ -40,10 +40,10 @@ The system is built around a **single SQLite database** (schema v5) that holds t
 
 | Interface | Description |
 |-----------|-------------|
-| **CLI** | `deepindex` — all verbs (index, retrieve, health, repair, serve, watch, git-index, git-sync, search, mcp, install, data-flow, requirements). |
+| **CLI** | `deepindex` — all verbs (index, retrieve, health, signal, repair, serve, watch, search, mcp, install; `git-index`/`git-sync`/`sync-requirements`/`check-req-coverage`/`build-graph` and the data-flow verbs are hidden helpers — see USAGE). |
 | **HTTP server** | `deepindex serve` — POST `/context` (adapter), GET `/api/*` (dashboard), GET `/` (dashboard static). |
 | **Adapter** | Pure-function `adaptClaudeCode` — returns merged context (symbols + data-flow + entities). |
-| **MCP server** | 6 read-only tools over the merged store (stdio, stderr-only logging). |
+| **MCP server** | 7 read-only tools over the merged store (stdio, stderr-only logging). |
 | **Hooks** | Claude Code, Codex, OpenCode, DeepSeek Harness — session lifecycle integration. |
 | **Dashboard** | React + Vite read-only web dashboard (5 views). |
 

@@ -2,7 +2,7 @@ import Database from 'better-sqlite3';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 
-const SCHEMA_VERSION = 6;
+const SCHEMA_VERSION = 7;
 
 const SCHEMA_V2 = `
 CREATE TABLE IF NOT EXISTS health_signals (
@@ -106,6 +106,33 @@ END;
 // must keep working without it. embeddings_meta maps each embedded doc to its
 // vec0 rowid (auto-rowid inserts only — declared-PK inserts are broken in
 // sqlite-vec 0.1.9) and records the model/dim per row.
+/**
+ * V7: the requirements tables move into the shared schema (issue #7/#15). They used to be
+ * created only by initRequirementsDb, which the two requirements verbs call — so a database
+ * that never ran one had no such table, and any other surface touching requirements (the MCP
+ * get_entity fallback, for instance) would fail with "no such table". Exported so
+ * requirements/setup.ts execs the same DDL instead of keeping a second copy.
+ */
+export const REQUIREMENTS_DDL = `
+CREATE TABLE IF NOT EXISTS requirements (
+  id TEXT PRIMARY KEY,
+  title TEXT,
+  description TEXT,
+  source TEXT,
+  status TEXT
+);
+CREATE TABLE IF NOT EXISTS atomic_requirements (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  req_id TEXT,
+  statement TEXT,
+  type TEXT,
+  "order" INTEGER,
+  FOREIGN KEY(req_id) REFERENCES requirements(id)
+);
+`;
+
+const SCHEMA_V7 = REQUIREMENTS_DDL;
+
 const SCHEMA_V6 = `
 CREATE TABLE IF NOT EXISTS embeddings_meta (
   kind TEXT NOT NULL CHECK(kind IN ('entity','symbol','module','doc')),
@@ -209,6 +236,7 @@ export function initDb(dbPath: string): Database.Database {
   db.exec(SCHEMA_V3);
   db.exec(SCHEMA_V5);
   db.exec(SCHEMA_V6);
+  db.exec(SCHEMA_V7);
   // Idempotent column migration: `complexity` was added to the base CREATE
   // TABLE, but CREATE TABLE IF NOT EXISTS is a no-op on existing DBs, so a
   // pre-existing .deepindex.db lacks the column. Add it if missing. This is the

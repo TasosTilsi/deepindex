@@ -22,7 +22,7 @@ describe('health', () => {
       const dbPath = join(tmp, 'test.db');
       const db = initDb(dbPath);
       const v = db.pragma('user_version', { simple: true }) as number;
-      expect(v).toBe(6);
+      expect(v).toBe(7);
       const row = db
         .prepare(
           "SELECT name FROM sqlite_master WHERE type='table' AND name='health_signals'"
