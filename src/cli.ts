@@ -17,7 +17,12 @@ import { serve } from './serve.js';
 import { adaptClaudeCode } from './adapter-claude-code.js';
 import { projectFullGraph, validateProjection } from './graph/projection.js';
 import { getImpact, findParallelStorage } from './graph/sql-impact.js';
-import { syncRequirements } from './requirements/sync.js';
+import { syncRequirements, upsertRequirements } from './requirements/sync.js';
+import {
+  normalizeRequirements,
+  type NormalizeReport,
+  type RequirementFormat,
+} from './requirements/sources.js';
 import { calculateReqCoverage } from './requirements/coverage.js';
 import { initRequirementsDb } from './requirements/setup.js';
 import { clearSignals, normaliseSignalPairs } from './health.js';
@@ -403,6 +408,73 @@ program
       process.exit(1);
     }
   });
+
+  const requirements = program
+    .command('requirements')
+    .description('Import requirements from an external tracker export');
+
+  requirements
+    .command('import')
+    .description('Import requirements from a Jira/GitHub export or a deepindex JSON file')
+    .argument('<file>', 'path to the export file')
+    .option('-d, --db <path>', 'SQLite database path', '.deepindex.db')
+    .option('--format <format>', 'jira | github | deepindex', 'deepindex')
+    .option('--dry-run', 'normalise and report without writing', false)
+    .option('--json', 'emit a JSON summary', false)
+    .action(
+      async (
+        file: string,
+        opts: { db: string; format: string; dryRun: boolean; json: boolean }
+      ) => {
+        const format = opts.format as RequirementFormat;
+        if (!['jira', 'github', 'deepindex'].includes(format)) {
+          console.error(`deepindex requirements import: invalid --format: ${opts.format}`);
+          process.exit(2);
+        }
+        if (!existsSync(file)) {
+          console.error(`deepindex requirements import: file not found: ${file}`);
+          process.exit(2);
+        }
+
+        let report: NormalizeReport;
+        try {
+          report = normalizeRequirements(format, JSON.parse(readFileSync(file, 'utf8')));
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          console.error(`deepindex requirements import: ${message}`);
+          process.exit(1);
+        }
+
+        for (const warning of report.warnings) {
+          console.error(`deepindex requirements import: ${file}: ${warning}`);
+        }
+
+        if (opts.dryRun) {
+          const summary = {
+            imported: report.requirements.length,
+            atomic: 0,
+            skipped: report.skipped,
+            warnings: report.warnings,
+          };
+          if (opts.json) console.log(JSON.stringify(summary, null, 2));
+          else
+            console.log(`Would import ${report.requirements.length} requirements (${report.skipped} skipped).`);
+          return;
+        }
+
+        withDb('requirements import', opts, (db) => {
+          initRequirementsDb(db);
+          const { imported, atomic } = upsertRequirements(db, report.requirements);
+          if (opts.json) {
+            console.log(
+              JSON.stringify({ imported, atomic, skipped: report.skipped, warnings: report.warnings }, null, 2)
+            );
+          } else {
+            console.log(`Imported ${imported} requirements (${atomic} atomic statements) from ${format} export.`);
+          }
+        });
+      }
+    );
 
   program
     .command('sync-requirements', { hidden: true })

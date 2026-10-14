@@ -211,8 +211,14 @@ deepindex analyze-impact <table>
 # Parallel-storage detection
 deepindex check-parallel-storage
 
-# Sync requirements from a JSON file
+# Sync requirements from a JSON file (canonical shape)
 deepindex sync-requirements <file>
+
+# Or import a tracker export — Jira and GitHub shapes are adapted offline
+deepindex requirements import jira-export.json --format jira
+deepindex requirements import gh-issues.json --format github
+deepindex requirements import requirements.json --format deepindex   # default
+deepindex requirements import jira-export.json --format jira --dry-run
 
 # Requirements coverage report
 deepindex check-req-coverage

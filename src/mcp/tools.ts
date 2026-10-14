@@ -86,8 +86,63 @@ export function getEntity(db: Database.Database, args: { entity_id: string }) {
     : (db
         .prepare('SELECT id, type, name, content, commit_sha, created_at, last_seen FROM entities WHERE name = ?')
         .get(args.entity_id) as EntityRow | undefined);
-  if (!byName) return { error: 'entity not found', id: args.entity_id };
-  return { ...byName, ...mergedContext(db, byName.id) };
+  const result = byName ? { ...byName, ...mergedContext(db, byName.id) } : null;
+  if (result) return result;
+
+  // Issue #7: a ticket id is not an entity. deriveName() strips the conventional prefix,
+  // so "fix(PROJ-123): …" becomes "null-deref" and an exact-name lookup cannot find it.
+  // Requirements live in their own table keyed by the tracker key, so fall back to it.
+  const req = db
+    .prepare(
+      'SELECT id, title, description, source, status FROM requirements WHERE UPPER(id) = UPPER(?)'
+    )
+    .get(args.entity_id) as
+    | { id: string; title: string; description: string; source: string; status: string }
+    | undefined;
+  if (!req) return { error: 'entity not found', id: args.entity_id };
+  return { ...req, kind: 'requirement', ...requirementContext(db, req.id) };
+}
+
+/**
+ * The ticket-to-commit link is DERIVED, not stored (issue #7): a stored table would go
+ * stale the moment new commits land, and get_entity already syncs git on entry.
+ * Matching is done with a word boundary so WV-12 cannot match WV-123.
+ */
+function requirementContext(db: Database.Database, reqId: string) {
+  const statements = db
+    .prepare(
+      'SELECT statement, type, "order" FROM atomic_requirements WHERE req_id = ? ORDER BY "order"'
+    )
+    .all(reqId) as { statement: string; type: string; order: number }[];
+
+  let entities: { id: string; type: string; name: string; content: string }[] = [];
+  try {
+    const candidates = db
+      .prepare(
+        `SELECT e.id, e.type, e.name, e.content, c.message
+         FROM commits c JOIN entities e ON e.commit_sha = c.sha
+         WHERE c.message LIKE '%' || ? || '%'`
+      )
+      .all(reqId) as { id: string; type: string; name: string; content: string; message: string }[];
+    const escaped = reqId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const boundary = new RegExp(`(?<![A-Za-z0-9])${escaped}(?![0-9])`);
+    entities = candidates
+      .filter((row) => boundary.test(row.message))
+      .map(({ id, type, name, content }) => ({ id, type, name, content }));
+  } catch {
+    // No git history indexed: the requirement is still a useful answer.
+    entities = [];
+  }
+
+  const symbols = db
+    .prepare(
+      `SELECT s.name, s.kind, f.path FROM requirement_code_links l
+       JOIN symbols s ON s.id = l.symbol_id JOIN files f ON f.id = s.file_id
+       WHERE l.req_id = ?`
+    )
+    .all(reqId) as { name: string; kind: string; path: string }[];
+
+  return { statements, entities, symbols };
 }
 
 /** get_backlinks — multi-hop traversal with cycle guard. Enriched with
