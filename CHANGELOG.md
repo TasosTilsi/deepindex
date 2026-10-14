@@ -92,6 +92,22 @@ Version bumped, not yet tagged or published. Closes the fifteen issues opened af
   surface touching requirements would have failed with "no such table". (#15)
 - A test suite for the release workflow, which had none — see below. (#11)
 
+### Added
+
+- **`deepindex install` now onboards the repository**, not just the harness: it creates
+  `.deepindex.toml`, adds the index artifact to `.gitignore`, adds the `di:*` npm scripts
+  pinned to the same `npx -y deepindex@<version>` the wiring uses, backs up every file it may
+  rewrite into `.deepindex-backup/<timestamp>/`, and indexes the repository with a health
+  reading before returning. `--dry-run` reports all of it and writes nothing; `--no-index` and
+  `--no-scripts` opt out of parts; `--claude-md` appends a retrieval nudge once, off by
+  default. This replaces the separate bootstrap shell script, whose pnpm allowlist had
+  silently stopped working because it wrote to `package.json#pnpm`, a location pnpm 10 and
+  later no longer read. (#19)
+- **A refusal you can rely on:** an unparseable `.claude/settings.json` stops install with
+  exit 1 and writes nothing at all, instead of replacing the file with one holding only
+  deepindex's hooks. When the four hook events already exist they are named on stderr before
+  being replaced. (#19)
+
 ### Changed
 
 - `deepindex install` and the harness wiring are unchanged; the release workflow is not.
