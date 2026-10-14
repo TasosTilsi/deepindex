@@ -305,11 +305,20 @@ export async function repair(
 }
 
 function buildLLMPrompt(report: HealthReport): string {
+  // Issue #9: send the state and the grouped summary, never the raw issue dump.
+  // The list is bounded, so dumping it asks the model to reason about a partial
+  // evidence set presented as if it were the whole set.
+  const state = {
+    score: report.score,
+    dimensions: report.dimensions,
+    issuesTotal: report.issuesTotal,
+    issuesTruncated: report.issuesTruncated,
+  };
   return (
     'DeepIndex repair request. Repo state:\n' +
-    JSON.stringify(report, null, 2) +
-    '\nRecent issues:\n' +
-    JSON.stringify(report.issues, null, 2) +
+    JSON.stringify(state, null, 2) +
+    '\nIssue groups (most frequent first; every issue is counted, the list itself is paged):\n' +
+    JSON.stringify(report.issueSummary, null, 2) +
     '\nSuggest a minimal fix.'
   );
 }

@@ -82,10 +82,24 @@ export interface HealthDims {
   confidence: number;
 }
 
+/** Issues sharing a type and message, counted over the full set (issue #9). */
+export interface IssueGroup {
+  type: string;
+  message: string;
+  count: number;
+}
+
 export interface HealthReport {
   score: number;
   dimensions: HealthDims;
+  /** The requested page of issues — see issuesTotal / issuesTruncated. */
   issues: HealthIssue[];
+  /** How many issues exist in total, regardless of the returned page. */
+  issuesTotal: number;
+  /** How many issues the page left out; 0 when the page holds them all. */
+  issuesTruncated: number;
+  /** Most frequent issue groups over the FULL set, for consumers that cannot page. */
+  issueSummary: IssueGroup[];
 }
 
 export interface HealthConfig {

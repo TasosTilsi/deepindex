@@ -3,7 +3,7 @@ import { Command } from 'commander';
 import { buildGraph } from './graph/build.js';
 import { initDb } from './graph/db.js';
 import { cacheStats, cacheDelete } from './cache.js';
-import { getHealth, loadConfig, DEFAULT_HEALTH_CONFIG } from './health.js';
+import { DEFAULT_HEALTH_CONFIG, DEFAULT_ISSUE_LIMIT, getHealth, loadConfig } from './health.js';
 import { retrieve, DEFAULT_TOP_K } from './retrieve.js';
 import { repair } from './repair.js';
 import { createWatcher } from './watcher.js';
@@ -147,7 +147,9 @@ program
   .description('Print JSON health report for a repository index')
   .argument('<repo>', 'path to repository root')
   .option('-d, --db <path>', 'SQLite database path', '.deepindex.db')
-  .action((repo: string, opts: { db: string }) => {
+  .option('--issues-limit <n>', 'maximum issues to return', String(DEFAULT_ISSUE_LIMIT))
+  .option('--issues-offset <n>', 'issues to skip, for paging', '0')
+  .action((repo: string, opts: { db: string; issuesLimit: string; issuesOffset: string }) => {
     const repoPath = resolve(repo);
     const dbPath = resolve(opts.db);
     if (!existsSync(dbPath)) {
@@ -158,10 +160,20 @@ program
       console.error(`deepindex health: repository not found: ${repoPath}`);
       process.exit(2);
     }
+    const issueLimit = Number.parseInt(opts.issuesLimit, 10);
+    if (!Number.isFinite(issueLimit) || issueLimit < 0) {
+      console.error(`deepindex health: invalid --issues-limit: ${opts.issuesLimit}`);
+      process.exit(2);
+    }
+    const issueOffset = Number.parseInt(opts.issuesOffset, 10);
+    if (!Number.isFinite(issueOffset) || issueOffset < 0) {
+      console.error(`deepindex health: invalid --issues-offset: ${opts.issuesOffset}`);
+      process.exit(2);
+    }
     const config = loadConfig(repoPath) ?? DEFAULT_HEALTH_CONFIG;
     const db = initDb(dbPath);
     try {
-      const report = getHealth(db, { config });
+      const report = getHealth(db, { config, issueLimit, issueOffset });
       console.log(JSON.stringify(report, null, 2));
       process.exit(report.score >= config.repairBelow ? 0 : 1);
     } catch (err) {

@@ -5,9 +5,13 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import type Database from 'better-sqlite3';
-import type { HealthConfig, HealthDims, HealthReport, HealthIssue } from './types.js';
+import type { HealthConfig, HealthDims, HealthReport, HealthIssue, IssueGroup } from './types.js';
 
 export const DEFAULT_HEALTH_CONFIG: HealthConfig = { repairBelow: 80 };
+/** Issues a report returns by default; the true total is always reported (#9). */
+export const DEFAULT_ISSUE_LIMIT = 100;
+/** Distinct issue groups kept in the summary (#9). */
+export const ISSUE_SUMMARY_GROUPS = 10;
 
 const insertSignal = (db: Database.Database) =>
   db.prepare(
@@ -74,7 +78,14 @@ export function loadConfig(repoPath: string): HealthConfig {
 
 export function getHealth(
   db: Database.Database,
-  opts: { config?: HealthConfig; now?: number } = {}
+  opts: {
+    config?: HealthConfig;
+    now?: number;
+    /** Maximum issues to return (default DEFAULT_ISSUE_LIMIT). */
+    issueLimit?: number;
+    /** Issues to skip, for paging the report (default 0). */
+    issueOffset?: number;
+  } = {}
 ): HealthReport {
   const config = opts.config ?? DEFAULT_HEALTH_CONFIG;
   const now = opts.now ?? Date.now();
@@ -176,10 +187,39 @@ export function getHealth(
   if (confidence < 0.5) {
     issues.push({ type: 'low_confidence', message: 'confidence below 50%' });
   }
-  if (issues.length > 100) issues.length = 100;
+  // Issue #9: bound the page, never the truth. The grouping runs over the full
+  // set so a consumer that cannot page (repair prompt, adapter context,
+  // dashboard) still sees the shape of the problem instead of a short list.
+  const issuesTotal = issues.length;
+  const issueSummary = summariseIssues(issues);
+  const issueLimit = Math.max(0, opts.issueLimit ?? DEFAULT_ISSUE_LIMIT);
+  const issueOffset = Math.max(0, opts.issueOffset ?? 0);
+  const page = issues.slice(issueOffset, issueOffset + issueLimit);
+  const issuesTruncated = Math.max(0, issuesTotal - (issueOffset + page.length));
 
   const dimensions: HealthDims = { freshness, consistency, coverage, confidence };
-  return { score, dimensions, issues };
+  return {
+    score,
+    dimensions,
+    issues: page,
+    issuesTotal,
+    issuesTruncated,
+    issueSummary,
+  };
+}
+
+/** Counts issues by (type, message), most frequent first, top N kept. */
+function summariseIssues(issues: HealthIssue[]): IssueGroup[] {
+  const groups = new Map<string, IssueGroup>();
+  for (const issue of issues) {
+    const key = `${issue.type}\u0000${issue.message}`;
+    const existing = groups.get(key);
+    if (existing) existing.count += 1;
+    else groups.set(key, { type: issue.type, message: issue.message, count: 1 });
+  }
+  return [...groups.values()]
+    .sort((a, b) => b.count - a.count)
+    .slice(0, ISSUE_SUMMARY_GROUPS);
 }
 
 function clamp01(n: number): number {
