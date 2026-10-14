@@ -39,6 +39,7 @@ import {
   loadRealEmbedder,
   modelCacheDir,
   resolveModelName,
+  checkModelPath,
   SemanticUnavailableError,
 } from './semantic/embedder.js';
 import { loadSemanticConfig } from './semantic/config.js';
@@ -779,7 +780,19 @@ program
       // loadability once. Resolves the model from the SAME [semantic] config
       // the embed run will use, so the fetched model is the embedded model.
       if (opts.fetchModel) {
-        const model = resolveModelName(loadSemanticConfig(repoPath));
+        const cfg = loadSemanticConfig(repoPath);
+        const model = resolveModelName(cfg);
+        // Issue #6: a configured local export IS the model. Downloading anyway would
+        // be the one network call an air-gapped setup cannot make, so stop here.
+        if (cfg.modelPath) {
+          const check = checkModelPath(cfg.modelPath);
+          if (check.ok) {
+            console.log(`model_path ${check.dir} set — skipping download`);
+            return;
+          }
+          console.error(`deepindex embed: ${check.message}`);
+          process.exit(0);
+        }
         try {
           await fetchModel(model);
           await loadRealEmbedder(model);

@@ -1,5 +1,5 @@
 import { readFileSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { isAbsolute, join, normalize, resolve } from 'node:path';
 
 // [semantic] / [hooks] config sections in .deepindex.toml — same
 // regex-per-section pattern as loadConfig in health.ts (R5). Unknown values
@@ -9,6 +9,13 @@ import { join } from 'node:path';
 export interface SemanticConfig {
   enabled: boolean;
   model: 'minilm' | 'bge';
+  /**
+   * Absolute path to a local model directory (issue #6). When set, the embedder reads
+   * the ONNX export from there instead of the fetched cache and makes no network
+   * request at all — the offline/air-gapped path. Absent when unconfigured, so the
+   * object shape is unchanged for everyone who does not use it.
+   */
+  modelPath?: string;
 }
 
 export interface HooksConfig {
@@ -37,10 +44,23 @@ export function loadSemanticConfig(repoPath: string): SemanticConfig {
   const block = sectionMatch[1] ?? '';
   const enabledMatch = block.match(/enabled\s*=\s*(true|false)/);
   const modelMatch = block.match(/model\s*=\s*(minilm|bge)/);
-  return {
+  // Quoted first: a path may contain spaces and a bare form may carry a comment.
+  const pathMatch = block.match(/model_path\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s#]+))/);
+  const fromToml = (pathMatch?.[1] ?? pathMatch?.[2] ?? pathMatch?.[3])?.trim() || undefined;
+  const fromEnv = process.env.DEEPINDEX_MODEL_PATH?.trim() || undefined;
+  const rawPath = fromEnv ?? fromToml;
+
+  const config: SemanticConfig = {
     enabled: enabledMatch ? enabledMatch[1] === 'true' : DEFAULT_SEMANTIC_CONFIG.enabled,
     model: modelMatch ? (modelMatch[1] as 'minilm' | 'bge') : DEFAULT_SEMANTIC_CONFIG.model,
   };
+  if (rawPath) {
+    // An environment value is relative to the cwd (a CI injection); a configured one
+    // belongs to the repository, like every other path in this file.
+    const base = fromEnv ? process.cwd() : repoPath;
+    config.modelPath = isAbsolute(rawPath) ? normalize(rawPath) : resolve(base, rawPath);
+  }
+  return config;
 }
 
 /** [hooks] section: `session_budget_ms = <int>` (D-26c, default 10000). */

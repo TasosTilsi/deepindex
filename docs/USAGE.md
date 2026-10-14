@@ -166,6 +166,36 @@ enabled = true
 - **Reproducibility pin**: the model revision is pinned per release (commit sha recorded in `MODEL_CONFIGS` in the source) and passed to every pipeline fetch/load — two machines running the same deepindex version fetch identical weights. A cached model fetched under a different revision triggers a stderr warning on load; re-run `deepindex embed --fetch-model` to re-pin.
 - **Supply chain**: fetched LFS weight files are sha256-verified against the HuggingFace tree listing at fetch time; the verified digests + revision are recorded in `<cache>/<model>/.deepindex-model.json`. NOTE for audit tooling: the weights arrive via this explicit out-of-band download and are NOT visible to CycloneDX / osv-scanner SBOMs — account for the artifact via the marker file. Cache location: `~/.deepindex/models` (override: `DEEPINDEX_MODEL_CACHE_DIR`).
 
+### Offline / air-gapped use (`model_path`)
+
+Where outbound access is restricted, point the embedder at a model directory you supply out of band. Nothing is downloaded on that path, and a missing file fails loudly rather than reaching for the network:
+
+```toml
+[semantic]
+enabled = true
+model_path = "/opt/models/all-MiniLM-L6-v2"
+```
+
+```bash
+# or inject it in CI without touching committed config
+DEEPINDEX_MODEL_PATH=/opt/models/all-MiniLM-L6-v2 deepindex embed
+```
+
+The directory is a standard HuggingFace / `optimum-cli export onnx` layout:
+
+```
+all-MiniLM-L6-v2/
+  config.json
+  tokenizer.json
+  tokenizer_config.json
+  onnx/model.onnx            # fp32 (the runtime default) — or:
+  onnx/model_quantized.onnx  # quantized; selected automatically with dtype q8
+```
+
+- `DEEPINDEX_MODEL_PATH` wins over the TOML value; a relative value resolves against the repository root (against the cwd for the environment variable).
+- `deepindex embed --fetch-model` with a valid `model_path` prints `model_path … set — skipping download` and exits without a network call. With an invalid one it reports what is missing and exits 0 — the degradation posture is unchanged.
+- **No load path fetches.** `allowRemoteModels` is forced off on every load, not only for `model_path`: a partially populated cache used to be able to fall through to a silent download, contradicting the "no auto-download" guarantee.
+
 ## Data-Flow & Requirements
 
 ```bash

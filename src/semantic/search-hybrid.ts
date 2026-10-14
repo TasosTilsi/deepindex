@@ -202,6 +202,7 @@ export async function hybridSearch(
     }
     try {
       const embedder = await getEmbedder(model, {
+        modelPath: cfg.modelPath,
         embedder: opts.embedder,
         loader: opts.loader,
       });
@@ -237,6 +238,7 @@ export async function hybridSearch(
     if (cap.ok) {
       try {
         const embedder = await getEmbedder(model, {
+          modelPath: cfg.modelPath,
           embedder: opts.embedder,
           loader: opts.loader,
         });
