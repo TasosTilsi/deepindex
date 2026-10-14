@@ -200,8 +200,23 @@ describe('hooks: auto-embed gate (REVIEW finding 1)', () => {
   const tmpDir2 = mkdtempSync(join(tmpdir(), 'deepindex-hooks-gate-'));
   const dbPath2 = join(tmpDir2, 'g.db');
   const FIXTURE2 = createGitFixture();
+  // "Model uncached" must be a property of the test, not of the machine that
+  // runs it. The step-3 gate keys off hasCachedModel(), which resolves
+  // DEEPINDEX_MODEL_CACHE_DIR; unpinned, a developer who has run
+  // `deepindex embed --fetch-model` opens the gate, the `vi.fn()` loader (no
+  // implementation) returns undefined, and the suite goes red for a local-state
+  // reason. The chain describe above pins the same variable for the opposite
+  // case; this pins it empty.
+  let savedModelCacheDir: string | undefined;
+
+  beforeAll(() => {
+    savedModelCacheDir = process.env.DEEPINDEX_MODEL_CACHE_DIR;
+    process.env.DEEPINDEX_MODEL_CACHE_DIR = join(tmpDir2, 'empty-model-cache');
+  });
 
   afterAll(() => {
+    if (savedModelCacheDir === undefined) delete process.env.DEEPINDEX_MODEL_CACHE_DIR;
+    else process.env.DEEPINDEX_MODEL_CACHE_DIR = savedModelCacheDir;
     rmSync(tmpDir2, { recursive: true, force: true });
     rmSync(FIXTURE2, { recursive: true, force: true });
   });
