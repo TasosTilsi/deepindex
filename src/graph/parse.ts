@@ -229,6 +229,12 @@ function calculateComplexity(node: SyntaxNode): number {
  * Java member is importable unless it is private.
  */
 function isExportedByDefault(node: SyntaxNode, config: LanguageConfig): boolean {
+  // Rust is the inverse case: `pub` marks what is importable, so no modifier means private.
+  // Reading it with the Java rule would have exported every private item in the crate.
+  if (config.exportedByVisibility) {
+    const visibility = node.namedChildren.find((child) => child.type === 'visibility_modifier');
+    return visibility ? visibility.text.trim().startsWith(config.exportedByVisibility) : false;
+  }
   if (!config.exportedByDefault) return false;
   const modifiers =
     node.childForFieldName('modifiers') ?? node.namedChildren.find((c) => c.type === 'modifiers');
@@ -299,6 +305,27 @@ function collectImports(node: SyntaxNode, out: ParsedImport[], langKey: string):
   // its other `dotted_name` children are the imported NAMES, so the field is the only safe reading.
   // Shapes measured against the grammar; before this branch Python produced no import rows at all,
   // which is why setting its export flag alone would have changed nothing.
+  // Issue #20, Rust. Measured shapes: `use crate::a::b;` is a `use_declaration` whose `argument`
+  // field holds the path; `use a::b::{C, D};` is a `scoped_use_list` whose text carries the braces;
+  // and `mod helpers;` is a `mod_item` naming a sibling file (`mod x { .. }` names none).
+  if (langKey === 'rust' && (node.type === 'use_declaration' || node.type === 'mod_item')) {
+    if (node.type === 'mod_item') {
+      const name = node.childForFieldName('name');
+      const inline = node.namedChildren.some((child) => child.type === 'declaration_list');
+      if (name && !inline) out.push({ source: `self::${name.text}` });
+      return;
+    }
+    const argument = node.childForFieldName('argument');
+    if (!argument) return;
+    const source = argument.text
+      .replace(/\s*::\s*\{[\s\S]*$/, '') // use a::b::{C, D};
+      .replace(/\s*::\s*\*$/, '') // use a::b::*;
+      .replace(/\s+as\s+[\s\S]*$/, '') // use a::b as c;
+      .trim();
+    if (source) out.push({ source });
+    return;
+  }
+
   if (
     langKey === 'python' &&
     (node.type === 'import_statement' || node.type === 'import_from_statement')

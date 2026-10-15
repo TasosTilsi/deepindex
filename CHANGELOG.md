@@ -110,6 +110,15 @@ Version bumped, not yet tagged or published. Closes the fifteen issues opened af
 
 ### Added
 
+- **Rust imports are extracted and resolved.** `use` and `mod` declarations produced no rows, so
+  no edge could exist whatever the export flag said. A path is resolved the Rust way: `crate::` is
+  the crate root (`src/`), `self::` the current module's directory, `super::` its parent, and the
+  file to link is the **longest module prefix** of the path — `use self::local::Thing;` links
+  `local.rs`, because the last segment names an item inside the module. `mod helpers;` is itself a
+  file reference. A path that fails from an in-crate root is broken; `::serde::Serialize` and a bare
+  external crate stay external. Rust also needs the **inverse** visibility rule — `pub` marks what
+  is importable, so the absence of a modifier means private, where Java's `private` marks the
+  opposite side. (#20)
 - **Python imports are extracted and resolved.** Python produced no import rows at all: the
   extractor read the JS/TS `import_statement` `source` field and Java's `import_declaration`, and
   Python's imports are neither — `import a.b, c.d` carries one `dotted_name` per module, and

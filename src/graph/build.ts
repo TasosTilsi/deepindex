@@ -6,6 +6,7 @@ import { parseFile } from './parse.js';
 import { isExternalSpecifier, resolveImport } from './resolve.js';
 import { ignoredDirs } from './ignore.js';
 import { buildJavaClassIndex, javaFqnFor, javaMissesInTree } from './java-resolve.js';
+import { rustMissesInCrate } from './rust-resolve.js';
 import { REPARSE_REQUIRED_KEY } from './db.js';
 import { extractSql } from '../parser/sql-extractor.js';
 import { EXT_TO_LANG, langForExt } from '../parser/languages.js';
@@ -194,10 +195,12 @@ export async function buildGraph(
       if (isExternalSpecifier(imp.source)) {
         // A Java specifier can point into the tree and still miss: the package is here, the class
         // is not. That is a broken import, not a dependency (found in the pre-release review).
+        const language = langForExt(extname(relPath));
         if (
-          javaIndex &&
-          langForExt(extname(relPath)) === 'java' &&
-          javaMissesInTree(javaIndex, imp.source)
+          (javaIndex && language === 'java' && javaMissesInTree(javaIndex, imp.source)) ||
+          // A Rust path from `crate::`, `self::` or `super::` is in-crate by construction, so a
+          // miss is a dangling reference — the same verdict Java gets above.
+          (language === 'rust' && rustMissesInCrate(imp.source))
         ) {
           insertImport.run(fileId, imp.source, null, 0, 0);
           brokenImportCount++;

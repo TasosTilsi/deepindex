@@ -4,6 +4,7 @@ import { langForExt } from '../parser/languages.js';
 import type { JavaClassIndex } from './java-resolve.js';
 import { javaResolve } from './java-resolve.js';
 import { pythonResolve } from './python-resolve.js';
+import { rustResolve } from './rust-resolve.js';
 
 const EXT_TRY = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs'];
 
@@ -71,6 +72,11 @@ export function resolveImport(
   if (isExternalSpecifier(importSource)) {
     if (ctx.javaIndex && langForExt(extname(fromFile)) === 'java') {
       return javaResolve(ctx.javaIndex, importSource, ctx.isStatic === true);
+    }
+    // Issue #20: a Rust path is spelled from a root keyword (`crate::`, `self::`, `super::`) and
+    // names an item inside a module; only those three roots can land inside the tree.
+    if (langForExt(extname(fromFile)) === 'rust') {
+      return rustResolve(repoRoot, fromFile, importSource);
     }
     return null;
   }

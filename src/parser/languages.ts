@@ -11,6 +11,12 @@ export interface LanguageConfig {
    * otherwise. JS/TS keep using `export_statement`, exactly as before.
    */
   exportedByDefault?: boolean;
+  /**
+   * The keyword that marks the EXPORTED side, for languages where visibility is opt-in. Rust's
+   * `pub` is the inverse of Java's `private`: there, no modifier means public; here it means
+   * private.
+   */
+  exportedByVisibility?: string;
 }
 
 export const LANGUAGE_CONFIGS: Record<string, LanguageConfig> = {
@@ -82,6 +88,9 @@ export const LANGUAGE_CONFIGS: Record<string, LanguageConfig> = {
     nameFields: ['name'],
   },
   rust: {
+    // `pub` marks the exported side; see exportedByVisibility. `pub(crate)` counts as importable
+    // too — the graph is read inside one repository, which is exactly the crate's own scope.
+    exportedByVisibility: 'pub',
     wasmFile: 'tree-sitter-rust.wasm',
     extensions: ['.rs'],
     nodeMap: {
