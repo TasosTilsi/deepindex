@@ -11,7 +11,7 @@
  * Keeping the envelope here means it ships with the flags and config keys it depends on, it
  * is exercised by the suite, and it works the same on any machine with Node.
  */
-import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { npxCommand } from './version.js';
 
@@ -109,6 +109,24 @@ export function guardClaudeSettings(repoRoot: string): {
   };
 }
 
+/**
+ * Refuses a target that is a symbolic link.
+ *
+ * The repository being installed into is untrusted input: `ln -s ~/.bashrc .claude/settings.json`
+ * makes every write follow the link out of the repository, and the install would overwrite the
+ * user's shell profile. Returns the message to show, or null when the path is safe (or absent).
+ */
+export function refuseSymlinkedTarget(target: string): string | null {
+  try {
+    if (lstatSync(target).isSymbolicLink()) {
+      return `${target} is a symbolic link — refusing to write through it. Remove it or point it at a real file inside the repository.`;
+    }
+  } catch {
+    // Does not exist: nothing to refuse.
+  }
+  return null;
+}
+
 /** Every scaffold target that exists, so the backup covers whatever install might touch. */
 export function existingTargets(repoRoot: string): string[] {
   return SCAFFOLD_TARGETS.filter((rel) => existsSync(join(repoRoot, rel)));
@@ -136,6 +154,7 @@ export function backupFiles(
 export function ensureGitignore(repoRoot: string, dryRun: boolean): string[] {
   const wanted = ['.deepindex.db', '.deepindex.db-*', `${BACKUP_ROOT}/`];
   const path = join(repoRoot, '.gitignore');
+  if (refuseSymlinkedTarget(path)) return [];
   const text = existsSync(path) ? readFileSync(path, 'utf8') : '';
   const present = new Set(text.split('\n').map((line) => line.trim()));
   const missing = wanted.filter((line) => !present.has(line));
@@ -153,6 +172,7 @@ export function ensureGitignore(repoRoot: string, dryRun: boolean): string[] {
 /** Writes .deepindex.toml when absent. Returns true when it created the file. */
 export function ensureRepoConfig(repoRoot: string, dryRun: boolean): boolean {
   const path = join(repoRoot, '.deepindex.toml');
+  if (refuseSymlinkedTarget(path)) return false;
   if (existsSync(path)) return false;
   if (!dryRun) writeFileSync(path, DEFAULT_REPO_CONFIG);
   return true;
@@ -162,6 +182,7 @@ export function ensureRepoConfig(repoRoot: string, dryRun: boolean): boolean {
 export function ensurePackageScripts(repoRoot: string, dryRun: boolean): string[] {
   const path = join(repoRoot, 'package.json');
   if (!existsSync(path)) return [];
+  if (refuseSymlinkedTarget(path)) return [];
   let pkg: { scripts?: Record<string, string> };
   let text: string;
   try {
@@ -257,6 +278,7 @@ export function appendGuidance(
 ): string | null {
   const name = guidanceTarget(repoRoot, harness);
   const path = join(repoRoot, name);
+  if (refuseSymlinkedTarget(path)) return null;
   const text = existsSync(path) ? readFileSync(path, 'utf8') : '';
   if (text.includes(GUIDANCE_MARKER)) return null;
   if (!dryRun) {

@@ -73,3 +73,28 @@ describe('git walker', () => {
     expect(batchCommits([], 10)).toEqual([]);
   });
 });
+
+describe('deriveRelationships', () => {
+  it('emits one row per ordered pair sharing a file, labelled from the from side', async () => {
+    // The join was inverted for performance (a 2000-commit history took 16.4 s and an 8000-commit
+    // one was killed after 60 s); this pins that the output did NOT change with it.
+    const { deriveRelationships, entityId } = await import('../src/git/extract.js');
+    const entities = [
+      { type: 'bug_fix', name: 'retry-policy', content: 'x', commitSha: 'a' },
+      { type: 'pattern', name: 'backoff', content: 'y', commitSha: 'b' },
+      { type: 'decision', name: 'storage', content: 'z', commitSha: 'c' },
+    ];
+    const files = new Map([
+      [entityId(entities[0]), ['src/a.ts', 'src/shared.ts']],
+      [entityId(entities[1]), ['src/shared.ts']],
+      [entityId(entities[2]), ['src/other.ts']],
+    ]);
+    const rels = deriveRelationships(entities as never, files);
+    const summary = rels
+      .map((r) => `${r.from === entityId(entities[0]) ? 'bug_fix' : r.from === entityId(entities[1]) ? 'pattern' : 'decision'}->${r.to === entityId(entities[0]) ? 'bug_fix' : r.to === entityId(entities[1]) ? 'pattern' : 'decision'}:${r.relationship}`)
+      .sort();
+    // Both directions for the sharing pair, one row each, and nothing for the pair with no file
+    // in common. Two files shared with the same entity are still one relationship.
+    expect(summary).toEqual(['bug_fix->pattern:fixes', 'pattern->bug_fix:implements']);
+  });
+});

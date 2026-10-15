@@ -18,7 +18,11 @@ export interface Registry {
 
 /** Default registry path: ~/.deepindex/projects.json */
 export function defaultRegistryPath(): string {
-  return join(homedir(), '.deepindex', 'projects.json');
+  // A seam: the test suite used to append its temp projects to the REAL ~/.deepindex/projects.json
+  // (measured: 141 entries, 137 of them /tmp test dirs), which the shipped dashboard then lists as
+  // the user's projects. Tests point this at a temp file; a user with an unusual home can too.
+  const override = process.env.DEEPINDEX_REGISTRY?.trim();
+  return override || join(homedir(), '.deepindex', 'projects.json');
 }
 
 /** Load the registry (empty if missing/corrupt). */

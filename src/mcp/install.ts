@@ -8,6 +8,7 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { npxArgs, npxCommand } from '../version.js';
+import { refuseSymlinkedTarget } from '../scaffold.js';
 
 interface Settings {
   mcpServers?: Record<string, unknown>;
@@ -18,10 +19,21 @@ interface Settings {
  *  hooks into .claude/settings.json. Pre-existing config is never deleted —
  *  a stale settings.json mcpServers block is left in place (notable, but
  *  removing user config would violate the additive discipline). */
-export function installClaudeSettings(projectRoot: string): { path: string; mcpAdded: boolean; hooksAdded: boolean } {
+export function installClaudeSettings(projectRoot: string): {
+  path: string;
+  mcpAdded: boolean;
+  hooksAdded: boolean;
+  /** Set when the write was refused: a symbolic link, or a settings file that cannot be parsed. */
+  refused?: string;
+} {
   // --- MCP server → project-shareable root .mcp.json (DI-05b) ---
   mkdirSync(projectRoot, { recursive: true });
   const mcpJsonPath = join(projectRoot, '.mcp.json');
+  const symlinkedMcp = refuseSymlinkedTarget(mcpJsonPath);
+  const symlinkedSettings = refuseSymlinkedTarget(join(projectRoot, '.claude', 'settings.json'));
+  if (symlinkedMcp || symlinkedSettings) {
+    return { path: mcpJsonPath, mcpAdded: false, hooksAdded: false, refused: symlinkedMcp ?? symlinkedSettings ?? '' };
+  }
   let mcp: { mcpServers?: Record<string, unknown> } = {};
   let mcpWritable = true;
   if (existsSync(mcpJsonPath)) {
@@ -52,7 +64,15 @@ export function installClaudeSettings(projectRoot: string): { path: string; mcpA
     try {
       settings = JSON.parse(readFileSync(settingsPath, 'utf8')) as Settings;
     } catch {
-      settings = {};
+      // This used to reset to `{}` and write, which replaced the whole file — every hook and
+      // setting the user had — with deepindex's four hooks. `deepindex install` got the guard;
+      // this writer, reached by `mcp install` and by the harness installer, did not.
+      return {
+        path: settingsPath,
+        mcpAdded: false,
+        hooksAdded: false,
+        refused: `${settingsPath} is not valid JSON (JSONC or comments?). Refusing to replace it — fix or remove the file, then re-run.`,
+      };
     }
   }
 

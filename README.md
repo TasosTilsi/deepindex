@@ -31,7 +31,7 @@ It is not a vector database or a RAG framework. It is the deterministic, local-f
 | **Retrieval** | Hybrid ranking (TF-IDF + graph proximity) + FTS5 entity search. |
 | **Repair** | 4-stage pipeline: rebuild → cache invalidate → git-history probe → optional LLM. |
 | **Requirements traceability** | `@req` code annotations linked to requirements; coverage reports. |
-| **MCP server** | 6 read-only tools over the merged store (stdio, stderr-only logging). |
+| **MCP server** | 1 read-only tools over the merged store (stdio, stderr-only logging). |
 | **Hooks** | Claude Code, Codex, OpenCode, DeepSeek Harness — session start sync, prompt injection, tool-use capture, session summary. |
 | **Web dashboard** | Read-only React dashboard visualizing the whole index + knowledge graphs. |
 
@@ -40,7 +40,7 @@ It is not a vector database or a RAG framework. It is the deterministic, local-f
 ## Features
 
 - **Deterministic-first, LLM-optional** — all indexing/retrieval works with zero LLM calls; LLM is configurable enrichment only.
-- **One database** — a single SQLite store (schema v5) holds the symbol graph, data-flow graph, and temporal knowledge graph.
+- **One database** — a single SQLite store (schema v7) holds the symbol graph, data-flow graph, and temporal knowledge graph.
 - **Local-first** — no SaaS, no API key, no cloud. Runs entirely on your machine.
 - **Multi-harness** — MCP + hooks for Claude Code, Codex, OpenCode, and DeepSeek Harness.
 - **Self-healing** — health scoring + a repair pipeline that re-resolves imports, invalidates cache, probes git history, and (optionally) consults an LLM. Sessions auto-repair deterministically (repair stages 1-3) whenever the health score drops below the configured threshold; the stage-4 LLM consultation stays manual/optional.
@@ -51,7 +51,11 @@ It is not a vector database or a RAG framework. It is the deterministic, local-f
 ## Quick Start
 
 ```bash
-# Install
+# Run it without installing anything (pinned: the MCP wiring and the scripts below use
+# this same `npx -y deepindex@<version>` form)
+npx -y deepindex@0.3.5 index .
+
+# Or install it globally
 npm install -g deepindex   # or: pnpm add -g deepindex
 
 # Index a repository

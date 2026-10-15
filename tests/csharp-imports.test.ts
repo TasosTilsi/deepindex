@@ -42,12 +42,15 @@ describe('c# using directives', () => {
     const { db, dir } = await build({
       'src/Data/Repo.cs': 'namespace App.Data;\n\npublic class Repo {}\n',
       'src/Core/Service.cs':
-        'namespace App.Core;\n\nusing App.Data;\nusing System.Text;\nusing App.Gone;\n',
+        'namespace App.Core;\n\nusing App.Data;\nusing System.Text;\nusing App.Data.Gone;\n',
     });
     try {
       expect(rows(db, 'src/Core/Service.cs')).toEqual([
-        // The namespace is here, the type is not: a dangling reference.
-        { source: 'App.Gone', resolved: 0, external: 0, target: null },
+        // The namespace is here, the type is not: a dangling reference. (`App.Data` is a
+        // namespace this tree declares, so the prefix is one we KNOW — the earlier version of this
+        // test used a bare `App.Gone`, which only looked broken because the resolver was matching
+        // any shared first segment, and that heuristic broke every third-party import.)
+        { source: 'App.Data.Gone', resolved: 0, external: 0, target: null },
         { source: 'App.Data', resolved: 1, external: 0, target: 'src/Data/Repo.cs' },
         { source: 'System.Text', resolved: 1, external: 1, target: null },
       ].sort((a, b) => (a.source < b.source ? -1 : 1)));

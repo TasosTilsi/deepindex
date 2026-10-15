@@ -2,7 +2,8 @@
 // Stage 1: rebuild graph. Stage 2: invalidate stale cache. Stage 3: git history probe.
 // Stage 4 (defined in task 2.8): LLM call with response cache.
 
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
+import { readDirSafe } from './graph/walk.js';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import type Database from 'better-sqlite3';
@@ -152,24 +153,13 @@ function walkTsJs(root: string): string[] {
   const stack = [root];
   while (stack.length) {
     const dir = stack.pop()!;
-    let entries: string[];
-    try {
-      entries = readdirSync(dir);
-    } catch {
-      continue;
-    }
-    for (const name of entries) {
+    for (const entry of readDirSafe(dir)) {
+      const name = entry.name;
       if (name === 'node_modules' || name === '.git') continue;
       const full = join(dir, name);
-      let st;
-      try {
-        st = statSync(full);
-      } catch {
-        continue;
-      }
-      if (st.isDirectory()) {
+      if (entry.isDirectory) {
         stack.push(full);
-      } else if (st.isFile()) {
+      } else if (entry.isFile) {
         const i = name.lastIndexOf('.');
         const ext = i < 0 ? '' : name.slice(i);
         if (SCAN_EXTS.has(ext)) out.push(full);

@@ -9,7 +9,7 @@ The reference implementations (Recall) made LLM extraction the only path. The us
 
 ## Decision
 
-All indexing and retrieval is **deterministic and LLM-free by default**. LLM summarization/extraction is configurable enrichment, gated behind an `llm.enabled` flag — never required.
+All indexing and retrieval is **deterministic and LLM-free by default**. LLM summarization/extraction is caller-supplied enrichment (`repair({ llm })`) — never required, and not reachable through configuration. An earlier revision of this ADR promised an `llm.enabled` flag; no such key exists in the code.
 
 ## Consequences
 

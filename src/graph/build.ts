@@ -5,6 +5,7 @@ import { createHash } from 'node:crypto';
 import { parseFile } from './parse.js';
 import { isExternalSpecifier, resolveImport } from './resolve.js';
 import { ignoredDirs } from './ignore.js';
+import { readDirSafe } from './walk.js';
 import {
   buildPackageIndex,
   fqnForSource,
@@ -314,36 +315,32 @@ function walk(
   const stack = [root];
   while (stack.length) {
     const dir = stack.pop()!;
-    let entries: string[];
-    try {
-      entries = readdirSync(dir);
-    } catch {
-      continue;
-    }
-    for (const name of entries) {
+    for (const entry of readDirSafe(dir)) {
+      const name = entry.name;
       // Both forms work: a bare directory name ("vendor") and a repo-relative path
       // ("src/vendor"). The second used to be accepted and then silently ignored, because only
       // the basename was compared — the config said one thing and the walk did another.
       if (ignore.has(name) || ignore.has(relative(root, join(dir, name)))) continue;
       const full = join(dir, name);
+      if (entry.isDirectory) {
+        stack.push(full);
+        continue;
+      }
+      if (!entry.isFile) continue;
       let st;
       try {
         st = statSync(full);
       } catch {
         continue;
       }
-      if (st.isDirectory()) {
-        stack.push(full);
-      } else if (st.isFile()) {
-        const ext = extname(name);
-        if (SUPPORTED_EXTS.has(ext)) {
-          out.push({
-            absPath: full,
-            ext,
-            mtime: Math.floor(st.mtimeMs),
-            size: st.size,
-          });
-        }
+      const ext = extname(name);
+      if (SUPPORTED_EXTS.has(ext)) {
+        out.push({
+          absPath: full,
+          ext,
+          mtime: Math.floor(st.mtimeMs),
+          size: st.size,
+        });
       }
     }
   }

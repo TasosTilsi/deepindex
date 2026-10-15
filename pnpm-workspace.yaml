@@ -3,11 +3,22 @@ packages:
   - 'dashboard'
 
 allowBuilds:
-  better-sqlite3: set this to true or false
-  esbuild: set this to true or false
-  tree-sitter: set this to true or false
-  tree-sitter-javascript: set this to true or false
-  tree-sitter-typescript: set this to true or false
+  # Explicit booleans, not the "set this to true or false" skeleton pnpm writes for you: the
+  # supply-chain gate reads a placeholder as NOT approved, which makes `pnpm install` — and every
+  # bare `pnpm <script>` through it — fail with ERR_PNPM_IGNORED_BUILDS. Nothing noticed because
+  # every developer command here carried --config.verify-deps-before-run=false, which skips the
+  # check that this file exists to satisfy.
+  better-sqlite3: true   # the database engine: without its build script the module cannot load
+  esbuild: true          # the platform binary the test runner and bundler need
+  onnxruntime-node: true # DI-01: the optional semantic stack's native prebuilt-binary installers
+  protobufjs: true
+  sharp: true
+  tree-sitter: true      # the parser wasms the index is built on
+  tree-sitter-javascript: true
+  tree-sitter-typescript: true
+
+# Kept alongside allowBuilds on purpose: CI pins pnpm 10 (see .github/workflows), which reads this
+# key, while pnpm 11 reads allowBuilds. Do not "clean up" one of them without checking both.
 onlyBuiltDependencies:
   - better-sqlite3
   - esbuild

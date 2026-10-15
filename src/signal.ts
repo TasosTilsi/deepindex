@@ -55,9 +55,18 @@ export function parseSignalPairs(args: readonly string[]): Record<string, number
   return pairs;
 }
 
+/** Reports are untrusted input and are read whole; refuse one that cannot be a test report. */
+const MAX_REPORT_BYTES = 64 * 1024 * 1024;
+
 function readReport(path: string): string {
   if (!existsSync(path)) {
     throw new SignalUsageError(`report not found: ${path}`);
+  }
+  const size = statSync(path).size;
+  if (size > MAX_REPORT_BYTES) {
+    throw new SignalUsageError(
+      `${path} is ${Math.round(size / 1024 / 1024)} MB — larger than the ${MAX_REPORT_BYTES / 1024 / 1024} MB limit for a report`
+    );
   }
   return readFileSync(path, 'utf8');
 }
@@ -105,7 +114,7 @@ function pairsFromReports(reports: ReportOptions): SignalInput {
     let total = 0;
     let pass = 0;
     for (const file of files) {
-      const summary = parseJunitXml(readFileSync(file, 'utf8'));
+      const summary = parseJunitXml(readReport(file));
       total += summary.total;
       pass += summary.pass;
     }

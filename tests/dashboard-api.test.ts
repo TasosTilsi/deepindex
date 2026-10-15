@@ -130,7 +130,9 @@ describe('dashboard api', () => {
   it('apiSearch returns typed entities', async () => {
     const r = await apiSearch(db, 'error');
     expect(r.length).toBeGreaterThan(0);
-    expect(r[0].type).toBe('bug_fix');
+    // `apiSearch` returns the union of a lexical and a hybrid hit; only the lexical one carries a
+    // type. The test was never typechecked (tests/ is outside tsconfig.json), so this went unseen.
+    expect((r[0] as { type?: string }).type).toBe('bug_fix');
   });
 
   it('apiSymbols returns files + symbols', () => {

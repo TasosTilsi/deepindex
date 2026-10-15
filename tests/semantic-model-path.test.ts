@@ -77,12 +77,13 @@ describe('semantic config: model_path', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  it('parses a quoted and a bare model_path, and ignores an empty value', () => {
+  it('honours a path inside the repository, and refuses one the repository points outside it', () => {
+    // A path the repository can write to is a path the repository controls: inside is fine.
     writeFileSync(
       join(dir, '.deepindex.toml'),
-      '[semantic]\nenabled = true\nmodel_path = "/opt/models/minilm"\n'
+      `[semantic]\nenabled = true\nmodel_path = "${join(dir, 'models/minilm')}"\n`
     );
-    expect(loadSemanticConfig(dir).modelPath).toBe('/opt/models/minilm');
+    expect(loadSemanticConfig(dir).modelPath).toBe(join(dir, 'models/minilm'));
 
     writeFileSync(
       join(dir, '.deepindex.toml'),
@@ -93,6 +94,31 @@ describe('semantic config: model_path', () => {
 
     writeFileSync(join(dir, '.deepindex.toml'), '[semantic]\nenabled = true\nmodel_path = ""\n');
     expect(loadSemanticConfig(dir).modelPath).toBeUndefined();
+  });
+
+  it('refuses a repository-supplied model_path that leaves the repository', () => {
+    // This used to be honoured. A repository is untrusted input, and its config could point the
+    // loader at any directory on the machine — including one holding a model file the repository
+    // did not have to ship. The escape hatch is the user's own environment variable.
+    writeFileSync(
+      join(dir, '.deepindex.toml'),
+      '[semantic]\nenabled = true\nmodel_path = "/opt/models/minilm"\n'
+    );
+    const warn = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      expect(loadSemanticConfig(dir).modelPath).toBeUndefined();
+      expect(warn.mock.calls.flat().join(' ')).toMatch(/outside the repository/);
+    } finally {
+      warn.mockRestore();
+    }
+
+    // The user can still point anywhere.
+    process.env.DEEPINDEX_MODEL_PATH = '/opt/models/minilm';
+    try {
+      expect(loadSemanticConfig(dir).modelPath).toBe('/opt/models/minilm');
+    } finally {
+      delete process.env.DEEPINDEX_MODEL_PATH;
+    }
   });
 
   it('lets DEEPINDEX_MODEL_PATH override the toml value', () => {
@@ -190,7 +216,7 @@ describe('model_path loading', () => {
     writeFileSync(join(bare, 'config.json'), '{}\n');
     const result = embedder.checkModelPath(bare);
     expect(result.ok).toBe(false);
-    expect(result.message).toMatch(/onnx\/model\.onnx/);
+    expect(result.ok ? '' : result.message).toMatch(/onnx\/model\.onnx/);
   });
 });
 

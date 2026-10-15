@@ -93,21 +93,43 @@ export function deriveRelationships(
   const byId = new Map<string, EntityRecord>();
   for (const e of entities) byId.set(entityId(e), e);
 
+  // Invert the join. This used to compare every entity against every other entity and, inside that
+  // comparison, run `files.some((f) => otherFiles.includes(f))` — an array scan inside a loop inside
+  // a loop. A pre-release review measured the cost: 2000 commits took 16.4 s, 8000 was killed after
+  // 60 s, which stalls `deepindex git-index` on a real history.
+  //
+  // The output is unchanged: one row per ordered pair that shares at least one file, labelled from
+  // the `from` side. Only the join is inverted and both passes are ordered, so the result stays
+  // deterministic instead of depending on map iteration order.
+  const entityIdsByFile = new Map<string, string[]>();
   for (const e of entities) {
     const id = entityId(e);
-    const files = commitFilesByEntity.get(id) ?? [];
-    // bug_fix + file → fixes; breaking_change + file → breaks.
-    for (const other of entities) {
-      if (other === e) continue;
-      const oid = entityId(other);
-      const otherFiles = commitFilesByEntity.get(oid) ?? [];
-      const shared = files.some((f) => otherFiles.includes(f));
-      if (!shared) continue;
-      let relationship: RelationshipRecord['relationship'] = 'relates_to';
-      if (e.type === 'bug_fix') relationship = 'fixes';
-      else if (e.type === 'breaking_change') relationship = 'breaks';
-      else if (e.type === 'pattern') relationship = 'implements';
-      rels.push({ from: id, to: oid, relationship, context: 'shared files' });
+    for (const file of commitFilesByEntity.get(id) ?? []) {
+      const bucket = entityIdsByFile.get(file);
+      if (bucket) bucket.push(id);
+      else entityIdsByFile.set(file, [id]);
+    }
+  }
+
+  const seen = new Set<string>();
+  for (const [file, ids] of [...entityIdsByFile.entries()].sort(([a], [b]) => (a < b ? -1 : 1))) {
+    void file;
+    const sorted = [...ids].sort();
+    for (const from of sorted) {
+      const entity = byId.get(from);
+      if (!entity) continue;
+      for (const to of sorted) {
+        if (to === from) continue;
+        // A pair that shares several files is still one relationship, as it was.
+        const key = `${from}\u0000${to}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        let relationship: RelationshipRecord['relationship'] = 'relates_to';
+        if (entity.type === 'bug_fix') relationship = 'fixes';
+        else if (entity.type === 'breaking_change') relationship = 'breaks';
+        else if (entity.type === 'pattern') relationship = 'implements';
+        rels.push({ from, to, relationship, context: 'shared files' });
+      }
     }
   }
   return rels;

@@ -299,7 +299,7 @@ deepindex mcp serve
 deepindex mcp install
 ```
 
-The MCP server exposes 6 read-only tools: `search_knowledge`, `get_entity`, `get_backlinks`, `get_decisions`, `get_bugs`, `get_patterns`. All logging goes to stderr (stdout is the protocol).
+The MCP server exposes 1 read-only tools: `search_knowledge`, `get_entity`, `get_backlinks`, `get_decisions`, `get_bugs`, `get_patterns`. All logging goes to stderr (stdout is the protocol).
 
 ## Harness Integration
 
@@ -400,4 +400,4 @@ Health thresholds are configurable via a `.deepindex.toml` file in the repo root
 repair_below = 80
 ```
 
-LLM enrichment (repair fallback, batch extraction) is gated behind an `llm.enabled` config — never required.
+LLM enrichment (repair fallback, batch extraction) is never required and never configured: a caller that wants it supplies its own client (`repair({ llm })`), and no config key turns it on. Earlier text here promised an `llm.enabled` flag that does not exist in the code.

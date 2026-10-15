@@ -45,7 +45,11 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
           package-manager-cache: false
       - name: Install
-        run: pnpm install --frozen-lockfile
+        # --ignore-scripts: this job holds `id-token: write`, and every approved build script
+        # (better-sqlite3, the tree-sitter parsers, onnxruntime-node's GitHub-release download)
+        # would otherwise run while that token is mintable. The publish path needs none of them —
+        # `prepack` runs tsc, and the grammars ship prebuilt.
+        run: pnpm install --frozen-lockfile --ignore-scripts
       - name: Strip the empty authToken placeholder
         # setup-node writes an empty `//registry.npmjs.org/:_authToken=` line into the
         # userconfig. npm prefers that line over the OIDC exchange and fails with
@@ -68,8 +72,8 @@ jobs:
           RESP=$(curl -sS -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
             "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=npm:registry.npmjs.org")
           echo "$RESP" | jq -r '.value' | cut -d. -f2 | python3 -c "import sys,base64,json; s=sys.stdin.read().strip(); s+='='*(-len(s)%4); c=json.loads(base64.urlsafe_b64decode(s)); print(json.dumps({k:c.get(k) for k in ['iss','aud','repository_owner','repository','workflow','ref','ref_type','event_name','job_workflow_ref']},indent=1))" || true
-          echo "=== userconfig:"
-          cat "$NPM_CONFIG_USERCONFIG" 2>/dev/null || echo "(none)"
+          echo "=== userconfig (redacted):"
+          sed -E 's/(_authToken[[:space:]]*=).*/\1<redacted>/' "$NPM_CONFIG_USERCONFIG" 2>/dev/null || echo "(none)"
           echo "=== auth-related lines from the npm debug log:"
           grep -ihE "oidc|id.?token|eneedauth|need auth|trusted" /home/runner/.npm/_logs/*-debug-0.log 2>/dev/null | cut -c1-160 | head -40 || true
   release:

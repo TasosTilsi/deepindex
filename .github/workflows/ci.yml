@@ -19,12 +19,24 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
       - name: Typecheck
-        run: pnpm exec tsc --noEmit
+        # Both projects: `tsconfig.json` excludes tests/, so a broken import in a test file — which
+        # makes its whole suite fail to load while the rest of the run still reports green — went
+        # unnoticed by this step.
+        run: pnpm exec tsc --noEmit && pnpm exec tsc -p tsconfig.test.json --noEmit
       - name: Test
         run: pnpm exec vitest run
       - name: Coverage gate (>=70% lines on src/)
         run: CI=1 pnpm exec vitest run
       - name: Dashboard build
         run: pnpm --dir dashboard build
+
+      - name: Build the published artifact
+        run: pnpm build
+      - name: Run the published artifact
+        # Nothing else in CI executes dist/: the tarball's bin was only ever exercised
+        # by a user installing it. tests/packaged-cli.test.ts runs the same file.
+        run: |
+          node dist/cli.js --version
+          node dist/cli.js index fixtures/sample-repo --db /tmp/ci-artifact.db
       - name: Smoke
         run: pnpm run smoke

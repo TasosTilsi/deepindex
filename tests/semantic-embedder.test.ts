@@ -232,11 +232,18 @@ describe('packaging (DI-01)', () => {
     );
   });
 
-  it('package.json pnpm.onlyBuiltDependencies also lists the native deps (pnpm<10 reads package.json)', () => {
-    const pkg = JSON.parse(readFileSync(join(process.cwd(), 'package.json'), 'utf8'));
-    expect(pkg.pnpm?.onlyBuiltDependencies ?? []).toEqual(
-      expect.arrayContaining(['onnxruntime-node', 'sharp'])
-    );
+  it('approves the native deps with explicit booleans, not the skeleton pnpm writes', () => {
+    // The package.json copy this used to assert on is gone: pnpm 11 ignores that field and warns
+    // about it on every run, and it was a duplicate of the workspace file. The workspace file is
+    // the canonical home for BOTH the old key (pnpm 10, which CI pins) and the new one.
+    const ws = yamlLoad(readFileSync(join(process.cwd(), 'pnpm-workspace.yaml'), 'utf8')) as {
+      allowBuilds?: Record<string, unknown>;
+    };
+    // `true`, not the "set this to true or false" placeholder pnpm scaffolds: a placeholder reads
+    // as NOT approved, which makes every bare `pnpm <script>` fail with ERR_PNPM_IGNORED_BUILDS.
+    for (const dep of ['onnxruntime-node', 'sharp', 'better-sqlite3']) {
+      expect(ws.allowBuilds?.[dep], `${dep} must be approved`).toBe(true);
+    }
   });
 });
 

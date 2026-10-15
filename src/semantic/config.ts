@@ -1,5 +1,5 @@
 import { readFileSync, existsSync } from 'node:fs';
-import { isAbsolute, join, normalize, resolve } from 'node:path';
+import { isAbsolute, join, normalize, relative, resolve } from 'node:path';
 
 // [semantic] / [hooks] config sections in .deepindex.toml — same
 // regex-per-section pattern as loadConfig in health.ts (R5). Unknown values
@@ -30,6 +30,12 @@ export const DEFAULT_SEMANTIC_CONFIG: SemanticConfig = {
 export const DEFAULT_HOOKS_CONFIG: HooksConfig = { sessionBudgetMs: 10000 };
 
 /** [semantic] section: `enabled = true|false`, `model = minilm|bge`. */
+/** True when `target` is inside `root` (or is it). Prefix-safe: `relative` is not `startsWith`. */
+function isInside(root: string, target: string): boolean {
+  const rel = relative(resolve(root), resolve(target));
+  return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel));
+}
+
 export function loadSemanticConfig(repoPath: string): SemanticConfig {
   const tomlPath = join(repoPath, '.deepindex.toml');
   if (!existsSync(tomlPath)) return { ...DEFAULT_SEMANTIC_CONFIG };
@@ -58,7 +64,17 @@ export function loadSemanticConfig(repoPath: string): SemanticConfig {
     // An environment value is relative to the cwd (a CI injection); a configured one
     // belongs to the repository, like every other path in this file.
     const base = fromEnv ? process.cwd() : repoPath;
-    config.modelPath = isAbsolute(rawPath) ? normalize(rawPath) : resolve(base, rawPath);
+    const resolved = isAbsolute(rawPath) ? normalize(rawPath) : resolve(base, rawPath);
+    if (fromEnv || isInside(repoPath, resolved)) {
+      config.modelPath = resolved;
+    } else {
+      // A repository is untrusted input, and its config can point the loader at any directory on
+      // this machine — including one holding a model file it did not have to ship. The escape
+      // hatch is the user's own environment variable, which the repository cannot set.
+      console.error(
+        `deepindex: [semantic] model_path resolves outside the repository (${resolved}) — ignoring it. Set DEEPINDEX_MODEL_PATH to point at a model directory of your own.`
+      );
+    }
   }
   return config;
 }

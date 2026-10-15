@@ -4,7 +4,7 @@
 
 DeepIndex is a **context engineering framework** for AI coding harnesses. It turns a repository into a persistent, queryable, self-repairing knowledge store. The core idea: **deterministic-first, LLM-optional** — all indexing and retrieval works without an LLM; LLM is configurable enrichment only.
 
-The system is built around a **single SQLite database** (schema v5) that holds three interlinked knowledge layers:
+The system is built around a **single SQLite database** (schema v7) that holds three interlinked knowledge layers:
 
 1. **Symbol/import graph** — what the code is.
 2. **Data-flow graph** — how data moves through the code.
@@ -49,7 +49,7 @@ The system is built around a **single SQLite database** (schema v5) that holds t
 
 ---
 
-## Data Model (SQLite schema v5)
+## Data Model (SQLite schema v7)
 
 ### Symbol/import graph
 - **`files`** — repo-relative path (unique), sha256 hash, mtime, size, language.

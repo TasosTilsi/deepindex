@@ -4,7 +4,7 @@
 import type Database from 'better-sqlite3';
 import { createServer, IncomingMessage, ServerResponse } from 'node:http';
 import { readFileSync, existsSync, statSync, copyFileSync, mkdtempSync, rmSync } from 'node:fs';
-import { join, extname, resolve, dirname } from 'node:path';
+import { join, extname, resolve, dirname, isAbsolute, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 import { adaptClaudeCode } from './adapter-claude-code.js';
@@ -29,13 +29,72 @@ export interface ServeHandle {
 const DEFAULT_PORT = 7331;
 const DEFAULT_HOST = '127.0.0.1';
 const DEFAULT_DB = '.deepindex.db';
-// Dashboard assets: prefer a repo checkout (cwd/dashboard/dist); fall back to
-// the copy shipped inside the published package (global installs have no
-// checkout — REVIEW-publish fix).
+// Dashboard assets: ONLY the copy shipped inside this package. It used to prefer
+// `cwd/dashboard/dist` when present — a development convenience that turned into a trust boundary:
+// `deepindex serve` inside a hostile repository served that repository's own JavaScript from
+// http://127.0.0.1:7331, an origin with no authentication whose API reads the local project registry
+// and any registered project's index. A caller who really wants another directory passes one
+// explicitly (`serve --dashboard <dir>`), which is opt-in rather than automatic.
 const BUNDLED_DASHBOARD = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'dashboard', 'dist');
-const DEFAULT_DASHBOARD = existsSync(join(process.cwd(), 'dashboard', 'dist'))
-  ? resolve(process.cwd(), 'dashboard', 'dist')
-  : BUNDLED_DASHBOARD;
+
+/** The directory to serve: the bundled dashboard unless a caller names one explicitly. */
+export function resolveDashboardDir(explicit?: string): string {
+  return explicit ? resolve(explicit) : BUNDLED_DASHBOARD;
+}
+
+/**
+ * Resolve `relPath` inside `dir`, or null when it escapes. `startsWith` is not enough: a sibling
+ * directory whose name shares the prefix (`.../dist-evil` against `.../dist`) passes it.
+ */
+export function resolveWithin(dir: string, relPath: string): string | null {
+  const base = resolve(dir);
+  const full = resolve(base, relPath);
+  const rel = relative(base, full);
+  if (rel === '' || rel.startsWith('..') || isAbsolute(rel)) return null;
+  return full;
+}
+
+const LOOPBACK_HOSTS = new Set(['127.0.0.1', '::1', '[::1]', 'localhost']);
+
+/** A Host/Origin header value without its port, lowercased. */
+function hostOnly(value: string): string {
+  if (value.startsWith('[')) return value.slice(0, value.indexOf(']') + 1).toLowerCase();
+  return (value.split(':')[0] ?? '').toLowerCase();
+}
+
+/**
+ * Refuses a request that did not come from a local page of this server.
+ *
+ * The API has no authentication, so anything a browser can be made to send to `127.0.0.1:7331` is
+ * reachable by a page the user merely visits: a `text/plain` POST needs no preflight, and a
+ * `Host` header the attacker controls enables DNS rebinding to the same server. When the server is
+ * bound to loopback — the only mode this CLI offers — the Host must be loopback, an Origin (when
+ * present) must be loopback, and a POST must be JSON, which browsers only send after a preflight
+ * that a foreign origin cannot pass.
+ */
+export function guardLocalRequest(
+  req: { method?: string; headers: Record<string, string | string[] | undefined> },
+  boundHost: string
+): { ok: true } | { ok: false; reason: string } {
+  const local = LOOPBACK_HOSTS.has(hostOnly(boundHost));
+  if (local) {
+    const host = hostOnly(String(req.headers.host ?? ''));
+    if (host && !LOOPBACK_HOSTS.has(host)) return { ok: false, reason: 'host' };
+    const origin = req.headers.origin;
+    if (typeof origin === 'string' && origin !== 'null') {
+      try {
+        if (!LOOPBACK_HOSTS.has(hostOnly(new URL(origin).host))) return { ok: false, reason: 'origin' };
+      } catch {
+        return { ok: false, reason: 'origin' };
+      }
+    }
+  }
+  if (req.method === 'POST') {
+    const type = String(req.headers['content-type'] ?? '');
+    if (!type.startsWith('application/json')) return { ok: false, reason: 'content-type' };
+  }
+  return { ok: true };
+}
 
 const MIME: Record<string, string> = {
   '.html': 'text/html',
@@ -79,9 +138,9 @@ function sendJson(res: ServerResponse, status: number, body: unknown): void {
 
 function serveStatic(res: ServerResponse, dashboardDir: string, urlPath: string): void {
   // Resolve within dashboardDir only (no path traversal).
-  let rel = urlPath === '/' ? 'index.html' : urlPath.replace(/^\/+/, '');
-  const filePath = resolve(dashboardDir, rel);
-  if (!filePath.startsWith(resolve(dashboardDir))) {
+  const rel = urlPath === '/' ? 'index.html' : urlPath.replace(/^\/+/, '');
+  const filePath = resolveWithin(dashboardDir, rel);
+  if (!filePath) {
     sendJson(res, 403, { error: 'forbidden' });
     return;
   }
@@ -114,7 +173,7 @@ export function serve(opts: ServeOptions = {}): Promise<ServeHandle> {
     const port = opts.port ?? DEFAULT_PORT;
     const host = opts.host ?? DEFAULT_HOST;
     const dbPath = opts.dbPath ?? DEFAULT_DB;
-    const dashboardDir = opts.dashboardDir ?? DEFAULT_DASHBOARD;
+    const dashboardDir = resolveDashboardDir(opts.dashboardDir);
     const registryPath = opts.registryPath ?? defaultRegistryPath();
     // One connection per db file, reused across requests. initDb re-executes
     // the full schema DDL + WAL pragmas on every call, so opening a fresh
@@ -125,6 +184,12 @@ export function serve(opts: ServeOptions = {}): Promise<ServeHandle> {
 
     const server = createServer(async (req, res) => {
       const url = req.url ?? '/';
+
+      const guard = guardLocalRequest(req, host);
+      if (!guard.ok) {
+        sendJson(res, 403, { error: 'forbidden', reason: guard.reason });
+        return;
+      }
 
       // Dashboard read-only API.
       if (req.method === 'GET' && url.startsWith('/api/')) {

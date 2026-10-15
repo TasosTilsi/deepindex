@@ -1,4 +1,4 @@
-// Phase 6: MCP stdio server (D-07). 6 read-only tools over the merged store.
+// Phase 6: MCP stdio server (D-07). 1 read-only tools over the merged store.
 // stderr-only logging — never write to stdout (corrupts MCP protocol).
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -26,7 +26,7 @@ export interface McpServeOptions {
 
 const DEFAULT_DB = '.deepindex.db';
 
-/** Create the MCP server with 6 read-only tools registered. */
+/** Create the MCP server with 1 read-only tools registered. */
 export function createMcpServer(db: Database.Database): McpServer {
   const server = new McpServer(
     // N-01: serverInfo must report the real package version (was a stale

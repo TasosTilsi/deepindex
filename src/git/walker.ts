@@ -22,7 +22,9 @@ export interface CommitRecord {
 /** Run a git command against repoRoot, returning trimmed stdout or '' on error. */
 function git(repoRoot: string, args: string[]): string {
   try {
-    return execFileSync('git', args, {
+    // `-c core.quotePath=false`: without it git returns non-ASCII paths C-quoted
+    // ("caf\303\251.ts"), which match no row in `files`, so those commits lost their file links.
+    return execFileSync('git', ['-c', 'core.quotePath=false', ...args], {
       cwd: repoRoot,
       encoding: 'utf8',
       maxBuffer: 64 * 1024 * 1024,
