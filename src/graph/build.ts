@@ -7,6 +7,7 @@ import { isExternalSpecifier, resolveImport } from './resolve.js';
 import { ignoredDirs } from './ignore.js';
 import { buildJavaClassIndex, javaFqnFor, javaMissesInTree } from './java-resolve.js';
 import { rustMissesInCrate } from './rust-resolve.js';
+import { goImportIsInModule, goModulePath } from './go-resolve.js';
 import { REPARSE_REQUIRED_KEY } from './db.js';
 import { extractSql } from '../parser/sql-extractor.js';
 import { EXT_TO_LANG, langForExt } from '../parser/languages.js';
@@ -139,6 +140,9 @@ export async function buildGraph(
   // sort the duplicate-FQN rule would depend on the filesystem.
   javaEntries.sort((a, b) => (a.relPath < b.relPath ? -1 : a.relPath > b.relPath ? 1 : 0));
   const javaIndex = buildJavaClassIndex(javaEntries);
+  // Read once: a Go import that names a package inside this module and leads nowhere is a dangling
+  // reference, not a dependency, and the module path is what tells the two apart.
+  const goModule = goModulePath(absRoot);
 
   // Second pass: parse + extract symbols/imports. All file rows exist now.
   for (const { relPath, fileId, content, absPath, ext } of needsParse) {
@@ -200,7 +204,8 @@ export async function buildGraph(
           (javaIndex && language === 'java' && javaMissesInTree(javaIndex, imp.source)) ||
           // A Rust path from `crate::`, `self::` or `super::` is in-crate by construction, so a
           // miss is a dangling reference — the same verdict Java gets above.
-          (language === 'rust' && rustMissesInCrate(imp.source))
+          (language === 'rust' && rustMissesInCrate(imp.source)) ||
+          (language === 'go' && goModule !== null && goImportIsInModule(goModule, imp.source))
         ) {
           insertImport.run(fileId, imp.source, null, 0, 0);
           brokenImportCount++;

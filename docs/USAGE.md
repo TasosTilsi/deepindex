@@ -348,6 +348,10 @@ Two guarantees worth knowing:
 | Java | `import a.b.C;`, `import static a.b.C.m;`, `import a.b.*;`, and default-package (`import C;`) |
 | Python | `import pkg.mod`, `import a.b as m`, `from .pkg import x` (dots climb packages from the module's own package). Roots: the repository root and `src/` |
 | Ruby | `require_relative 'helper'` resolved against the file; `require 'json'` is external |
+| Go | `import "example.com/mod/pkg/sub"` mapped through `go.mod`'s module path to the package directory, linked to its first file in path order. A miss inside the module is broken; `fmt` and other modules are external |
+| Lua | `require('mod.sub')` → `mod/sub.lua`, then next to the requiring file, then `mod/sub/init.lua`; an unknown module stays external |
+| Bash | `source ./x.sh` and `. ./x.sh`, relative to the working directory then to the script; a missing one is broken |
+| Dart | `import 'src/x.dart'` relative to the file; `package:` URIs are not extracted |
 | C / C++ / Objective-C | `#include "local.h"` next to the file, at the repository root, or under `include/`. Angle-bracket includes are system headers and produce no row; an unresolved quoted include stays external, since `-I` may point at it |
 | Rust | `use crate::a::b::Item` (the file is the longest module prefix), `use self::x`, `use super::y`, `mod sibling`, and `::other_crate` stays external. The crate root is `src/` |
 

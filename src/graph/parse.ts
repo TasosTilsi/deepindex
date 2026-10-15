@@ -228,7 +228,11 @@ function calculateComplexity(node: SyntaxNode): number {
  * which needs an exported symbol on both sides — skipped every one of its files. A
  * Java member is importable unless it is private.
  */
-function isExportedByDefault(node: SyntaxNode, config: LanguageConfig): boolean {
+function isExportedByDefault(node: SyntaxNode, config: LanguageConfig, name: string): boolean {
+  // Two languages decide visibility by the NAME rather than by a modifier: Go exports what is
+  // capitalised, Dart hides what starts with an underscore.
+  if (config.exportedByCapitalisation) return /^[A-Z]/.test(name);
+  if (config.hiddenByPrefix) return !name.startsWith(config.hiddenByPrefix);
   // Rust is the inverse case: `pub` marks what is importable, so no modifier means private.
   // Reading it with the Java rule would have exported every private item in the crate.
   if (config.exportedByVisibility) {
@@ -296,7 +300,7 @@ function nodeToSymbol(
     kind: config.nodeMap[node.type] || 'unknown',
     startLine: node.startPosition.row,
     endLine: node.endPosition.row,
-    exported: isExportedByDefault(node, config),
+    exported: isExportedByDefault(node, config, name),
     complexity: calculateComplexity(node),
     docstring: extractDocstring(docNode),
   };
@@ -309,6 +313,53 @@ function collectImports(node: SyntaxNode, out: ParsedImport[], langKey: string):
   // its other `dotted_name` children are the imported NAMES, so the field is the only safe reading.
   // Shapes measured against the grammar; before this branch Python produced no import rows at all,
   // which is why setting its export flag alone would have changed nothing.
+  // Issue #20, Go. `import_spec` carries the quoted package path in its `path` field; a
+  // single-import declaration (`import "fmt"`) has the literal directly.
+  // Gated on the node types on purpose: this function recurses at its END, so an ungated `return`
+  // for a language swallows the whole walk — which is how the first version of this branch produced
+  // no Go imports at all.
+  if (langKey === 'go' && (node.type === 'import_spec' || node.type === 'import_declaration')) {
+    if (node.type === 'import_spec') {
+      const literal = node.childForFieldName('path');
+      if (literal) out.push({ source: literal.text.replace(/^"|"$/g, '') });
+    } else if (!node.namedChildren.some((child) => child.type === 'import_spec_list')) {
+      // `import "fmt"` — the only form whose literal is a DIRECT child of the declaration.
+      const literal = node.namedChildren.find((child) => child.type === 'interpreted_string_literal');
+      if (literal) out.push({ source: literal.text.replace(/^"|"$/g, '') });
+    }
+    // Deliberately no early return: this function descends at its END, and an `import_declaration`
+    // CONTAINS the `import_spec` nodes. Returning here visited neither of them.
+  }
+
+  // Issue #20, Lua and Bash. Both are calls: `require('mod.sub')` is a `function_call` named
+  // `require`, and `source ./x.sh` a `command` named `source` (or `.`) with the path as its
+  // argument.
+  if (langKey === 'lua' && node.type === 'function_call') {
+    const name = node.childForFieldName('name');
+    const args = node.childForFieldName('arguments');
+    if (name?.text !== 'require' || !args) return;
+    const literal = args.namedChildren.find((child) => child.type === 'string');
+    if (literal) out.push({ source: literal.text.replace(/^['"]|['"]$/g, '') });
+    return;
+  }
+  if ((langKey === 'bash' || langKey === 'sh') && node.type === 'command') {
+    const name = node.childForFieldName('name');
+    if (name?.text !== 'source' && name?.text !== '.') return;
+    const argument = node.childForFieldName('argument');
+    if (argument) out.push({ source: argument.text });
+    return;
+  }
+
+  // Issue #20, Dart. The quoted URI sits under an `import_or_export`; `package:` URIs name a
+  // dependency and are left to the external verdict.
+  if (langKey === 'dart' && node.type === 'import_or_export') {
+    const literal = node.descendantsOfType?.('string_literal')?.[0];
+    if (!literal) return;
+    const uri = literal.text.replace(/^['"]|['"]$/g, '');
+    if (!uri.startsWith('package:')) out.push({ source: uri });
+    return;
+  }
+
   // Issue #20, the C family. `#include "x.h"` is a `preproc_include` whose `path` field is a
   // string_literal; `<x.h>` is a system_lib_string and names no file in this repository, so it
   // produces no row at all.

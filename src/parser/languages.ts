@@ -17,6 +17,10 @@ export interface LanguageConfig {
    * private.
    */
   exportedByVisibility?: string;
+  /** Languages where a capitalised name is the exported one (Go). */
+  exportedByCapitalisation?: boolean;
+  /** Languages where a name prefix hides a symbol (Dart's `_` is library-private). */
+  hiddenByPrefix?: string;
 }
 
 export const LANGUAGE_CONFIGS: Record<string, LanguageConfig> = {
@@ -82,6 +86,8 @@ export const LANGUAGE_CONFIGS: Record<string, LanguageConfig> = {
     nameFields: ['declarator', 'name'],
   },
   go: {
+    // A Go export is a capitalised name.
+    exportedByCapitalisation: true,
     wasmFile: 'tree-sitter-go.wasm',
     extensions: ['.go'],
     nodeMap: {
@@ -182,6 +188,8 @@ export const LANGUAGE_CONFIGS: Record<string, LanguageConfig> = {
     nameFields: ['name'],
   },
   bash: {
+    // Sourcing a script defines its functions in the caller's shell.
+    exportedByDefault: true,
     wasmFile: 'tree-sitter-bash.wasm',
     extensions: ['.sh', '.bash'],
     nodeMap: {
@@ -190,6 +198,8 @@ export const LANGUAGE_CONFIGS: Record<string, LanguageConfig> = {
     nameFields: ['name'],
   },
   dart: {
+    // Dart hides a symbol with a leading underscore.
+    hiddenByPrefix: '_',
     wasmFile: 'tree-sitter-dart.wasm',
     extensions: ['.dart'],
     nodeMap: {
@@ -200,6 +210,8 @@ export const LANGUAGE_CONFIGS: Record<string, LanguageConfig> = {
     nameFields: ['name'],
   },
   lua: {
+    // Everything a Lua module defines lands in a table anyone can reach.
+    exportedByDefault: true,
     wasmFile: 'tree-sitter-lua.wasm',
     extensions: ['.lua'],
     nodeMap: {

@@ -7,6 +7,8 @@ import { pythonResolve } from './python-resolve.js';
 import { rustResolve } from './rust-resolve.js';
 import { rubyResolve } from './ruby-resolve.js';
 import { cResolve } from './c-resolve.js';
+import { goResolve } from './go-resolve.js';
+import { bashResolve, dartResolve, luaResolve } from './relative-resolve.js';
 
 const EXT_TRY = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs'];
 
@@ -70,6 +72,11 @@ export function resolveImport(
   if (langForExt(extname(fromFile)) === 'ruby') {
     return rubyResolve(repoRoot, fromFile, importSource);
   }
+  // `source ./x.sh` is a plain path, never a module specifier spelled from a root.
+  const earlyLanguage = langForExt(extname(fromFile));
+  if (earlyLanguage === 'bash' || earlyLanguage === 'sh') {
+    return bashResolve(repoRoot, fromFile, importSource);
+  }
 
   // External / bare module — not resolvable in our graph (see isExternalSpecifier),
   // with one exception: for a Java source a non-relative specifier may be an in-tree
@@ -91,6 +98,9 @@ export function resolveImport(
     if (language === 'c' || language === 'cpp' || language === 'objc') {
       return cResolve(repoRoot, fromFile, importSource);
     }
+    if (language === 'go') return goResolve(repoRoot, importSource);
+    if (language === 'lua') return luaResolve(repoRoot, fromFile, importSource);
+    if (language === 'dart') return dartResolve(repoRoot, fromFile, importSource);
     return null;
   }
 

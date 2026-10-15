@@ -110,6 +110,15 @@ Version bumped, not yet tagged or published. Closes the fifteen issues opened af
 
 ### Added
 
+- **Go, Lua, Bash and Dart are extracted and resolved.** A Go import names a *package directory*, so
+  the module path is read from `go.mod` and the package links to its first file in path order — a
+  deliberate directory-level approximation, since the graph is file-to-file and a package is several
+  files. A miss inside the module is broken; the standard library and other modules stay external.
+  Lua's `require('mod.sub')` maps onto `mod/sub.lua`, Bash's `source ./x.sh` resolves relative to the
+  working directory then to the script (a miss is broken — the path is explicit), and Dart's
+  `import 'src/x.dart'` resolves relative to the file while `package:` URIs are not extracted. Go
+  exports what it capitalises and Dart hides what it prefixes with `_`, so visibility is now read
+  from the name where the language says so. (#20)
 - **Ruby and the C family are extracted and resolved.** `require_relative 'helper'` is relative to
   the file, so it resolves (normalised to `./helper`) and a miss is broken; a bare `require 'json'`
   stays an external row, like `import express` does. A quoted `#include "local.h"` is looked for
