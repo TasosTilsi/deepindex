@@ -294,7 +294,10 @@ function walk(
       continue;
     }
     for (const name of entries) {
-      if (ignore.has(name)) continue;
+      // Both forms work: a bare directory name ("vendor") and a repo-relative path
+      // ("src/vendor"). The second used to be accepted and then silently ignored, because only
+      // the basename was compared — the config said one thing and the walk did another.
+      if (ignore.has(name) || ignore.has(relative(root, join(dir, name)))) continue;
       const full = join(dir, name);
       let st;
       try {

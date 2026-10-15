@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { initDb } from '../src/graph/db.js';
 import { buildGraph } from '../src/graph/build.js';
 
@@ -59,5 +59,48 @@ describe('relative import resolution', () => {
   it('still reports a specifier that matches nothing', async () => {
     const rows = await buildFixture("import { nope } from './nope.js';\nexport const w = nope;\n");
     expect(rows).toEqual([{ source: './nope.js', resolved: 0 }]);
+  });
+});
+
+describe('which file a specifier lands on', () => {
+  async function buildWithFiles(
+    files: Record<string, string>
+  ): Promise<{ source: string; resolved: number; target: string | null }[]> {
+    const dir = mkdtempSync(join(tmpdir(), 'deepindex-resolve-target-'));
+    for (const [rel, content] of Object.entries(files)) {
+      mkdirSync(join(dir, dirname(rel)), { recursive: true });
+      writeFileSync(join(dir, rel), content);
+    }
+    const db = initDb(join(dir, 'test.db'));
+    await buildGraph(db, dir);
+    const rows = db
+      .prepare(
+        `SELECT i.source AS source, i.resolved AS resolved, t.path AS target
+         FROM imports i JOIN files f ON f.id = i.file_id
+         LEFT JOIN files t ON t.id = i.resolved_file_id
+         ORDER BY i.source`
+      )
+      .all() as { source: string; resolved: number; target: string | null }[];
+    db.close();
+    rmSync(dir, { recursive: true, force: true });
+    return rows;
+  }
+
+  it('prefers the literal file over the one the extension maps onto', async () => {
+    // Both exist on disk. The mapping is a fallback, so the file named in the specifier wins.
+    const rows = await buildWithFiles({
+      'src/main.ts': "import { a } from './both.js';\nexport const x = a;\n",
+      'src/both.js': 'export const a = 1;\n',
+      'src/both.ts': 'export const a = 2;\n',
+    });
+    expect(rows).toEqual([{ source: './both.js', resolved: 1, target: 'src/both.js' }]);
+  });
+
+  it('maps a .cjs specifier onto the .cts source on disk', async () => {
+    const rows = await buildWithFiles({
+      'src/main.ts': "import { helper } from './helper.cjs';\nexport const y = helper;\n",
+      'src/helper.cts': 'export const helper = 1;\n',
+    });
+    expect(rows).toEqual([{ source: './helper.cjs', resolved: 1, target: 'src/helper.cts' }]);
   });
 });

@@ -154,6 +154,14 @@ describe('model_path loading', () => {
     expect(a.embed).not.toBe(b.embed);
   });
 
+  it('treats a valid local export as available through the two-argument gate', async () => {
+    const exportDir = localExport(join(tmp, 'gate'));
+    const { embedder } = await mockTransformers(join(tmp, 'cache-gate'));
+    // hasCachedModel(model, modelPath) is what the embed/status/sessionStart gates call.
+    expect(embedder.hasCachedModel(MODEL, exportDir)).toBe(true);
+    expect(embedder.hasCachedModel(MODEL, join(tmp, 'absent-dir'))).toBe(false);
+  });
+
   it('reports the exact validation messages', async () => {
     const { embedder } = await mockTransformers(join(tmp, 'cache-e'));
 

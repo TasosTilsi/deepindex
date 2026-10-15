@@ -1,6 +1,6 @@
 import type Database from 'better-sqlite3';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
 import { ignoredDirs } from '../graph/ignore.js';
 
 // Knowledge-source corpus builders (D-25/D-27/D-27b/D-27c): pure functions of
@@ -159,7 +159,7 @@ function walkMarkdown(root: string, ignore: ReadonlySet<string>): string[] {
       continue;
     }
     for (const name of entries) {
-      if (ignore.has(name)) continue;
+      if (ignore.has(name) || ignore.has(relative(root, join(dir, name)))) continue;
       if (name.startsWith('.')) continue;
       const full = join(dir, name);
       let st;

@@ -75,6 +75,20 @@ describe('index ignore set', () => {
     }
   });
 
+  it('accepts a repo-relative path, not only a bare directory name', async () => {
+    // `ignore = ["custom/vendor"]` used to be accepted and then silently ignored: only the
+    // basename was compared, so the config said one thing and the walk did another.
+    const dir = makeRepo();
+    try {
+      seed(dir, 'custom/vendor');
+      const paths = await indexedPaths(dir, '[index]\nignore = ["custom/vendor"]\n');
+      expect(paths).toContain('src/keep.ts');
+      expect(paths.some((p) => p.startsWith('custom/vendor/'))).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it('ignores a malformed ignore value instead of failing the run', async () => {
     const dir = makeRepo();
     try {

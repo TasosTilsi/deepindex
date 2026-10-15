@@ -134,6 +134,26 @@ describe('health report honesty', () => {
       expect(report.issuesTruncated).toBe(report.issuesTotal - 1);
     });
 
+    it('pages with --issues-offset, and clamps past the end', async () => {
+      const first = JSON.parse(
+        (await runCli(['health', repoPath, '--db', dbPath, '--issues-limit', '2'])).stdout
+      );
+      const next = JSON.parse(
+        (await runCli(['health', repoPath, '--db', dbPath, '--issues-limit', '2', '--issues-offset', '2']))
+          .stdout
+      );
+      expect(next.issuesTotal).toBe(first.issuesTotal);
+      expect(next.issues[0]).not.toEqual(first.issues[0]);
+
+      // Past the end: an empty page, nothing claimed as truncated, the total still true.
+      const beyond = JSON.parse(
+        (await runCli(['health', repoPath, '--db', dbPath, '--issues-offset', '999'])).stdout
+      );
+      expect(beyond.issues).toEqual([]);
+      expect(beyond.issuesTruncated).toBe(0);
+      expect(beyond.issuesTotal).toBe(first.issuesTotal);
+    });
+
     it('rejects a negative limit with exit 2', async () => {
       const r = await runCli(['health', repoPath, '--db', dbPath, '--issues-limit', '-1']);
       expect(r.code).toBe(2);

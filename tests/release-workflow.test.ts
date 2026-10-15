@@ -69,6 +69,23 @@ describe('release workflow', () => {
     expect(gate!.run).not.toMatch(/grep -q '"?\d+\.\d+\.\d+/);
   });
 
+  it('runs on tags and lets no step swallow a failure', () => {
+    const workflow = loadWorkflow() as Workflow & {
+      on?: { push?: { tags?: string[] } };
+    };
+    expect(workflow.on?.push?.tags).toContain('v*');
+
+    // The earlier scaffolding failed open: `|| :`, a `set +e`, a trailing `true`, or
+    // continue-on-error would each let a failed publish leave a green run behind.
+    for (const step of publishSteps()) {
+      if (typeof step.run !== 'string') continue;
+      expect(step.run).not.toMatch(/\|\|\s*:/);
+      expect(step.run).not.toMatch(/^\s*set \+e/m);
+      expect(step.run).not.toMatch(/(^|\n)\s*true\s*$/);
+      expect((step as { 'continue-on-error'?: boolean })['continue-on-error']).toBeUndefined();
+    }
+  });
+
   it('grants contents: write so gh release create is not rejected', () => {
     expect(loadWorkflow().jobs?.publish?.permissions?.contents).toBe('write');
   });
