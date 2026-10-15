@@ -156,7 +156,10 @@ describe('pinned npx install commands (DI-05)', () => {
     expect(oc.mcp.deepindex.type).toBe('local');
     expect(oc.mcp.deepindex.command).toEqual(['npx', '-y', PIN, 'mcp', 'serve']);
     const plugin = readFileSync(join(d, '.opencode', 'plugins', 'deepindex', 'index.ts'), 'utf8');
-    expect(plugin).toContain(`npx -y ${PIN}`);
+    // The property, not the expression it used to be written with: the plugin now runs the CLI
+      // through argv (`execFileSync("npx", ["-y", `deepindex@<ver>`, ...args])`) so that a harness
+      // session id cannot inject shell metacharacters. The pin is what must hold.
+      expect(plugin).toContain(`deepindex@${PIN}`);
     rmSync(d, { recursive: true, force: true });
   });
 

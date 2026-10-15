@@ -14,7 +14,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "deepindex": "tsx src/cli.ts",
-    "prepack": "pnpm --config.verify-deps-before-run=false build && pnpm --config.verify-deps-before-run=false --dir dashboard build"
+    "prepack": "pnpm build && pnpm --dir dashboard build"
   },
   "engines": {
     "node": ">=20"
@@ -70,5 +70,6 @@
     "CHANGELOG.md",
     "README.md",
     "LICENSE"
-  ]
+  ],
+  "types": "dist/index.d.ts"
 }
