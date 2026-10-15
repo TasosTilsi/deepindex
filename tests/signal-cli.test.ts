@@ -171,27 +171,33 @@ describe('signal verb', () => {
     }
   });
 
-  it('rejects malformed input with exit 2', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'deepindex-signal-'));
-    try {
-      const dbPath = freshDb(dir);
-      const cases: Array<[string[], RegExp]> = [
-        [['signal', 'tests_pass=abc', '--db', dbPath], /invalid signal pair/],
-        [['signal', 'tests_pass', '--db', dbPath], /invalid signal pair/],
-        [['signal', 'tests_total=150', '--db', dbPath], /without tests_pass/],
-        [['signal', 'tests_pass=0', 'tests_total=0', '--db', dbPath], /greater than 0/],
-        [['signal', '--reset', 'tests_pass=1', '--db', dbPath], /--reset cannot be combined/],
-        [['signal', '--from-junit', join(dir, 'nope.xml'), '--db', dbPath], /report not found/],
-      ];
-      for (const [args, pattern] of cases) {
+  // One case per test, each with an explicit budget. This used to be six spawns inside a single
+  // it(): 4.1s measured against vitest's 5000ms default, which CI=1's v8 coverage pushed over the
+  // line, so the branch failed its own CI intermittently. A spawn costs ~0.4s here, so the
+  // budget is generous on purpose — and a failure now names the input that broke, not the group.
+  const rejectionCases: Array<[string, (dir: string) => string[], RegExp]> = [
+    ['a non-numeric pair', () => ['tests_pass=abc'], /invalid signal pair/],
+    ['a pair with no value', () => ['tests_pass'], /invalid signal pair/],
+    ['a denominator without its numerator', () => ['tests_total=150'], /without tests_pass/],
+    ['a zero denominator', () => ['tests_pass=0', 'tests_total=0'], /greater than 0/],
+    ['--reset combined with a signal', () => ['--reset', 'tests_pass=1'], /--reset cannot be combined/],
+    ['a missing JUnit report', (dir) => ['--from-junit', join(dir, 'nope.xml')], /report not found/],
+  ];
+
+  for (const [label, argsFor, pattern] of rejectionCases) {
+    it(`rejects ${label} with exit 2`, { timeout: 20_000 }, async () => {
+      const dir = mkdtempSync(join(tmpdir(), 'deepindex-signal-'));
+      try {
+        const dbPath = freshDb(dir);
+        const args = ['signal', ...argsFor(dir).flatMap((a) => [a]), '--db', dbPath];
         const r = await run(args);
         expect(r.code, `expected exit 2 for: ${args.join(' ')}`).toBe(2);
         expect(r.stderr).toMatch(pattern);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
       }
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
+    });
+  }
 
   it('rejects a report that contains no tests', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'deepindex-signal-'));
