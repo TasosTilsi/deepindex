@@ -20,6 +20,7 @@ import { getImpact, findParallelStorage } from './graph/sql-impact.js';
 import { syncRequirements, upsertRequirements } from './requirements/sync.js';
 import {
   appendGuidance,
+  askGuidance,
   backupFiles,
   existingTargets,
   guardClaudeSettings,
@@ -1069,18 +1070,9 @@ program
         let wantsGuidance = false;
         if (opts.guidance) wantsGuidance = true;
         else if (!opts.skipGuidance) {
-          if (process.stdin.isTTY && process.stdout.isTTY) {
-            const { createInterface } = await import('node:readline/promises');
-            const rl = createInterface({ input: process.stdin, output: process.stdout });
-            try {
-              const answer = await rl.question(
-                `Document how to use deepindex in ${target}? [y/N] `
-              );
-              wantsGuidance = /^y(es)?$/i.test(answer.trim());
-            } finally {
-              rl.close();
-            }
-          } else {
+          const asked = await askGuidance(target);
+          wantsGuidance = asked === true;
+          if (asked === null) {
             console.log(
               `deepindex install: not documenting deepindex in ${target} (no terminal to ask) — re-run with --guidance to add it`
             );

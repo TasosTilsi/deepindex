@@ -71,7 +71,11 @@ describe('health report honesty', () => {
       const nextPage = getHealth(db, { issueLimit: 2, issueOffset: 2 });
       expect(nextPage.issuesTotal).toBe(page.issuesTotal);
       expect(nextPage.issuesTruncated).toBe(page.issuesTotal - 4);
-      expect(nextPage.issues[0]).not.toEqual(page.issues[0]);
+      // Compare the pages, not one element: with five identical broken imports the first issue of
+      // each page differs only in `location`, so `issues[0]` was never a real difference.
+      const locations = (report: { issues: { location?: string }[] }) =>
+        report.issues.map((issue) => issue.location);
+      expect(locations(nextPage)).not.toEqual(locations(page));
     } finally {
       db.close();
       rmSync(dir, { recursive: true, force: true });

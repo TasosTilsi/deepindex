@@ -196,6 +196,44 @@ export function ensurePackageScripts(repoRoot: string, dryRun: boolean): string[
   return added;
 }
 
+/** How the guidance prompt talks to the world; injectable so the prompt itself is testable. */
+export interface GuidancePrompt {
+  /** Whether a terminal is attached at all. */
+  isTTY: boolean;
+  /** Ask the question and return the raw answer. */
+  question: (prompt: string) => Promise<string>;
+}
+
+async function defaultQuestion(prompt: string): Promise<string> {
+  const { createInterface } = await import('node:readline/promises');
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    return await rl.question(prompt);
+  } finally {
+    rl.close();
+  }
+}
+
+/**
+ * Asks whether to document deepindex. Returns true (yes), false (no), or null when there was no
+ * terminal to ask — a non-interactive run must never block, and must never write without
+ * permission either.
+ *
+ * The seam exists because the first version built readline inline inside the CLI action, which no
+ * test could reach: reverting the prompt to "never ask" kept the suite green.
+ */
+export async function askGuidance(
+  target: string,
+  io: GuidancePrompt = {
+    isTTY: Boolean(process.stdin.isTTY && process.stdout.isTTY),
+    question: defaultQuestion,
+  }
+): Promise<boolean | null> {
+  if (!io.isTTY) return null;
+  const answer = await io.question(`Document how to use deepindex in ${target}? [y/N] `);
+  return /^y(es)?$/i.test(answer.trim());
+}
+
 /**
  * Which instructions file to document deepindex in.
  *
