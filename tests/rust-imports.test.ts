@@ -117,3 +117,62 @@ describe('rust imports', () => {
     }
   });
 });
+
+describe('rust module bases that the first version got wrong', () => {
+  it('resolves `self::` from a plain module file, whose children live in <name>/', async () => {
+    // Rust 2018: `src/a.rs` owns `src/a/`. Using the file's own directory put `self::b` in `src/`,
+    // so this resolved to nothing (and was then locked as broken) although src/a/b.rs existed.
+    const { db, dir } = await buildRustRepo({
+      'src/main.rs': 'mod a;\n',
+      'src/a.rs': 'use self::b::Thing;\n',
+      'src/a/b.rs': 'pub struct Thing;\n',
+    });
+    try {
+      expect(rows(db, 'src/a.rs')).toEqual([
+        { source: 'self::b::Thing', resolved: 1, external: 0, target: 'src/a/b.rs' },
+      ]);
+    } finally {
+      db.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('resolves `crate::` from the root beside Cargo.toml, not a hardcoded src/', async () => {
+    // A Cargo workspace keeps members under `crates/<name>/src`, and `crate::` there means that
+    // member's root. The first version hardcoded `src` and resolved nothing.
+    const { db, dir } = await buildRustRepo({
+      'crates/foo/Cargo.toml': '[package]\nname = "foo"\n',
+      'crates/foo/src/main.rs': 'use crate::util::Thing;\n',
+      'crates/foo/src/util.rs': 'pub struct Thing;\n',
+    });
+    try {
+      expect(rows(db, 'crates/foo/src/main.rs')).toEqual([
+        { source: 'crate::util::Thing', resolved: 1, external: 0, target: 'crates/foo/src/util.rs' },
+      ]);
+    } finally {
+      db.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('reads the imports inside an inline `mod tests { … }`', async () => {
+    // The canonical Rust test module. An early `return` on the inline case meant it produced no
+    // rows at all — the descent happens at the end of collectImports, so returning there swallowed
+    // everything inside the block.
+    const { db, dir } = await buildRustRepo({
+      'src/lib.rs': 'pub mod x;\n\n#[cfg(test)]\nmod tests {\n    use crate::x::Thing;\n}\n',
+      'src/x.rs': 'pub struct Thing;\n',
+    });
+    try {
+      expect(rows(db, 'src/lib.rs')).toContainEqual({
+        source: 'crate::x::Thing',
+        resolved: 1,
+        external: 0,
+        target: 'src/x.rs',
+      });
+    } finally {
+      db.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});

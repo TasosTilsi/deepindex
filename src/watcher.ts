@@ -5,7 +5,7 @@
 import chokidar from 'chokidar';
 import Database from 'better-sqlite3';
 import { existsSync, mkdirSync } from 'node:fs';
-import { resolve, relative, dirname } from 'node:path';
+import { resolve, relative, dirname, basename } from 'node:path';
 import { cacheDelete } from './cache.js';
 import { sha256 } from './fingerprint.js';
 
@@ -48,11 +48,17 @@ export function createWatcher(opts: WatcherOptions): WatcherHandle {
     opts.ignored === null
       ? ['**/.deepindex/**', '**/node_modules/**', '**/.git/**']
       : [...(opts.ignored ?? []), '**/.deepindex/**', '**/node_modules/**', '**/.git/**'];
+  // The store writes a WAL and a SHM beside itself on every change, so watching them makes the
+  // watcher invalidate its own cache for ever: measured live, `.deepindex.db-wal` and `-shm`
+  // emitted `invalidated:` events. The database is never a source file.
+  const dbBase = basename(opts.dbPath);
+  const dbIgnores = [`**/${dbBase}`, `**/${dbBase}-wal`, `**/${dbBase}-shm`, `**/${dbBase}-journal`];
+  const ignoredWithDb = Array.isArray(ignored) ? [...ignored, ...dbIgnores] : ignored;
 
   const timers = new Map<string, NodeJS.Timeout>();
 
   const watcher = chokidar.watch(roots, {
-    ignored,
+    ignored: ignoredWithDb,
     persistent: true,
     ignoreInitial: true,
     awaitWriteFinish: { stabilityThreshold: 100, pollInterval: 50 },

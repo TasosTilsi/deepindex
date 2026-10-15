@@ -281,6 +281,40 @@ describe('a Java import whose package is here but whose class is not', () => {
   });
 });
 
+describe('third-party imports in a repository that has any package at all', () => {
+  it('stays external, whatever its first segment looks like', async () => {
+    // The regression this pins: one in-tree package named `com.example.app` made every
+    // `com.<anything>` import look like a miss inside the tree, so a JVM repository's real
+    // dependencies counted as broken imports and consistency collapsed. Measured before the fix on
+    // this two-file fixture: consistency 0.333 instead of 1, with `com.google.common.base.
+    // Preconditions` and `com.squareup.moshi.Moshi` in the issue list.
+    const dir = mkdtempSync(join(tmpdir(), 'deepindex-java-third-party-'));
+    try {
+      writeJavaFiles(dir, {
+        'src/main/java/com/example/app/Helper.java': 'package com.example.app;\npublic class Helper {}\n',
+        'src/main/java/com/example/app/Main.java':
+          'package com.example.app;\nimport com.google.common.base.Preconditions;\nimport com.squareup.moshi.Moshi;\nimport com.example.app.Helper;\npublic class Main { Preconditions p; Moshi m; Helper h; }\n',
+      });
+      const db = initDb(join(dir, '.db'));
+      await buildGraph(db, dir);
+      const rows = db
+        .prepare('SELECT source, resolved, external FROM imports ORDER BY source')
+        .all() as { source: string; resolved: number; external: number }[];
+      expect(rows).toEqual([
+        { source: 'com.example.app.Helper', resolved: 1, external: 0 },
+        { source: 'com.google.common.base.Preconditions', resolved: 1, external: 1 },
+        { source: 'com.squareup.moshi.Moshi', resolved: 1, external: 1 },
+      ]);
+      const report = getHealth(db);
+      expect(report.issues.filter((i) => i.type === 'broken_import')).toHaveLength(0);
+      expect(report.dimensions.consistency).toBe(1);
+      db.close();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe('static wildcard resolution order', () => {
   it('resolves `import static com.a.Bar.*` to the type, not to the nested package', async () => {
     const { buildPackageIndex, resolvePackagePath } = await import('../src/graph/package-resolve.js');

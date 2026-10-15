@@ -275,6 +275,11 @@ export function initDb(dbPath: string): Database.Database {
   addColumnIfMissing(db, 'imports', 'external', 'external INTEGER NOT NULL DEFAULT 0');
   const v = db.pragma('user_version', { simple: true }) as number;
   if (v < SCHEMA_VERSION) {
+    // Order matters: the marker goes first. Bumping `user_version` and only then writing it meant
+    // an interruption — or the swallowed failure inside markStoreStale — left a store that claims
+    // to be current and is never re-parsed, so the upgrade path silently did nothing. Written this
+    // way, a failure leaves the version untouched and the migration simply runs again.
+    if (v > 0) markStoreStale(db);
     db.pragma(`user_version = ${SCHEMA_VERSION}`);
     // Issues #8/#16, and the upgrade path both release reviews flagged: a schema bump can change
     // what a STORED value means (imports.external, the resolved flags, a symbol's kind). The hash
@@ -283,7 +288,6 @@ export function initDb(dbPath: string): Database.Database {
     // here lets the next build re-parse once, whichever entry point runs it (the CLI, install, a
     // hook, the watcher, repair), instead of only when someone remembers `--rebuild`.
     // RULE: bump SCHEMA_VERSION whenever a stored classification changes meaning.
-    if (v > 0) markStoreStale(db);
   }
   _db = db;
   return db;

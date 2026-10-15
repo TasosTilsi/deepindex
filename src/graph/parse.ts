@@ -410,10 +410,12 @@ function collectImports(node: SyntaxNode, out: ParsedImport[], langKey: string):
   if (langKey === 'lua' && node.type === 'function_call') {
     const name = node.childForFieldName('name');
     const args = node.childForFieldName('arguments');
-    if (name?.text !== 'require' || !args) return;
-    const literal = args.namedChildren.find((child) => child.type === 'string');
-    if (literal) out.push({ source: literal.text.replace(/^['"]|['"]$/g, '') });
-    return;
+    if (name?.text === 'require' && args) {
+      const literal = args.namedChildren.find((child) => child.type === 'string');
+      if (literal) out.push({ source: literal.text.replace(/^['"]|['"]$/g, '') });
+    }
+    // No early return: `require('mod')` can itself be an argument of another call, and returning
+    // here skipped every import inside one. (Fourth instance of this trap.)
   }
   if ((langKey === 'bash' || langKey === 'sh') && node.type === 'command') {
     const name = node.childForFieldName('name');
@@ -452,6 +454,8 @@ function collectImports(node: SyntaxNode, out: ParsedImport[], langKey: string):
       node.childForFieldName('method') ?? node.namedChildren.find((child) => child.type === 'identifier');
     const args = node.childForFieldName('arguments');
     if (!method || !args) return;
+    // (A call with no method or arguments cannot be a require; the descent continues because a
+    // `call` can nest, so this returns only when there is nothing to read.)
     const literal = args.namedChildren.find((child) => child.type === 'string');
     if (!literal) return;
     const text = literal.text.replace(/^['"]|['"]$/g, '');
@@ -472,18 +476,25 @@ function collectImports(node: SyntaxNode, out: ParsedImport[], langKey: string):
     if (node.type === 'mod_item') {
       const name = node.childForFieldName('name');
       const inline = node.namedChildren.some((child) => child.type === 'declaration_list');
-      if (name && !inline) out.push({ source: `self::${name.text}` });
+      if (name && !inline) {
+        out.push({ source: `self::${name.text}` });
+        return;
+      }
+      // An INLINE `mod tests { use crate::x; }` declares no file, but it CONTAINS real imports.
+      // Returning here — which this did — meant the canonical Rust test module produced no rows at
+      // all. Fall through so the descent reaches them.
+    } else {
+      const argument = node.childForFieldName('argument');
+      if (argument) {
+        const source = argument.text
+          .replace(/\s*::\s*\{[\s\S]*$/, '') // use a::b::{C, D};
+          .replace(/\s*::\s*\*$/, '') // use a::b::*;
+          .replace(/\s+as\s+[\s\S]*$/, '') // use a::b as c;
+          .trim();
+        if (source) out.push({ source });
+      }
       return;
     }
-    const argument = node.childForFieldName('argument');
-    if (!argument) return;
-    const source = argument.text
-      .replace(/\s*::\s*\{[\s\S]*$/, '') // use a::b::{C, D};
-      .replace(/\s*::\s*\*$/, '') // use a::b::*;
-      .replace(/\s+as\s+[\s\S]*$/, '') // use a::b as c;
-      .trim();
-    if (source) out.push({ source });
-    return;
   }
 
   if (

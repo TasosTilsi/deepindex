@@ -98,6 +98,25 @@ describe('lua imports', () => {
   });
 });
 
+describe('lua imports nested in another call', () => {
+  it('reads a require that is an argument of something else', async () => {
+    // The branch returned for every `function_call` that was not a require, so a require nested in
+    // another call — `setup(require('mod.sub'))` — was never seen.
+    const { db, dir } = await build({
+      'mod/sub.lua': 'local M = {}\nreturn M\n',
+      'main.lua': "local s = setup(require('mod.sub'))\n",
+    });
+    try {
+      expect(rows(db, 'main.lua')).toEqual([
+        { source: 'mod.sub', resolved: 1, external: 0, target: 'mod/sub.lua' },
+      ]);
+    } finally {
+      db.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe('bash imports', () => {
   it('resolves `source ./x.sh` and calls a missing one broken', async () => {
     const { db, dir } = await build({

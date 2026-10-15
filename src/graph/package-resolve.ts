@@ -34,13 +34,6 @@ export function isPackageLanguage(language: string | undefined): boolean {
 export interface PackageIndex {
   readonly byFqn: ReadonlyMap<string, string>;
   readonly byPackage: ReadonlyMap<string, readonly string[]>;
-  /**
-   * Every namespace prefix the tree knows, so a miss can be judged in constant time. An import of
-   * `App.Gone` is inside the project when `App` is a prefix of something here — the leaf namespace
-   * alone is not enough, because a project need not declare its parent namespaces in a file of
-   * their own.
-   */
-  readonly prefixes: ReadonlySet<string>;
 }
 
 // Exactly one package declaration is legal in a Java source and it must be the first statement,
@@ -93,14 +86,7 @@ export function buildPackageIndex(
   // choice has to be stable.
   for (const bucket of byPackage.values()) bucket.sort();
 
-  const prefixes = new Set<string>();
-  for (const name of [...byFqn.keys(), ...byPackage.keys()]) {
-    const segments = name.split('.');
-    for (let cut = 1; cut < segments.length; cut += 1) {
-      prefixes.add(segments.slice(0, cut).join('.'));
-    }
-  }
-  return { byFqn, byPackage, prefixes };
+  return { byFqn, byPackage };
 }
 
 /**
@@ -119,9 +105,12 @@ export function missesInPackageTree(index: PackageIndex, source: string): boolea
   // name we failed to find belongs inside the repository.
   for (let cut = segments.length - 1; cut > 0; cut -= 1) {
     const prefix = segments.slice(0, cut).join('.');
-    if (index.byFqn.has(prefix) || index.byPackage.has(prefix) || index.prefixes.has(prefix)) {
-      return true;
-    }
+    // A KNOWN namespace or type, not merely a shared first segment. Matching any prefix turned
+    // every third-party import in a JVM repository into a broken one: one in-tree package named
+    // `com.example.app` made `com.google.common.base.Preconditions` resolve its `com` prefix and
+    // count as a dangling reference — the same deflated-consistency failure as issue #8, caused by
+    // this code. Measured on a two-file fixture: consistency 0.333 where it should be 1.0.
+    if (index.byFqn.has(prefix) || index.byPackage.has(prefix)) return true;
   }
   return false;
 }

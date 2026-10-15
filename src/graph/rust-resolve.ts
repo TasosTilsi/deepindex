@@ -15,10 +15,36 @@
  * A module lives at `<path>.rs` or `<path>/mod.rs`.
  */
 import { existsSync, statSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 
-/** Cargo's convention: the crate root is `src/`. */
-const CRATE_ROOT = 'src';
+/**
+ * Where a module's CHILDREN live. With Rust 2018 module paths, `src/a.rs` owns `src/a/`, so
+ * `self::b` in `src/a.rs` is `src/a/b.rs` — using the file's own directory (as this first did) put
+ * it in `src/` and produced either a bogus miss or a WRONG edge. The three files that own their
+ * directory are the crate roots and `mod.rs`.
+ */
+function moduleDir(fromFile: string): string {
+  const name = basename(fromFile);
+  const dir = dirname(fromFile);
+  if (name === 'mod.rs' || name === 'lib.rs' || name === 'main.rs') return dir;
+  return join(dir, name.replace(/\.rs$/, ''));
+}
+
+/**
+ * The crate root, for `crate::`. It is the `src/` beside the nearest `Cargo.toml`, not a hardcoded
+ * `src` — a Cargo workspace keeps its members under `crates/<name>/src`, and `crate::` there means
+ * that member's root.
+ */
+function crateRoot(repoRoot: string, fromFile: string): string {
+  let dir = dirname(fromFile);
+  for (;;) {
+    if (isFile(resolve(repoRoot, dir, 'Cargo.toml'))) return join(dir, 'src');
+    const parent = dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return 'src';
+}
 
 function isFile(path: string): boolean {
   try {
@@ -55,13 +81,13 @@ export function rustResolve(repoRoot: string, fromFile: string, source: string):
   let base: string;
   let rest: string[];
   if (segments[0] === 'crate') {
-    base = CRATE_ROOT;
+    base = crateRoot(repoRoot, fromFile);
     rest = segments.slice(1);
   } else if (segments[0] === 'self') {
-    base = dirname(fromFile);
+    base = moduleDir(fromFile);
     rest = segments.slice(1);
   } else if (segments[0] === 'super') {
-    let dir = dirname(fromFile);
+    let dir = moduleDir(fromFile);
     let index = 0;
     while (segments[index] === 'super') {
       dir = dirname(dir);
@@ -71,7 +97,7 @@ export function rustResolve(repoRoot: string, fromFile: string, source: string):
     rest = segments.slice(index);
   } else {
     // 2018 edition: a bare path may be an external crate; try it as a module first.
-    base = CRATE_ROOT;
+    base = crateRoot(repoRoot, fromFile);
     rest = segments;
   }
 
