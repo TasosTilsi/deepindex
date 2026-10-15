@@ -28,3 +28,11 @@ bench-tmp/
 !.github/
 !.github/**
 .npmrc
+
+# Agent/tool session state that lives beside the grammars. npm packs the working tree per
+# `package.json#files`, so a directory glob here ships untracked state — scope it to *.wasm
+# (see the packaging test) and keep these out of git too.
+.tree-sitter/.claude/
+.tree-sitter/.omc/
+doublecheck-report.md
+doublecheck-spec.md

@@ -1,7 +1,8 @@
 import type Database from 'better-sqlite3';
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { ignoredDirs } from '../graph/ignore.js';
+import { readDirSafe } from '../graph/walk.js';
 
 // Knowledge-source corpus builders (D-25/D-27/D-27b/D-27c): pure functions of
 // db rows (+ one fs read per markdown file). The embedded text for every doc
@@ -152,25 +153,14 @@ function walkMarkdown(root: string, ignore: ReadonlySet<string>): string[] {
   const stack: string[] = [root];
   while (stack.length) {
     const dir = stack.pop()!;
-    let entries: string[];
-    try {
-      entries = readdirSync(dir);
-    } catch {
-      continue;
-    }
-    for (const name of entries) {
+    for (const entry of readDirSafe(dir)) {
+      const name = entry.name;
       if (ignore.has(name) || ignore.has(relative(root, join(dir, name)))) continue;
       if (name.startsWith('.')) continue;
       const full = join(dir, name);
-      let st;
-      try {
-        st = statSync(full);
-      } catch {
-        continue;
-      }
-      if (st.isDirectory()) {
+      if (entry.isDirectory) {
         stack.push(full);
-      } else if (st.isFile() && name.toLowerCase().endsWith('.md')) {
+      } else if (entry.isFile && name.toLowerCase().endsWith('.md')) {
         out.push(full.slice(root.length + 1));
       }
     }

@@ -64,7 +64,7 @@
   ],
   "files": [
     "dist",
-    ".tree-sitter",
+    ".tree-sitter/*.wasm",
     "dashboard/dist",
     "docs",
     "CHANGELOG.md",
