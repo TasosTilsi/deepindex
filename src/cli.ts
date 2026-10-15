@@ -8,7 +8,6 @@ import {
   DEFAULT_ISSUE_LIMIT,
   getHealth,
   loadConfig,
-  recordSignal,
 } from './health.js';
 import { retrieve, DEFAULT_TOP_K } from './retrieve.js';
 import { repair } from './repair.js';
@@ -18,6 +17,12 @@ import { adaptClaudeCode } from './adapter-claude-code.js';
 import { projectFullGraph, validateProjection } from './graph/projection.js';
 import { getImpact, findParallelStorage } from './graph/sql-impact.js';
 import { syncRequirements, upsertRequirements } from './requirements/sync.js';
+import {
+  applySignals,
+  computeSignals,
+  SignalUsageError,
+  type SignalInput,
+} from './signal.js';
 import {
   appendGuidance,
   askGuidance,
@@ -33,8 +38,6 @@ import {
   type RequirementFormat,
 } from './requirements/sources.js';
 import { calculateReqCoverage } from './requirements/coverage.js';
-import { clearSignals, normaliseSignalPairs } from './health.js';
-import { parseEslintJson, parseJunitXml, parseVitestJson } from './reflect.js';
 import { gitIndex, gitSync, syncSafe, type IndexResult } from './git/indexer.js';
 import { searchEntities, type SearchHit } from './git/search.js';
 import { hybridSearch, type HybridHit } from './semantic/search-hybrid.js';
@@ -225,131 +228,24 @@ program
         reset: boolean;
       }
     ) => {
-      // Parse and validate BEFORE opening the database: a usage error must never touch the
-      // store, and the normalisation stays unit-testable (issue #4).
-      const pairs: Record<string, number> = {};
-      for (const raw of signalArgs) {
-        const eq = raw.indexOf('=');
-        const key = eq > 0 ? raw.slice(0, eq).trim() : '';
-        const rawValue = eq > 0 ? raw.slice(eq + 1).trim() : '';
-        const value = Number(rawValue);
-        if (!key || rawValue === '' || !Number.isFinite(value)) {
-          console.error(
-            `deepindex signal: invalid signal pair: ${raw} (expected key=value)`
-          );
-          process.exit(2);
-        }
-        pairs[key] = value;
-      }
-
-      const reportFlags = [opts.fromVitest, opts.fromEslint, opts.fromJunit].filter(Boolean);
-      if (reportFlags.length > 1) {
-        // Two flags would merge two reports into one reading and label the source with whichever
-        // happened to run last. Refuse instead of lying about where the numbers came from.
-        console.error(
-          'deepindex signal: pass at most one report flag (one report per run)'
-        );
-        process.exit(2);
-      }
-      if (opts.reset && (Object.keys(pairs).length > 0 || reportFlags.length > 0)) {
-        console.error(
-          'deepindex signal: --reset cannot be combined with signals or a report flag'
-        );
-        process.exit(2);
-      }
-
-      let source = 'cli';
-      const readReport = (path: string): string => {
-        if (!existsSync(path)) {
-          console.error(`deepindex signal: report not found: ${path}`);
-          process.exit(2);
-        }
-        return readFileSync(path, 'utf8');
-      };
-
+      // Issue #21: the work lives in src/signal.ts, which the tests can call in-process. The
+      // action keeps only the process plumbing — a usage error exits 2, anything else 1 — so the
+      // behaviour the spawn tests assert is unchanged.
+      let input: SignalInput;
       try {
-        if (opts.fromVitest) {
-          source = 'vitest';
-          const summary = parseVitestJson(JSON.parse(readReport(opts.fromVitest)));
-          if (summary.total === 0) {
-            // Same class as `tests_total=0` on the command line: the input cannot be
-            // used, which is a usage error (exit 2), not a runtime failure.
-            console.error('deepindex signal: ' + opts.fromVitest + ' contains no tests');
-            process.exit(2);
-          }
-          pairs.tests_pass = summary.pass;
-          pairs.tests_total = summary.total;
-        }
-        if (opts.fromEslint) {
-          source = 'eslint';
-          const summary = parseEslintJson(JSON.parse(readReport(opts.fromEslint)));
-          // The share of linted files that have an error, not errors / (errors + warnings).
-          // The latter made warnings improve the signal and saturated to 1.0 for any error-only
-          // report, which drove lint_factor - and with it coverage - to zero. (#4, found in the
-          // pre-release release review.)
-          pairs.lint_errors = summary.filesWithErrors;
-          // A clean run reports zero problems; the sentinel keeps the division safe.
-          pairs.lint_total = Math.max(1, summary.files);
-        }
-        if (opts.fromJunit) {
-          source = 'junit';
-          const path = opts.fromJunit;
-          if (!existsSync(path)) {
-            console.error('deepindex signal: report not found: ' + path);
-            process.exit(2);
-          }
-          const files = statSync(path).isDirectory()
-            ? readdirSync(path)
-                .filter((name) => name.endsWith('.xml'))
-                .map((name) => join(path, name))
-            : [path];
-          if (files.length === 0) {
-            // The same class as a missing path: there is nothing to read. USAGE says 2, and an
-            // empty Vitest report already exits 2.
-            console.error('deepindex signal: ' + path + ' contains no .xml reports');
-            process.exit(2);
-          }
-          let total = 0;
-          let pass = 0;
-          for (const file of files) {
-            const summary = parseJunitXml(readFileSync(file, 'utf8'));
-            total += summary.total;
-            pass += summary.pass;
-          }
-          if (total === 0) {
-            console.error('deepindex signal: ' + path + ' contains no tests');
-            process.exit(2);
-          }
-          pairs.tests_pass = pass;
-          pairs.tests_total = total;
-        }
+        input = computeSignals(signalArgs, opts, opts.reset);
       } catch (err) {
+        if (err instanceof SignalUsageError) {
+          console.error(`deepindex signal: ${err.message}`);
+          process.exit(2);
+        }
         const message = err instanceof Error ? err.message : String(err);
         console.error(`deepindex signal: ${message}`);
         process.exit(1);
       }
 
-      let normalised: Record<string, number>;
-      try {
-        normalised = normaliseSignalPairs(pairs);
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        console.error(`deepindex signal: ${message}`);
-        process.exit(2);
-      }
-
       withDb('signal', opts, (db) => {
-        if (opts.reset) {
-          const cleared = clearSignals(db);
-          console.log(`cleared ${cleared} signal${cleared === 1 ? '' : 's'}`);
-          return;
-        }
-        const entries = Object.entries(normalised);
-        for (const [key, value] of entries) recordSignal(db, key, value, source);
-        const rendered = entries.map(([key, value]) => `${key}=${value.toFixed(3)}`).join(', ');
-        console.log(
-          `recorded ${entries.length} signal${entries.length === 1 ? '' : 's'}: ${rendered}`
-        );
+        console.log(applySignals(db, { ...input, reset: opts.reset }));
       });
     }
   );
