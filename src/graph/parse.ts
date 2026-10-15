@@ -279,7 +279,9 @@ function nodeToSymbol(
   if (!name) {
     // Fallback: some grammars (kotlin, dart, etc.) name declarations via a
     // type_identifier/identifier child rather than a `name` field.
-    const id = node.namedChildren.find((c) => c.type === 'type_identifier' || c.type === 'identifier');
+    const id = node.namedChildren.find(
+      (c) => c.type === 'type_identifier' || c.type === 'identifier' || c.type === 'simple_identifier'
+    );
     if (id) name = id.text;
   }
 
@@ -313,6 +315,34 @@ function collectImports(node: SyntaxNode, out: ParsedImport[], langKey: string):
   // its other `dotted_name` children are the imported NAMES, so the field is the only safe reading.
   // Shapes measured against the grammar; before this branch Python produced no import rows at all,
   // which is why setting its export flag alone would have changed nothing.
+  // Issue #20, Kotlin and Scala: the package-plus-dotted-import shape Java has, under their own
+  // node names. Scala spells its wildcard `_`, rewritten to the `*` the shared resolver understands;
+  // `import a.b.{C, D}` is read down to its package, which is the module that exists on disk.
+  if (langKey === 'kotlin' && node.type === 'import_header') {
+    const dotted = node.namedChildren
+      .filter((child) => child.type === 'identifier')
+      .map((child) => child.text)
+      .join('.');
+    if (dotted) {
+      // `import a.b.*` carries the star as its own token, outside the identifier child.
+      out.push({ source: /\*$/.test(node.text.trim()) ? `${dotted}.*` : dotted });
+    }
+    return;
+  }
+  if (langKey === 'scala' && node.type === 'import_declaration') {
+    const path = node.childForFieldName('path');
+    const segments = [path, ...node.namedChildren.filter((child) => child.type === 'identifier')]
+      .filter((child) => child !== null && child !== undefined)
+      .map((child) => (child as { text: string }).text)
+      .filter((text, index, all) => all.indexOf(text) === index);
+    if (segments.length > 0) {
+      // `import a.b._` carries the underscore as its own token, outside the identifier children.
+      const wildcard = /(^|\.)_\s*$/.test(node.text.trim().replace(/[;\s]+$/, ''));
+      out.push({ source: wildcard ? `${segments.join('.')}.*` : segments.join('.') });
+    }
+    return;
+  }
+
   // Issue #20, Go. `import_spec` carries the quoted package path in its `path` field; a
   // single-import declaration (`import "fmt"`) has the literal directly.
   // Gated on the node types on purpose: this function recurses at its END, so an ungated `return`

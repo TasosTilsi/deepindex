@@ -1,8 +1,8 @@
 import { existsSync, statSync } from 'node:fs';
 import { dirname, extname, join, relative, resolve } from 'node:path';
 import { langForExt } from '../parser/languages.js';
-import type { JavaClassIndex } from './java-resolve.js';
-import { javaResolve } from './java-resolve.js';
+import type { PackageIndex } from './package-resolve.js';
+import { isPackageLanguage, resolvePackagePath } from './package-resolve.js';
 import { pythonResolve } from './python-resolve.js';
 import { rustResolve } from './rust-resolve.js';
 import { rubyResolve } from './ruby-resolve.js';
@@ -49,7 +49,7 @@ export function isExternalSpecifier(importSource: string): boolean {
  *  this signature again. */
 export interface ResolveContext {
   /** In-tree Java class map, built once per index run (issue #5). */
-  javaIndex?: JavaClassIndex;
+  packageIndex?: PackageIndex;
   /** The specifier came from an `import static …` declaration. */
   isStatic?: boolean;
 }
@@ -84,8 +84,8 @@ export function resolveImport(
   // repository an in-tree class and a declared artifact can share a prefix. A miss here
   // still returns null, and classifying it stays the caller's decision (issue #5).
   if (isExternalSpecifier(importSource)) {
-    if (ctx.javaIndex && langForExt(extname(fromFile)) === 'java') {
-      return javaResolve(ctx.javaIndex, importSource, ctx.isStatic === true);
+    if (ctx.packageIndex && isPackageLanguage(langForExt(extname(fromFile)))) {
+      return resolvePackagePath(ctx.packageIndex, importSource, ctx.isStatic === true);
     }
     // Issue #20: a Rust path is spelled from a root keyword (`crate::`, `self::`, `super::`) and
     // names an item inside a module; only those three roots can land inside the tree.

@@ -1,9 +1,10 @@
 import { basename } from 'node:path';
 
 /**
- * In-tree class map for Java (issue #5).
+ * In-tree class map for the package-based languages: Java (issue #5), and Kotlin and Scala
+ * (issue #20), which spell imports the same way.
  *
- * A Java source names its own importable FQN: the `package` declaration plus the file
+ * A source names its own importable FQN: the `package` declaration plus the file
  * stem (a public top-level type must live in a file of the same name). Building the map
  * from file content therefore needs no `pom.xml` parsing, and multi-module repositories
  * work by construction — every module's sources are walked, so module B's
@@ -12,7 +13,14 @@ import { basename } from 'node:path';
  * The map NEVER classifies. A miss means "not in this repository"; whether that is an
  * external dependency or a broken import is the caller's decision (see resolveImport).
  */
-export interface JavaClassIndex {
+const PACKAGE_LANGUAGES: ReadonlySet<string> = new Set(['java', 'kotlin', 'scala']);
+
+/** True when a language's imports are package paths resolved through the map below. */
+export function isPackageLanguage(language: string | undefined): boolean {
+  return language !== undefined && PACKAGE_LANGUAGES.has(language);
+}
+
+export interface PackageIndex {
   readonly byFqn: ReadonlyMap<string, string>;
   readonly byPackage: ReadonlyMap<string, readonly string[]>;
 }
@@ -22,7 +30,8 @@ export interface JavaClassIndex {
 // that tried to recognise them in place did not hold, and a commented-out `package` line was
 // taken as the real one.
 const PACKAGE_DECL_RE =
-  /^[ \t]*package[ \t]+([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)[ \t]*;/m;
+  // The trailing `;` is Java's habit: Kotlin and Scala end the line there.
+  /^[ \t]*package[ \t]+([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)[ \t]*;?/m;
 
 /** Blank out Java comments so the package search cannot match inside one. */
 function stripJavaComments(source: string): string {
@@ -30,8 +39,9 @@ function stripJavaComments(source: string): string {
 }
 
 /** The importable FQN of a Java source, derived from its content and file name. */
-export function javaFqnFor(relPath: string, content: string): string {
-  const stem = basename(relPath).replace(/\.java$/i, '');
+export function fqnForSource(relPath: string, content: string): string {
+  // Any extension: the map serves Java, Kotlin and Scala, and only Java files end in .java.
+  const stem = basename(relPath).replace(/\.[^.]+$/, '');
   const match = PACKAGE_DECL_RE.exec(stripJavaComments(content));
   // Group 1: the package is the regex`s only capturing group now that the comment lookahead is
   // gone (it used to be group 2, which the accessor still read — hence stem-only FQNs and a
@@ -44,9 +54,9 @@ export function javaFqnFor(relPath: string, content: string): string {
  * on a LIFO stack, so without sorting the "first wins" rule for a duplicate FQN would
  * depend on readdir order.
  */
-export function buildJavaClassIndex(
+export function buildPackageIndex(
   entries: ReadonlyArray<{ fqn: string; relPath: string }>
-): JavaClassIndex {
+): PackageIndex {
   const byFqn = new Map<string, string>();
   const byPackage = new Map<string, string[]>();
   for (const { fqn, relPath } of entries) {
@@ -72,7 +82,7 @@ export function buildJavaClassIndex(
  * specifier was classified external, so a dangling reference was invisible in a dimension worth
  * 0.3 — the class map resolved what it could and silently shrugged at the rest.
  */
-export function javaMissesInTree(index: JavaClassIndex, source: string): boolean {
+export function missesInPackageTree(index: PackageIndex, source: string): boolean {
   const base = source.endsWith('.*') ? source.slice(0, -2) : source;
   const segments = base.split('.');
   // Walk the prefixes from the longest down: if any of them is a type or a package we know, the
@@ -85,8 +95,8 @@ export function javaMissesInTree(index: JavaClassIndex, source: string): boolean
 }
 
 /** Looks an import up in the in-tree map. A miss returns null and is NOT a verdict. */
-export function javaResolve(
-  index: JavaClassIndex,
+export function resolvePackagePath(
+  index: PackageIndex,
   source: string,
   isStatic: boolean
 ): string | null {
@@ -108,6 +118,11 @@ export function javaResolve(
 
   const direct = index.byFqn.get(base);
   if (direct) return direct;
+  // A path that names a PACKAGE rather than a type: Scala's `import a.b.{C, D}` reads down to `a.b`,
+  // which is the module that exists on disk. Java and Kotlin never write a bare package import, so
+  // this changes nothing for them.
+  const packageHit = index.byPackage.get(base)?.[0];
+  if (packageHit) return packageHit;
   // `import static a.b.C.member;` — the last segment is a member, not a type. Only for
   // static imports: stripping it in general would let `import a.b.C;` match an in-tree
   // class whose FQN is `a.b`.

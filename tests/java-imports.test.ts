@@ -199,11 +199,11 @@ describe('java class map inputs that were uncovered', () => {
   });
 
   it('ignores a commented-out package declaration when naming a class', async () => {
-    const { javaFqnFor } = await import('../src/graph/java-resolve.js');
-    expect(javaFqnFor('src/a/Thing.java', '// package com.wrong;\npackage com.right;\nclass Thing {}')).toBe(
+    const { fqnForSource } = await import('../src/graph/package-resolve.js');
+    expect(fqnForSource('src/a/Thing.java', '// package com.wrong;\npackage com.right;\nclass Thing {}')).toBe(
       'com.right.Thing'
     );
-    expect(javaFqnFor('src/a/Thing.java', '/*\npackage com.wrong;\n*/\npackage com.right;\nclass Thing {}')).toBe(
+    expect(fqnForSource('src/a/Thing.java', '/*\npackage com.wrong;\n*/\npackage com.right;\nclass Thing {}')).toBe(
       'com.right.Thing'
     );
   });
@@ -283,16 +283,16 @@ describe('a Java import whose package is here but whose class is not', () => {
 
 describe('static wildcard resolution order', () => {
   it('resolves `import static com.a.Bar.*` to the type, not to the nested package', async () => {
-    const { buildJavaClassIndex, javaResolve } = await import('../src/graph/java-resolve.js');
+    const { buildPackageIndex, resolvePackagePath } = await import('../src/graph/package-resolve.js');
     // Both exist: a class com.a.Bar, and a package com.a.Bar (home of the nested class X).
-    const index = buildJavaClassIndex([
+    const index = buildPackageIndex([
       { fqn: 'com.a.Bar', relPath: 'src/com/a/Bar.java' },
       { fqn: 'com.a.Bar.X', relPath: 'src/com/a/Bar/X.java' },
     ]);
     // Static wildcards are type-scoped, so the type wins; a plain `import com.a.Bar.*;` is
     // package-scoped and still finds the package.
-    expect(javaResolve(index, 'com.a.Bar.*', true)).toBe('src/com/a/Bar.java');
-    expect(javaResolve(index, 'com.a.Bar.*', false)).toBe('src/com/a/Bar/X.java');
+    expect(resolvePackagePath(index, 'com.a.Bar.*', true)).toBe('src/com/a/Bar.java');
+    expect(resolvePackagePath(index, 'com.a.Bar.*', false)).toBe('src/com/a/Bar/X.java');
   });
 });
 

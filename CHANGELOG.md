@@ -110,6 +110,12 @@ Version bumped, not yet tagged or published. Closes the fifteen issues opened af
 
 ### Added
 
+- **Kotlin and Scala are extracted and resolved** through the same in-tree map Java uses — they
+  spell imports the same way (a package declaration plus a dotted path), so the map is now shared
+  rather than copied, and named for what it does (`package-resolve.ts`). The differences the map had
+  to learn: their `package` lines carry no semicolon, their file stems are not `.java`, and Scala
+  writes `_` where Java writes `*` while `import a.b.{C, D}` reads down to the package `a.b` — a bare
+  path that names a package now resolves to that package. (#20)
 - **Go, Lua, Bash and Dart are extracted and resolved.** A Go import names a *package directory*, so
   the module path is read from `go.mod` and the package links to its first file in path order — a
   deliberate directory-level approximation, since the graph is file-to-file and a package is several

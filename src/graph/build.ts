@@ -5,7 +5,12 @@ import { createHash } from 'node:crypto';
 import { parseFile } from './parse.js';
 import { isExternalSpecifier, resolveImport } from './resolve.js';
 import { ignoredDirs } from './ignore.js';
-import { buildJavaClassIndex, javaFqnFor, javaMissesInTree } from './java-resolve.js';
+import {
+  buildPackageIndex,
+  fqnForSource,
+  missesInPackageTree,
+  isPackageLanguage,
+} from './package-resolve.js';
 import { rustMissesInCrate } from './rust-resolve.js';
 import { goImportIsInModule, goModulePath } from './go-resolve.js';
 import { REPARSE_REQUIRED_KEY } from './db.js';
@@ -87,7 +92,7 @@ export async function buildGraph(
   let fileCount = 0;
   let symbolCount = 0;
   let brokenImportCount = 0;
-  const javaEntries: Array<{ fqn: string; relPath: string }> = [];
+  const packageEntries: Array<{ fqn: string; relPath: string }> = [];
   // Issues #8/#16: an upgraded store carries rows the current classifier would decide
   // differently (a node: builtin stored as broken, a ./db.js that now resolves). The hash cache
   // would skip every unchanged file, so the verdicts would stay wrong indefinitely — and the
@@ -114,11 +119,11 @@ export async function buildGraph(
     const content = readFileSync(file.absPath, 'utf8');
     const hash = createHash('sha256').update(content).digest('hex');
 
-    if (langForExt(file.ext) === 'java') {
+    if (isPackageLanguage(langForExt(file.ext))) {
       // Issue #5: the class map must cover EVERY Java file, including the unchanged
       // ones the hash-cache check below skips — otherwise an incremental run would lose
       // the classes of every file it did not re-parse. The content is already in hand.
-      javaEntries.push({ fqn: javaFqnFor(relPath, content), relPath });
+      packageEntries.push({ fqn: fqnForSource(relPath, content), relPath });
     }
 
     const existing = getFileHash.get(relPath) as { hash: string } | undefined;
@@ -138,8 +143,8 @@ export async function buildGraph(
 
   // Deterministic map: the walk is a LIFO stack over readdir order, so without this
   // sort the duplicate-FQN rule would depend on the filesystem.
-  javaEntries.sort((a, b) => (a.relPath < b.relPath ? -1 : a.relPath > b.relPath ? 1 : 0));
-  const javaIndex = buildJavaClassIndex(javaEntries);
+  packageEntries.sort((a, b) => (a.relPath < b.relPath ? -1 : a.relPath > b.relPath ? 1 : 0));
+  const packageIndex = buildPackageIndex(packageEntries);
   // Read once: a Go import that names a package inside this module and leads nowhere is a dangling
   // reference, not a dependency, and the module path is what tells the two apart.
   const goModule = goModulePath(absRoot);
@@ -180,7 +185,7 @@ export async function buildGraph(
       // ran would mark every Java import external and the class map would never be
       // consulted.
       const resolved = resolveImport(absRoot, relPath, imp.source, files, {
-        javaIndex,
+        packageIndex,
         isStatic: imp.isStatic,
       });
       if (resolved) {
@@ -201,7 +206,7 @@ export async function buildGraph(
         // is not. That is a broken import, not a dependency (found in the pre-release review).
         const language = langForExt(extname(relPath));
         if (
-          (javaIndex && language === 'java' && javaMissesInTree(javaIndex, imp.source)) ||
+          (packageIndex && isPackageLanguage(language) && missesInPackageTree(packageIndex, imp.source)) ||
           // A Rust path from `crate::`, `self::` or `super::` is in-crate by construction, so a
           // miss is a dangling reference — the same verdict Java gets above.
           (language === 'rust' && rustMissesInCrate(imp.source)) ||

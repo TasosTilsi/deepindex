@@ -168,6 +168,8 @@ export const LANGUAGE_CONFIGS: Record<string, LanguageConfig> = {
     nameFields: ['name'],
   },
   kotlin: {
+    // A member is importable unless it is private, as in Java.
+    exportedByDefault: true,
     wasmFile: 'tree-sitter-kotlin.wasm',
     extensions: ['.kt', '.kts'],
     nodeMap: {
@@ -178,6 +180,8 @@ export const LANGUAGE_CONFIGS: Record<string, LanguageConfig> = {
     nameFields: ['name'],
   },
   scala: {
+    // A member is importable unless it is private, as in Java.
+    exportedByDefault: true,
     wasmFile: 'tree-sitter-scala.wasm',
     extensions: ['.scala', '.sc'],
     nodeMap: {
