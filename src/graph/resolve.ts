@@ -8,7 +8,8 @@ import { rustResolve } from './rust-resolve.js';
 import { rubyResolve } from './ruby-resolve.js';
 import { cResolve } from './c-resolve.js';
 import { goResolve } from './go-resolve.js';
-import { bashResolve, dartResolve, luaResolve } from './relative-resolve.js';
+import { dartResolve, elixirResolve, luaResolve, pathResolve } from './relative-resolve.js';
+import { swiftResolve } from './swift-resolve.js';
 
 const EXT_TRY = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs'];
 
@@ -75,7 +76,7 @@ export function resolveImport(
   // `source ./x.sh` is a plain path, never a module specifier spelled from a root.
   const earlyLanguage = langForExt(extname(fromFile));
   if (earlyLanguage === 'bash' || earlyLanguage === 'sh') {
-    return bashResolve(repoRoot, fromFile, importSource);
+    return pathResolve(repoRoot, fromFile, importSource);
   }
 
   // External / bare module — not resolvable in our graph (see isExternalSpecifier),
@@ -99,6 +100,11 @@ export function resolveImport(
       return cResolve(repoRoot, fromFile, importSource);
     }
     if (language === 'go') return goResolve(repoRoot, importSource);
+    if (language === 'swift') return swiftResolve(repoRoot, importSource);
+    if (language === 'elixir') return elixirResolve(repoRoot, importSource);
+    // PHP's require/include is a path like Bash's source: relative to the working directory, then
+    // to the file, and a miss stays external because `include_path` may hold it.
+    if (language === 'php') return pathResolve(repoRoot, fromFile, importSource);
     if (language === 'lua') return luaResolve(repoRoot, fromFile, importSource);
     if (language === 'dart') return dartResolve(repoRoot, fromFile, importSource);
     return null;

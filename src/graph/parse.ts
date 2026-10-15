@@ -343,6 +343,40 @@ function collectImports(node: SyntaxNode, out: ParsedImport[], langKey: string):
     return;
   }
 
+  // Issue #20, Swift, PHP and Elixir. Each was measured against its grammar: Swift's `import` is an
+  // `import_declaration` whose identifier child names a module; PHP's `require`/`include` family are
+  // four node types whose argument is a `string` (the `__DIR__ . '/x.php'` form is a
+  // binary_expression, which is a path the parser cannot know); Elixir's `alias` and `import` are
+  // `call`s whose `arguments` hold the dotted module.
+  if (langKey === 'swift' && node.type === 'import_declaration') {
+    const identifier = node.namedChildren.find((child) => child.type === 'identifier');
+    if (identifier) out.push({ source: identifier.text });
+    return;
+  }
+  if (
+    langKey === 'php' &&
+    (node.type === 'require_expression' ||
+      node.type === 'require_once_expression' ||
+      node.type === 'include_expression' ||
+      node.type === 'include_once_expression')
+  ) {
+    const literal = node.namedChildren.find((child) => child.type === 'string');
+    if (literal) out.push({ source: literal.text.replace(/^['"]|['"]$/g, '') });
+    return;
+  }
+  if (langKey === 'elixir' && node.type === 'call') {
+    const name = node.namedChildren.find((child) => child.type === 'identifier');
+    const args = node.namedChildren.find((child) => child.type === 'arguments');
+    const module = args?.namedChildren.find((child) => child.type === 'alias');
+    if ((name?.text === 'alias' || name?.text === 'import') && module) {
+      out.push({ source: module.text });
+    }
+    // No early return: Elixir nests these calls inside a `defmodule ... do_block`, and returning
+    // here skipped every alias and import in the file. (Third time this shape bit: the descent is
+    // at the end of this function, so any `return` on a node that can contain the interesting ones
+    // silently swallows them.)
+  }
+
   // Issue #20, Go. `import_spec` carries the quoted package path in its `path` field; a
   // single-import declaration (`import "fmt"`) has the literal directly.
   // Gated on the node types on purpose: this function recurses at its END, so an ungated `return`
@@ -419,7 +453,7 @@ function collectImports(node: SyntaxNode, out: ParsedImport[], langKey: string):
       // library and becomes an external row like `import express` or `import os` do elsewhere.
       out.push({ source: text });
     }
-    return;
+    // No early return: this function descends at its END, and a `call` can contain nested calls.
   }
 
   // Issue #20, Rust. Measured shapes: `use crate::a::b;` is a `use_declaration` whose `argument`

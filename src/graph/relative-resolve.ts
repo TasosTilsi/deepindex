@@ -44,9 +44,26 @@ export function luaResolve(repoRoot: string, fromFile: string, source: string): 
   ]);
 }
 
-/** `source ./x.sh` and `. ./x.sh` are relative to the working directory, then to the script. */
-export function bashResolve(repoRoot: string, fromFile: string, source: string): string | null {
+/**
+ * A plain path, looked up relative to the working directory first and then to the importing file.
+ * Bash's `source ./x.sh` and PHP's `require 'lib/helper.php'` both mean this, and neither says so
+ * unambiguously — which is why a miss stays external in their callers' hands.
+ */
+export function pathResolve(repoRoot: string, fromFile: string, source: string): string | null {
   return firstFile(repoRoot, [source, join(dirname(fromFile), source)]);
+}
+
+/**
+ * Elixir's module-to-file convention: `MyApp.Accounts.User` lives in `lib/my_app/accounts/user.ex`.
+ * A module that is not there is a dependency (or `Logger`), and the caller calls it external.
+ */
+export function elixirResolve(repoRoot: string, source: string): string | null {
+  const snake = source
+    .split('.')
+    .map((segment) => segment.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase())
+    .join('/');
+  if (!snake) return null;
+  return firstFile(repoRoot, [`lib/${snake}.ex`, `test/${snake}.exs`, `${snake}.ex`]);
 }
 
 /** A Dart `import 'src/x.dart'` is relative to the importing file. `package:` never reaches here. */

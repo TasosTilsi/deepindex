@@ -110,6 +110,12 @@ Version bumped, not yet tagged or published. Closes the fifteen issues opened af
 
 ### Added
 
+- **Swift, PHP and Elixir are extracted and resolved** — the last languages whose imports can name a
+  file here. A Swift import names a module, linked to the first file of its `Sources/<Module>/`
+  target directory; a PHP `require`/`include` resolves relative to the working directory then the
+  file and stays external when unresolvable (`include_path` may hold it), while the
+  `__DIR__ . '/x.php'` concatenation form produces no row; an Elixir `alias`/`import` is mapped by
+  convention to `lib/my_app/accounts/user.ex`. (#20)
 - **Kotlin and Scala are extracted and resolved** through the same in-tree map Java uses — they
   spell imports the same way (a package declaration plus a dotted path), so the map is now shared
   rather than copied, and named for what it does (`package-resolve.ts`). The differences the map had

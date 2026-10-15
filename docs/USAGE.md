@@ -348,6 +348,9 @@ Two guarantees worth knowing:
 | Java | `import a.b.C;`, `import static a.b.C.m;`, `import a.b.*;`, and default-package (`import C;`) |
 | Python | `import pkg.mod`, `import a.b as m`, `from .pkg import x` (dots climb packages from the module's own package). Roots: the repository root and `src/` |
 | Ruby | `require_relative 'helper'` resolved against the file; `require 'json'` is external |
+| Swift | `import MyModule` linked to the first file of `Sources/MyModule/`; the standard library and package dependencies are external |
+| PHP | `require`/`include` (and their `_once` forms) resolved relative to the working directory then the file. An unresolvable one stays external, since `include_path` may hold it; the `__DIR__ . '/x.php'` concatenation form produces no row |
+| Elixir | `alias MyApp.Accounts.User` and `import MyApp.Helpers` mapped by convention to `lib/my_app/accounts/user.ex`; anything not in the project is external |
 | Kotlin / Scala | `import com.example.foo.Bar` through the same in-tree map Java uses; `import com.example.foo.*` and Scala's `import com.example.foo._` name the package, and a miss inside a known package is broken |
 | Go | `import "example.com/mod/pkg/sub"` mapped through `go.mod`'s module path to the package directory, linked to its first file in path order. A miss inside the module is broken; `fmt` and other modules are external |
 | Lua | `require('mod.sub')` → `mod/sub.lua`, then next to the requiring file, then `mod/sub/init.lua`; an unknown module stays external |

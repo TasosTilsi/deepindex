@@ -122,6 +122,8 @@ export const LANGUAGE_CONFIGS: Record<string, LanguageConfig> = {
     nameFields: ['declarator', 'name'],
   },
   php: {
+    // A member is importable unless the language marks it private.
+    exportedByDefault: true,
     wasmFile: 'tree-sitter-php.wasm',
     extensions: ['.php'],
     nodeMap: {
@@ -157,6 +159,8 @@ export const LANGUAGE_CONFIGS: Record<string, LanguageConfig> = {
     nameFields: ['name'],
   },
   swift: {
+    // A member is importable unless the language marks it private.
+    exportedByDefault: true,
     wasmFile: 'tree-sitter-swift.wasm',
     extensions: ['.swift'],
     nodeMap: {
