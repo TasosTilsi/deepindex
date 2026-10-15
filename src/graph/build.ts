@@ -123,7 +123,10 @@ export async function buildGraph(
       // Issue #5: the class map must cover EVERY Java file, including the unchanged
       // ones the hash-cache check below skips — otherwise an incremental run would lose
       // the classes of every file it did not re-parse. The content is already in hand.
-      packageEntries.push({ fqn: fqnForSource(relPath, content), relPath });
+      packageEntries.push({
+        fqn: fqnForSource(relPath, content, langForExt(file.ext)),
+        relPath,
+      });
     }
 
     const existing = getFileHash.get(relPath) as { hash: string } | undefined;

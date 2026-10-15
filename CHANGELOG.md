@@ -110,6 +110,11 @@ Version bumped, not yet tagged or published. Closes the fifteen issues opened af
 
 ### Added
 
+- **C# is extracted and resolved**, through the same in-tree map as Java, Kotlin and Scala, since a
+  `using` names a namespace. The map reads `namespace` where the others read `package`, and it now
+  records every namespace *prefix* it knows, because a project need not declare its parent namespaces
+  in files of their own — `using App.Gone;` is inside the project when `App` is a prefix of something
+  here, and calling it external hid a dangling reference. (#20)
 - **Swift, PHP and Elixir are extracted and resolved** — the last languages whose imports can name a
   file here. A Swift import names a module, linked to the first file of its `Sources/<Module>/`
   target directory; a PHP `require`/`include` resolves relative to the working directory then the

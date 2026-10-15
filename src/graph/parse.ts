@@ -343,6 +343,15 @@ function collectImports(node: SyntaxNode, out: ParsedImport[], langKey: string):
     return;
   }
 
+  // Issue #20, C#. `using System.Text;` is a `using_directive` whose namespace is a `qualified_name`
+  // child; the alias form (`using S = System.String;`) carries the alias as an `identifier` and the
+  // namespace as that same child, so the child is the thing to read.
+  if (langKey === 'c_sharp' && node.type === 'using_directive') {
+    const qualified = node.namedChildren.find((child) => child.type === 'qualified_name');
+    if (qualified) out.push({ source: qualified.text });
+    return;
+  }
+
   // Issue #20, Swift, PHP and Elixir. Each was measured against its grammar: Swift's `import` is an
   // `import_declaration` whose identifier child names a module; PHP's `require`/`include` family are
   // four node types whose argument is a `string` (the `__DIR__ . '/x.php'` form is a

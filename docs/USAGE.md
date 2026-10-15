@@ -351,6 +351,7 @@ Two guarantees worth knowing:
 | Swift | `import MyModule` linked to the first file of `Sources/MyModule/`; the standard library and package dependencies are external |
 | PHP | `require`/`include` (and their `_once` forms) resolved relative to the working directory then the file. An unresolvable one stays external, since `include_path` may hold it; the `__DIR__ . '/x.php'` concatenation form produces no row |
 | Elixir | `alias MyApp.Accounts.User` and `import MyApp.Helpers` mapped by convention to `lib/my_app/accounts/user.ex`; anything not in the project is external |
+| C# | `using App.Data;` through the same in-tree map, with `namespace` read where the others read `package`; `System.Text` and the framework stay external, and a miss inside a known namespace is broken |
 | Kotlin / Scala | `import com.example.foo.Bar` through the same in-tree map Java uses; `import com.example.foo.*` and Scala's `import com.example.foo._` name the package, and a miss inside a known package is broken |
 | Go | `import "example.com/mod/pkg/sub"` mapped through `go.mod`'s module path to the package directory, linked to its first file in path order. A miss inside the module is broken; `fmt` and other modules are external |
 | Lua | `require('mod.sub')` → `mod/sub.lua`, then next to the requiring file, then `mod/sub/init.lua`; an unknown module stays external |

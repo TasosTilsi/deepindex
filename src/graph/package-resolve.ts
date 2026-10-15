@@ -13,7 +13,18 @@ import { basename } from 'node:path';
  * The map NEVER classifies. A miss means "not in this repository"; whether that is an
  * external dependency or a broken import is the caller's decision (see resolveImport).
  */
-const PACKAGE_LANGUAGES: ReadonlySet<string> = new Set(['java', 'kotlin', 'scala']);
+const PACKAGE_LANGUAGES: ReadonlySet<string> = new Set(['java', 'kotlin', 'scala', 'c_sharp']);
+
+/**
+ * The keyword that introduces a package declaration, per language. C# says `namespace` where the
+ * other three say `package`; that one word is the whole difference in how their FQNs are read.
+ */
+const PACKAGE_KEYWORDS: Record<string, string> = {
+  java: 'package',
+  kotlin: 'package',
+  scala: 'package',
+  c_sharp: 'namespace',
+};
 
 /** True when a language's imports are package paths resolved through the map below. */
 export function isPackageLanguage(language: string | undefined): boolean {
@@ -23,6 +34,13 @@ export function isPackageLanguage(language: string | undefined): boolean {
 export interface PackageIndex {
   readonly byFqn: ReadonlyMap<string, string>;
   readonly byPackage: ReadonlyMap<string, readonly string[]>;
+  /**
+   * Every namespace prefix the tree knows, so a miss can be judged in constant time. An import of
+   * `App.Gone` is inside the project when `App` is a prefix of something here — the leaf namespace
+   * alone is not enough, because a project need not declare its parent namespaces in a file of
+   * their own.
+   */
+  readonly prefixes: ReadonlySet<string>;
 }
 
 // Exactly one package declaration is legal in a Java source and it must be the first statement,
@@ -30,7 +48,6 @@ export interface PackageIndex {
 // that tried to recognise them in place did not hold, and a commented-out `package` line was
 // taken as the real one.
 const PACKAGE_DECL_RE =
-  // The trailing `;` is Java's habit: Kotlin and Scala end the line there.
   /^[ \t]*package[ \t]+([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)[ \t]*;?/m;
 
 /** Blank out Java comments so the package search cannot match inside one. */
@@ -39,10 +56,15 @@ function stripJavaComments(source: string): string {
 }
 
 /** The importable FQN of a Java source, derived from its content and file name. */
-export function fqnForSource(relPath: string, content: string): string {
+export function fqnForSource(relPath: string, content: string, language = 'java'): string {
   // Any extension: the map serves Java, Kotlin and Scala, and only Java files end in .java.
   const stem = basename(relPath).replace(/\.[^.]+$/, '');
-  const match = PACKAGE_DECL_RE.exec(stripJavaComments(content));
+  const keyword = PACKAGE_KEYWORDS[language] ?? 'package';
+  const declaration =
+    keyword === 'package'
+      ? PACKAGE_DECL_RE
+      : new RegExp(`^[ \\t]*${keyword}[ \\t]+([A-Za-z_$][\\w$]*(?:\\.[A-Za-z_$][\\w$]*)*)`, 'm');
+  const match = declaration.exec(stripJavaComments(content));
   // Group 1: the package is the regex`s only capturing group now that the comment lookahead is
   // gone (it used to be group 2, which the accessor still read — hence stem-only FQNs and a
   // class map that could not resolve anything).
@@ -70,7 +92,15 @@ export function buildPackageIndex(
   // A wildcard import resolves to the first in-tree class of the package, so that
   // choice has to be stable.
   for (const bucket of byPackage.values()) bucket.sort();
-  return { byFqn, byPackage };
+
+  const prefixes = new Set<string>();
+  for (const name of [...byFqn.keys(), ...byPackage.keys()]) {
+    const segments = name.split('.');
+    for (let cut = 1; cut < segments.length; cut += 1) {
+      prefixes.add(segments.slice(0, cut).join('.'));
+    }
+  }
+  return { byFqn, byPackage, prefixes };
 }
 
 /**
@@ -89,7 +119,9 @@ export function missesInPackageTree(index: PackageIndex, source: string): boolea
   // name we failed to find belongs inside the repository.
   for (let cut = segments.length - 1; cut > 0; cut -= 1) {
     const prefix = segments.slice(0, cut).join('.');
-    if (index.byFqn.has(prefix) || index.byPackage.has(prefix)) return true;
+    if (index.byFqn.has(prefix) || index.byPackage.has(prefix) || index.prefixes.has(prefix)) {
+      return true;
+    }
   }
   return false;
 }
