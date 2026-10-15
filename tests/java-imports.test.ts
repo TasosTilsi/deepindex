@@ -295,3 +295,42 @@ describe('static wildcard resolution order', () => {
     expect(javaResolve(index, 'com.a.Bar.*', false)).toBe('src/com/a/Bar/X.java');
   });
 });
+
+describe('two modules declaring the same FQN', () => {
+  it('resolves to the same file every build, whatever order the tree was written in', async () => {
+    // A duplicate FQN cannot happen in a compiling project, but a partial copy or a stale module
+    // directory can produce one, and then "which one wins" must not depend on readdir order. The
+    // rule is the lexicographically first path; this pins it so a change to the walk order fails
+    // here rather than producing a graph that differs between machines.
+    const build = async (order: 'forward' | 'reverse') => {
+      const dir = mkdtempSync(join(tmpdir(), 'deepindex-java-dup-'));
+      const files: Array<[string, string]> = [
+        [
+          'src/main/java/aaa/Dup.java',
+          'package com.example.dup;\npublic class Dup { public int a() { return 1; } }\n',
+        ],
+        [
+          'src/main/java/zzz/Dup.java',
+          'package com.example.dup;\npublic class Dup { public int a() { return 2; } }\n',
+        ],
+        [
+          'src/main/java/com/example/app/Main.java',
+          'package com.example.app;\nimport com.example.dup.Dup;\npublic class Main { Dup d; }\n',
+        ],
+      ];
+      writeJavaFiles(dir, Object.fromEntries(order === 'forward' ? files : [...files].reverse()));
+
+      const db = initDb(join(dir, '.db'));
+      await buildGraph(db, dir);
+      const row = importRow(db, 'src/main/java/com/example/app/Main.java', 'com.example.dup.Dup');
+      db.close();
+      rmSync(dir, { recursive: true, force: true });
+      return row?.target ?? null;
+    };
+
+    const a = await build('forward');
+    const b = await build('reverse');
+    expect(a).toBe('src/main/java/aaa/Dup.java');
+    expect(b).toBe(a);
+  });
+});
