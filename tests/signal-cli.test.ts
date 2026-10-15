@@ -232,6 +232,48 @@ describe('signal verb', () => {
     }
   });
 
+  it('treats an empty report directory as a usage error, like every other empty input', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'deepindex-signal-'));
+    try {
+      const dbPath = freshDb(dir);
+      mkdirSync(join(dir, 'surefire'));
+      const r = await run(['signal', '--from-junit', join(dir, 'surefire'), '--db', dbPath]);
+      // USAGE says an empty or unreadable report exits 2; an empty Vitest report already did.
+      expect(r.code).toBe(2);
+      expect(r.stderr).toMatch(/contains no/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('refuses two report flags at once instead of mislabelling the source', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'deepindex-signal-'));
+    try {
+      const dbPath = freshDb(dir);
+      const vitest = join(dir, 'vitest.json');
+      const junit = join(dir, 'junit.xml');
+      writeFileSync(
+        vitest,
+        JSON.stringify({ numTotalTests: 2, numPassedTests: 2, numFailedTests: 0, numPendingTests: 0 })
+      );
+      writeFileSync(junit, '<testsuite name="a" tests="1" failures="0" errors="0" skipped="0"/>');
+      const r = await run([
+        'signal',
+        '--from-vitest',
+        vitest,
+        '--from-junit',
+        junit,
+        '--db',
+        dbPath,
+      ]);
+      expect(r.code).toBe(2);
+      expect(r.stderr).toMatch(/one report/i);
+      expect(readSignals(dbPath)).toEqual({});
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it('clears every signal with --reset', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'deepindex-signal-'));
     try {

@@ -220,7 +220,10 @@ describe('get_entity: requirement fallback', () => {
     try {
       seed(db);
       const result = getEntity(db, { entity_id: 'WV-123' }) as Record<string, unknown>;
-      expect(result.kind).toBe('requirement');
+      // The same discriminator the entity path uses, so a consumer can branch on one field.
+      expect(result.type).toBe('requirement');
+      expect(result.name).toBe('WV-123');
+      expect(result.id).toBe('WV-123');
       expect(result.title).toBe('Retry policy');
       expect((result.statements as unknown[]).length).toBe(2);
       const entities = result.entities as { name: string }[];

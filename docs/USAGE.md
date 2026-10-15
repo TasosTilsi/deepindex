@@ -206,7 +206,7 @@ all-MiniLM-L6-v2/
 ```
 
 - `DEEPINDEX_MODEL_PATH` wins over the TOML value; a relative value resolves against the repository root (against the cwd for the environment variable).
-- `deepindex embed --fetch-model` with a valid `model_path` prints `model_path … set — skipping download` and exits without a network call. With an invalid one it reports what is missing and exits 0 — the degradation posture is unchanged.
+- `deepindex embed --fetch-model` with a valid `model_path` prints `model_path … set — skipping download` and exits without a network call. With an invalid one it reports what is missing and exits **2**: you asked for the model, the configuration points somewhere wrong, and a silent success would tell CI the bootstrap worked.
 - **No load path fetches.** `allowRemoteModels` is forced off on every load, not only for `model_path`: a partially populated cache used to be able to fall through to a silent download, contradicting the "no auto-download" guarantee.
 
 ## Data-Flow & Requirements

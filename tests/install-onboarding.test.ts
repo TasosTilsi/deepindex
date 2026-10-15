@@ -93,6 +93,22 @@ describe('install: the whole onboarding', () => {
     }
   });
 
+  it('keeps the indentation of a package.json it edits', async () => {
+    const repo = tempRepo();
+    try {
+      // A user-owned file with its own style: rewriting it with 2-space indent would show up as
+      // a whole-file diff in their next commit.
+      writeFileSync(join(repo, 'package.json'), '{\n    "name": "demo",\n    "version": "1.0.0"\n}\n');
+      const r = await run(['install', '--harness', 'claude-code', '--no-index'], repo);
+      expect(r.code).toBe(0);
+      const text = readFileSync(join(repo, 'package.json'), 'utf8');
+      expect(text.startsWith('{\n    "name"')).toBe(true);
+      expect(text).toContain('    "di:index"');
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
   it('indexes the repository unless told not to', async () => {
     const repo = tempRepo();
     try {

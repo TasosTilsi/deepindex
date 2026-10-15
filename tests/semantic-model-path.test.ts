@@ -2,9 +2,23 @@ import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { createHash } from 'node:crypto';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { spawn } from 'node:child_process';
 import { join } from 'node:path';
 import { loadSemanticConfig } from '../src/semantic/config.js';
 import { MODEL_CONFIGS } from '../src/semantic/embedder.js';
+
+function runCli(args: string[], cwd: string): Promise<{ code: number | null; stdout: string; stderr: string }> {
+  return new Promise((resolveRun) => {
+    const tsxBin = join(process.cwd(), 'node_modules', '.bin', 'tsx');
+    const child = spawn(tsxBin, [join(process.cwd(), 'src', 'cli.ts'), ...args], { cwd });
+    let stdout = '';
+    let stderr = '';
+    child.stdout.on('data', (d) => (stdout += d.toString()));
+    child.stderr.on('data', (d) => (stderr += d.toString()));
+    child.on('close', (code) => resolveRun({ code, stdout, stderr }));
+    child.on('error', (err) => resolveRun({ code: -1, stdout, stderr: String(err) }));
+  });
+}
 
 /**
  * Offline model path (#6) and the checksum verification path (#14).
@@ -248,4 +262,22 @@ describe('DI-04 checksum verification', () => {
       })
     ).rejects.toThrow(/checksum mismatch/);
   });
+});
+
+describe('--fetch-model against a broken model_path', () => {
+  it('must not report success: the caller asked for the model and the config points elsewhere', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'deepindex-fetch-model-path-'));
+    try {
+      writeFileSync(
+        join(dir, '.deepindex.toml'),
+        `[semantic]\nenabled = true\nmodel_path = "${join(dir, 'nowhere')}"\n`
+      );
+      const r = await runCli(['embed', dir, '--fetch-model', '--db', join(dir, '.db')], dir);
+      // Exit 0 here told CI the bootstrap succeeded while nothing was fetched or loadable.
+      expect(r.code).toBe(2);
+      expect(r.stderr).toMatch(/model_path .* not found/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 20_000);
 });

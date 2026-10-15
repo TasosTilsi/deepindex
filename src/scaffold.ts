@@ -163,8 +163,10 @@ export function ensurePackageScripts(repoRoot: string, dryRun: boolean): string[
   const path = join(repoRoot, 'package.json');
   if (!existsSync(path)) return [];
   let pkg: { scripts?: Record<string, string> };
+  let text: string;
   try {
-    pkg = JSON.parse(readFileSync(path, 'utf8')) as { scripts?: Record<string, string> };
+    text = readFileSync(path, 'utf8');
+    pkg = JSON.parse(text) as { scripts?: Record<string, string> };
   } catch {
     return [];
   }
@@ -187,7 +189,10 @@ export function ensurePackageScripts(repoRoot: string, dryRun: boolean): string[
   pkg.scripts = Object.fromEntries(
     Object.entries(pkg.scripts).sort((a, b) => a[0].localeCompare(b[0]))
   );
-  writeFileSync(path, JSON.stringify(pkg, null, 2) + '\n');
+  // Keep the file's own indentation: reformatting a file the user owns would show up as a
+  // whole-file diff in their next commit.
+  const indent = /^([ \t]+)"/m.exec(text)?.[1] ?? '  ';
+  writeFileSync(path, JSON.stringify(pkg, null, indent) + '\n');
   return added;
 }
 

@@ -100,7 +100,15 @@ export function getEntity(db: Database.Database, args: { entity_id: string }) {
     | { id: string; title: string; description: string; source: string; status: string }
     | undefined;
   if (!req) return { error: 'entity not found', id: args.entity_id };
-  return { ...req, kind: 'requirement', ...requirementContext(db, req.id) };
+  // Same discriminator and field names as the entity path, so a caller can branch on `type` and
+  // read `name`/`content` without special-casing requirements.
+  return {
+    ...req,
+    type: 'requirement',
+    name: req.id,
+    content: req.title,
+    ...requirementContext(db, req.id),
+  };
 }
 
 /**
@@ -136,11 +144,11 @@ function requirementContext(db: Database.Database, reqId: string) {
 
   const symbols = db
     .prepare(
-      `SELECT s.name, s.kind, f.path FROM requirement_code_links l
+      `SELECT s.id, s.name, s.kind, f.path FROM requirement_code_links l
        JOIN symbols s ON s.id = l.symbol_id JOIN files f ON f.id = s.file_id
        WHERE l.req_id = ?`
     )
-    .all(reqId) as { name: string; kind: string; path: string }[];
+    .all(reqId) as { id: number; name: string; kind: string; path: string }[];
 
   return { statements, entities, symbols };
 }

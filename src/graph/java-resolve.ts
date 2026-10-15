@@ -63,6 +63,27 @@ export function buildJavaClassIndex(
   return { byFqn, byPackage };
 }
 
+/**
+ * True when the specifier points INTO this repository but names something that is not here: a
+ * class renamed or deleted inside a package the tree knows, or a member of an in-tree class that
+ * no longer exists.
+ *
+ * Such a miss is a broken import, not a dependency. Without this, every non-relative Java
+ * specifier was classified external, so a dangling reference was invisible in a dimension worth
+ * 0.3 — the class map resolved what it could and silently shrugged at the rest.
+ */
+export function javaMissesInTree(index: JavaClassIndex, source: string): boolean {
+  const base = source.endsWith('.*') ? source.slice(0, -2) : source;
+  const segments = base.split('.');
+  // Walk the prefixes from the longest down: if any of them is a type or a package we know, the
+  // name we failed to find belongs inside the repository.
+  for (let cut = segments.length - 1; cut > 0; cut -= 1) {
+    const prefix = segments.slice(0, cut).join('.');
+    if (index.byFqn.has(prefix) || index.byPackage.has(prefix)) return true;
+  }
+  return false;
+}
+
 /** Looks an import up in the in-tree map. A miss returns null and is NOT a verdict. */
 export function javaResolve(
   index: JavaClassIndex,
@@ -73,7 +94,13 @@ export function javaResolve(
   const base = wildcard ? source.slice(0, -2) : source;
 
   if (wildcard) {
-    // `import a.b.*;` is package-scoped; `import static a.b.C.*;` is type-scoped.
+    // `import a.b.*;` is package-scoped; `import static a.b.C.*;` is type-scoped. Asking the
+    // package first meant a static wildcard landed on a *nested package* that shares the type's
+    // name (com.a.Bar → the package com.a.Bar) instead of on the type itself.
+    if (isStatic) {
+      const fromType = index.byFqn.get(base);
+      if (fromType) return fromType;
+    }
     const fromPackage = index.byPackage.get(base)?.[0];
     if (fromPackage) return fromPackage;
     return isStatic ? index.byFqn.get(base) ?? null : null;

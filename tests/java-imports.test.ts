@@ -59,16 +59,19 @@ const UTIL = 'package com.example.dep;\n\npublic class Util {\n  public int use(
 const BAR_PATH = 'src/main/java/com/example/foo/Bar.java';
 const MAIN_PATH = 'src/main/java/com/example/app/Main.java';
 
-function writeJavaRepo(dir: string): void {
-  const files: Array<[string, string]> = [
-    [BAR_PATH, BAR],
-    ['src/main/java/com/example/dep/Util.java', UTIL],
-    [MAIN_PATH, MAIN],
-  ];
-  for (const [rel, content] of files) {
+function writeJavaFiles(dir: string, files: Record<string, string>): void {
+  for (const [rel, content] of Object.entries(files)) {
     mkdirSync(join(dir, dirname(rel)), { recursive: true });
     writeFileSync(join(dir, rel), content);
   }
+}
+
+function writeJavaRepo(dir: string): void {
+  writeJavaFiles(dir, {
+    [BAR_PATH]: BAR,
+    'src/main/java/com/example/dep/Util.java': UTIL,
+    [MAIN_PATH]: MAIN,
+  });
 }
 
 async function buildJavaRepo(): Promise<{ db: Database.Database; dir: string }> {
@@ -241,5 +244,54 @@ describe('java exported semantics and edges', () => {
       db.close();
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe('a Java import whose package is here but whose class is not', () => {
+  const DANGLING_MAIN = 'src/main/java/com/example/app/Main.java';
+
+  it('is broken, not external — the class was renamed or deleted in-tree', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'deepindex-java-dangling-'));
+    try {
+      writeJavaFiles(dir, {
+        'src/main/java/com/example/foo/Bar.java': 'package com.example.foo;\npublic class Bar {}\n',
+        [DANGLING_MAIN]:
+          'package com.example.app;\nimport com.example.foo.Gone;\nimport java.util.List;\npublic class Main { Gone g; List<String> l; }\n',
+      });
+      const db = initDb(join(dir, '.db'));
+      await buildGraph(db, dir);
+
+      // com.example.foo exists in this repository, so a miss inside it is a real dangling
+      // reference — before this, every non-relative Java specifier was external and a renamed
+      // class was invisible in a dimension worth 0.3.
+      expect(importRow(db, DANGLING_MAIN, 'com.example.foo.Gone')).toMatchObject({
+        resolved: 0,
+        external: 0,
+        target: null,
+      });
+      // A package we have never seen stays external.
+      expect(importRow(db, DANGLING_MAIN, 'java.util.List')).toMatchObject({ resolved: 1, external: 1 });
+
+      const report = getHealth(db);
+      expect(report.issues.filter((i) => i.type === 'broken_import')).toHaveLength(1);
+      db.close();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('static wildcard resolution order', () => {
+  it('resolves `import static com.a.Bar.*` to the type, not to the nested package', async () => {
+    const { buildJavaClassIndex, javaResolve } = await import('../src/graph/java-resolve.js');
+    // Both exist: a class com.a.Bar, and a package com.a.Bar (home of the nested class X).
+    const index = buildJavaClassIndex([
+      { fqn: 'com.a.Bar', relPath: 'src/com/a/Bar.java' },
+      { fqn: 'com.a.Bar.X', relPath: 'src/com/a/Bar/X.java' },
+    ]);
+    // Static wildcards are type-scoped, so the type wins; a plain `import com.a.Bar.*;` is
+    // package-scoped and still finds the package.
+    expect(javaResolve(index, 'com.a.Bar.*', true)).toBe('src/com/a/Bar.java');
+    expect(javaResolve(index, 'com.a.Bar.*', false)).toBe('src/com/a/Bar/X.java');
   });
 });

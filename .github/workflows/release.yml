@@ -31,7 +31,9 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       id-token: write   # npm trusted publishing (OIDC) + provenance — no token secret
-      contents: write   # gh release create; with `read` it fails 403 even after a good publish
+      # contents: read — this job installs dependency scripts; it must not be able to write to the
+      # repository. Creating the release is a separate job below, with only the privilege it needs.
+      contents: read
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -70,13 +72,19 @@ jobs:
           cat "$NPM_CONFIG_USERCONFIG" 2>/dev/null || echo "(none)"
           echo "=== auth-related lines from the npm debug log:"
           grep -ihE "oidc|id.?token|eneedauth|need auth|trusted" /home/runner/.npm/_logs/*-debug-0.log 2>/dev/null | cut -c1-160 | head -40 || true
+  release:
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # gh release create, and nothing else
+    steps:
       - name: GitHub release from the tag
-        # Gate on THIS version, not on a literal string. The packument carries every
-        # published version, so `grep -q '"0.3.4"'` is true forever once 0.3.4 shipped —
-        # it was not a gate at all.
+        # Gate on THIS version as a key of the registry's versions map. The whole packument was
+        # searched before, so the literal `"0.3.4"` kept matching forever once 0.3.4 shipped, and
+        # a release was cut even when its own publish had failed.
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          curl -fsSL https://registry.npmjs.org/deepindex | grep -q "\"$VERSION\""
+          curl -fsSL https://registry.npmjs.org/deepindex | grep -qE "\"$VERSION\"[[:space:]]*:"
           gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

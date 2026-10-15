@@ -242,6 +242,14 @@ program
       }
 
       const reportFlags = [opts.fromVitest, opts.fromEslint, opts.fromJunit].filter(Boolean);
+      if (reportFlags.length > 1) {
+        // Two flags would merge two reports into one reading and label the source with whichever
+        // happened to run last. Refuse instead of lying about where the numbers came from.
+        console.error(
+          'deepindex signal: pass at most one report flag (one report per run)'
+        );
+        process.exit(2);
+      }
       if (opts.reset && (Object.keys(pairs).length > 0 || reportFlags.length > 0)) {
         console.error(
           'deepindex signal: --reset cannot be combined with signals or a report flag'
@@ -294,7 +302,12 @@ program
                 .filter((name) => name.endsWith('.xml'))
                 .map((name) => join(path, name))
             : [path];
-          if (files.length === 0) throw new TypeError(path + ' contains no .xml reports');
+          if (files.length === 0) {
+            // The same class as a missing path: there is nothing to read. USAGE says 2, and an
+            // empty Vitest report already exits 2.
+            console.error('deepindex signal: ' + path + ' contains no .xml reports');
+            process.exit(2);
+          }
           let total = 0;
           let pass = 0;
           for (const file of files) {
@@ -873,7 +886,10 @@ program
             return;
           }
           console.error(`deepindex embed: ${check.message}`);
-          process.exit(0);
+          // The caller explicitly asked for the model; a configuration that says it lives
+          // elsewhere and is wrong is a usage error, not a graceful degradation. Exit 0 here told
+          // CI the bootstrap had succeeded.
+          process.exit(2);
         }
         try {
           await fetchModel(model);

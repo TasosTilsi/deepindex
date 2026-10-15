@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto';
 import { parseFile } from './parse.js';
 import { isExternalSpecifier, resolveImport } from './resolve.js';
 import { ignoredDirs } from './ignore.js';
-import { buildJavaClassIndex, javaFqnFor } from './java-resolve.js';
+import { buildJavaClassIndex, javaFqnFor, javaMissesInTree } from './java-resolve.js';
 import { REPARSE_REQUIRED_KEY } from './db.js';
 import { extractSql } from '../parser/sql-extractor.js';
 import { EXT_TO_LANG, langForExt } from '../parser/languages.js';
@@ -192,6 +192,17 @@ export async function buildGraph(
       }
 
       if (isExternalSpecifier(imp.source)) {
+        // A Java specifier can point into the tree and still miss: the package is here, the class
+        // is not. That is a broken import, not a dependency (found in the pre-release review).
+        if (
+          javaIndex &&
+          langForExt(extname(relPath)) === 'java' &&
+          javaMissesInTree(javaIndex, imp.source)
+        ) {
+          insertImport.run(fileId, imp.source, null, 0, 0);
+          brokenImportCount++;
+          continue;
+        }
         // No in-repo target exists by definition. Recorded as resolved AND flagged
         // external so nothing downstream reads it as a broken import (issue #8). Its
         // resolved_file_id stays NULL, which is what every edge consumer filters on.
