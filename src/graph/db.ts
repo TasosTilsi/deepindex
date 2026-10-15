@@ -156,6 +156,22 @@ CREATE INDEX IF NOT EXISTS idx_embeddings_meta_source
 // corpus rebuild per query. Same lifecycle as the vector: refreshed on every
 // re-embed, so snippet staleness == vector staleness. Fresh v6 DBs get them
 // from the CREATE TABLE above; pre-existing v6 DBs via the idempotent ladder.
+/** Consumed by buildGraph: the store's stored classifications predate the current code. */
+export const REPARSE_REQUIRED_KEY = 'schema_reparse_required';
+
+/** Marks the store for one forced re-parse. Never fatal: a database without the metadata table
+ *  predates it, and the caller's build simply stays incremental. */
+function markStoreStale(db: Database.Database): void {
+  try {
+    db.prepare('INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)').run(
+      REPARSE_REQUIRED_KEY,
+      String(Date.now())
+    );
+  } catch {
+    // no metadata table: nothing to mark
+  }
+}
+
 function addColumnIfMissing(db: Database.Database, table: string, column: string, ddl: string): void {
   const cols = db.pragma(`table_info(${table})`) as { name: string }[];
   if (!cols.some((c) => c.name === column)) {
@@ -260,6 +276,14 @@ export function initDb(dbPath: string): Database.Database {
   const v = db.pragma('user_version', { simple: true }) as number;
   if (v < SCHEMA_VERSION) {
     db.pragma(`user_version = ${SCHEMA_VERSION}`);
+    // Issues #8/#16, and the upgrade path both release reviews flagged: a schema bump can change
+    // what a STORED value means (imports.external, the resolved flags, a symbol's kind). The hash
+    // cache would otherwise keep the old rows forever — an incremental run re-classifies nothing
+    // and the score stays wrong, while user_version says the store is current. Marking it stale
+    // here lets the next build re-parse once, whichever entry point runs it (the CLI, install, a
+    // hook, the watcher, repair), instead of only when someone remembers `--rebuild`.
+    // RULE: bump SCHEMA_VERSION whenever a stored classification changes meaning.
+    if (v > 0) markStoreStale(db);
   }
   _db = db;
   return db;

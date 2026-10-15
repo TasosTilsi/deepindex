@@ -6,6 +6,7 @@ import { parseFile } from './parse.js';
 import { isExternalSpecifier, resolveImport } from './resolve.js';
 import { ignoredDirs } from './ignore.js';
 import { buildJavaClassIndex, javaFqnFor } from './java-resolve.js';
+import { REPARSE_REQUIRED_KEY } from './db.js';
 import { extractSql } from '../parser/sql-extractor.js';
 import { EXT_TO_LANG, langForExt } from '../parser/languages.js';
 
@@ -85,6 +86,23 @@ export async function buildGraph(
   let symbolCount = 0;
   let brokenImportCount = 0;
   const javaEntries: Array<{ fqn: string; relPath: string }> = [];
+  // Issues #8/#16: an upgraded store carries rows the current classifier would decide
+  // differently (a node: builtin stored as broken, a ./db.js that now resolves). The hash cache
+  // would skip every unchanged file, so the verdicts would stay wrong indefinitely — and the
+  // score with them. Consume the migration marker so this build re-parses everything, once.
+  let reparseRequired = false;
+  try {
+    reparseRequired = Boolean(
+      db.prepare('SELECT value FROM metadata WHERE key = ?').get(REPARSE_REQUIRED_KEY)
+    );
+  } catch {
+    // A database without the metadata table predates it: nothing to consume.
+  }
+  if (reparseRequired) {
+    console.error(
+      'deepindex: the index schema changed — re-parsing every file once so stored classifications match the current code'
+    );
+  }
   const changedFiles: string[] = [];
   const needsParse: Array<{ relPath: string; fileId: number; content: string; absPath: string; ext: string }> = [];
 
@@ -103,7 +121,7 @@ export async function buildGraph(
 
     const existing = getFileHash.get(relPath) as { hash: string } | undefined;
 
-    if (existing && existing.hash === hash && !opts.force) {
+    if (existing && existing.hash === hash && !opts.force && !reparseRequired) {
       continue;
     }
 
@@ -206,6 +224,14 @@ export async function buildGraph(
   // to each exported symbol of target file. Cheap approximation of symbol-level
   // import resolution; enough for BFS.
   buildFileLevelEdges(db);
+
+  if (reparseRequired) {
+    try {
+      db.prepare('DELETE FROM metadata WHERE key = ?').run(REPARSE_REQUIRED_KEY);
+    } catch {
+      // nothing to clear
+    }
+  }
 
   return {
     fileCount,
