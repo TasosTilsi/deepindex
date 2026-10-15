@@ -3,6 +3,7 @@ import { dirname, extname, join, relative, resolve } from 'node:path';
 import { langForExt } from '../parser/languages.js';
 import type { JavaClassIndex } from './java-resolve.js';
 import { javaResolve } from './java-resolve.js';
+import { pythonResolve } from './python-resolve.js';
 
 const EXT_TRY = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs'];
 
@@ -55,6 +56,13 @@ export function resolveImport(
   knownFiles: ReadonlyArray<{ absPath: string }>,
   ctx: ResolveContext = {}
 ): string | null {
+  // Issue #20: a Python specifier is a package path, not a filesystem path — a leading dot is a
+  // package level, not `./`. It must be handled before the relative-candidate logic below, which
+  // would otherwise send `..pkg.mod` looking for a file literally named that.
+  if (langForExt(extname(fromFile)) === 'python') {
+    return pythonResolve(repoRoot, fromFile, importSource);
+  }
+
   // External / bare module — not resolvable in our graph (see isExternalSpecifier),
   // with one exception: for a Java source a non-relative specifier may be an in-tree
   // FQN. Consulted BEFORE any external classification, because in a multi-module Maven

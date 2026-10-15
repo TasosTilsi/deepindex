@@ -293,6 +293,31 @@ function nodeToSymbol(
 }
 
 function collectImports(node: SyntaxNode, out: ParsedImport[], langKey: string): void {
+  // Issue #20. Python's imports carry no `source` field: `import a.b, c.d` has one `dotted_name`
+  // per module (an `aliased_import` when there is an `as`), and `from .mod import x` is an
+  // `import_from_statement` whose `module_name` field is a `relative_import` or a `dotted_name` —
+  // its other `dotted_name` children are the imported NAMES, so the field is the only safe reading.
+  // Shapes measured against the grammar; before this branch Python produced no import rows at all,
+  // which is why setting its export flag alone would have changed nothing.
+  if (
+    langKey === 'python' &&
+    (node.type === 'import_statement' || node.type === 'import_from_statement')
+  ) {
+    if (node.type === 'import_statement') {
+      for (const child of node.namedChildren) {
+        if (child.type === 'dotted_name') out.push({ source: child.text });
+        else if (child.type === 'aliased_import') {
+          // `import pkg.mod as m` names pkg.mod; the alias is not part of the path.
+          out.push({ source: child.text.replace(/\s+as\s+[\s\S]*$/, '') });
+        }
+      }
+      return;
+    }
+    const module = node.childForFieldName('module_name');
+    if (module) out.push({ source: module.text });
+    return;
+  }
+
   if (node.type === 'import_statement') {
     const src = node.childForFieldName('source');
     if (src) {

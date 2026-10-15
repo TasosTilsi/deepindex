@@ -342,6 +342,12 @@ Two guarantees worth knowing:
 - **It is idempotent.** A second run adds nothing: same config, same gitignore, same scripts,
   and the instructions text is marker-guarded so it can never be duplicated.
 
+| Language | Import forms the resolver understands |
+| --- | --- |
+| TypeScript / JavaScript | `import`/`export`, relative and bare, with the NodeNext emitted-extension mapping (`.js` → `.ts`) |
+| Java | `import a.b.C;`, `import static a.b.C.m;`, `import a.b.*;`, and default-package (`import C;`) |
+| Python | `import pkg.mod`, `import a.b as m`, `from .pkg import x` (dots climb packages from the module's own package). Roots: the repository root and `src/` |
+
 | Harness | What's installed |
 |---------|------------------|
 | Claude Code | root `.mcp.json` — MCP server + `.claude/settings.json` — 4 hooks (SessionStart, UserPromptSubmit, PostToolUse, SessionEnd) |

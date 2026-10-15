@@ -43,6 +43,9 @@ export const LANGUAGE_CONFIGS: Record<string, LanguageConfig> = {
       'function_definition': 'method',
     },
     nameFields: ['name'],
+    // Issue #20: Python has no visibility keyword, so anything defined at module level is
+    // importable. Without this every Python symbol was `exported = 0`.
+    exportedByDefault: true,
   },
   java: {
     wasmFile: 'tree-sitter-java.wasm',

@@ -108,7 +108,17 @@ Version bumped, not yet tagged or published. Closes the fifteen issues opened af
   deepindex's hooks. When the four hook events already exist they are named on stderr before
   being replaced. (#19)
 
-### Changed
+### Added
+
+- **Python imports are extracted and resolved.** Python produced no import rows at all: the
+  extractor read the JS/TS `import_statement` `source` field and Java's `import_declaration`, and
+  Python's imports are neither — `import a.b, c.d` carries one `dotted_name` per module, and
+  `from .mod import x` is an `import_from_statement` whose `module_name` field is a
+  `relative_import`. A specifier is now resolved as a package path: `import pkg.mod` against the
+  repository root and a `src/` layout, `from ..pkg import x` by climbing one package per leading dot
+  from the module's own package. A relative miss is broken; `import os` stays external. Python
+  symbols also report `exported`, since the language has no visibility keyword. (#20)
+
 
 - **A warning count can no longer change the lint signal.** `signal --from-eslint` mapped ESLint
   to `errors / (errors + warnings)`, which the reader turns into `lint_factor = 1 - value`. One
