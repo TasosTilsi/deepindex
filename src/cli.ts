@@ -3,7 +3,12 @@ import { Command } from 'commander';
 import { buildGraph } from './graph/build.js';
 import { initDb } from './graph/db.js';
 import { cacheStats, cacheDelete } from './cache.js';
-import { getHealth, loadConfig, DEFAULT_HEALTH_CONFIG } from './health.js';
+import {
+  DEFAULT_HEALTH_CONFIG,
+  DEFAULT_ISSUE_LIMIT,
+  getHealth,
+  loadConfig,
+} from './health.js';
 import { retrieve, DEFAULT_TOP_K } from './retrieve.js';
 import { repair } from './repair.js';
 import { createWatcher } from './watcher.js';
@@ -11,9 +16,33 @@ import { serve } from './serve.js';
 import { adaptClaudeCode } from './adapter-claude-code.js';
 import { projectFullGraph, validateProjection } from './graph/projection.js';
 import { getImpact, findParallelStorage } from './graph/sql-impact.js';
-import { syncRequirements } from './requirements/sync.js';
+import { syncRequirements, upsertRequirements } from './requirements/sync.js';
+import {
+  ImportUsageError,
+  loadRequirementsExport,
+  renderImport,
+} from './requirements/import-verb.js';
+import {
+  applySignals,
+  computeSignals,
+  SignalUsageError,
+  type SignalInput,
+} from './signal.js';
+import {
+  appendGuidance,
+  askGuidance,
+  backupFiles,
+  existingTargets,
+  guardClaudeSettings,
+  guidanceTarget,
+  scaffoldRepo,
+} from './scaffold.js';
+import {
+  normalizeRequirements,
+  type NormalizeReport,
+  type RequirementFormat,
+} from './requirements/sources.js';
 import { calculateReqCoverage } from './requirements/coverage.js';
-import { initRequirementsDb } from './requirements/setup.js';
 import { gitIndex, gitSync, syncSafe, type IndexResult } from './git/indexer.js';
 import { searchEntities, type SearchHit } from './git/search.js';
 import { hybridSearch, type HybridHit } from './semantic/search-hybrid.js';
@@ -31,12 +60,13 @@ import {
   loadRealEmbedder,
   modelCacheDir,
   resolveModelName,
+  checkModelPath,
   SemanticUnavailableError,
 } from './semantic/embedder.js';
 import { loadSemanticConfig } from './semantic/config.js';
 import { readVersion } from './version.js';
-import { resolve, basename, join } from 'node:path';
-import { existsSync } from 'node:fs';
+import { basename, join, relative, resolve } from 'node:path';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import type Database from 'better-sqlite3';
 
 const program = new Command();
@@ -147,7 +177,9 @@ program
   .description('Print JSON health report for a repository index')
   .argument('<repo>', 'path to repository root')
   .option('-d, --db <path>', 'SQLite database path', '.deepindex.db')
-  .action((repo: string, opts: { db: string }) => {
+  .option('--issues-limit <n>', 'maximum issues to return', String(DEFAULT_ISSUE_LIMIT))
+  .option('--issues-offset <n>', 'issues to skip, for paging', '0')
+  .action((repo: string, opts: { db: string; issuesLimit: string; issuesOffset: string }) => {
     const repoPath = resolve(repo);
     const dbPath = resolve(opts.db);
     if (!existsSync(dbPath)) {
@@ -158,10 +190,20 @@ program
       console.error(`deepindex health: repository not found: ${repoPath}`);
       process.exit(2);
     }
+    const issueLimit = Number.parseInt(opts.issuesLimit, 10);
+    if (!Number.isFinite(issueLimit) || issueLimit < 0) {
+      console.error(`deepindex health: invalid --issues-limit: ${opts.issuesLimit}`);
+      process.exit(2);
+    }
+    const issueOffset = Number.parseInt(opts.issuesOffset, 10);
+    if (!Number.isFinite(issueOffset) || issueOffset < 0) {
+      console.error(`deepindex health: invalid --issues-offset: ${opts.issuesOffset}`);
+      process.exit(2);
+    }
     const config = loadConfig(repoPath) ?? DEFAULT_HEALTH_CONFIG;
     const db = initDb(dbPath);
     try {
-      const report = getHealth(db, { config });
+      const report = getHealth(db, { config, issueLimit, issueOffset });
       console.log(JSON.stringify(report, null, 2));
       process.exit(report.score >= config.repairBelow ? 0 : 1);
     } catch (err) {
@@ -170,6 +212,48 @@ program
       process.exit(2);
     }
   });
+
+program
+  .command('signal')
+  .description('Record test/lint signals into the health store')
+  .argument('[signals...]', 'key=value pairs, e.g. tests_pass=148 tests_total=150')
+  .option('-d, --db <path>', 'SQLite database path', '.deepindex.db')
+  .option('--from-vitest <path>', 'parse a vitest JSON report (--reporter=json)')
+  .option('--from-eslint <path>', 'parse an ESLint JSON report (-f json)')
+  .option('--from-junit <path>', 'parse a JUnit XML file, or a directory of them')
+  .option('--reset', 'delete every stored signal', false)
+  .action(
+    (
+      signalArgs: string[],
+      opts: {
+        db: string;
+        fromVitest?: string;
+        fromEslint?: string;
+        fromJunit?: string;
+        reset: boolean;
+      }
+    ) => {
+      // Issue #21: the work lives in src/signal.ts, which the tests can call in-process. The
+      // action keeps only the process plumbing — a usage error exits 2, anything else 1 — so the
+      // behaviour the spawn tests assert is unchanged.
+      let input: SignalInput;
+      try {
+        input = computeSignals(signalArgs, opts, opts.reset);
+      } catch (err) {
+        if (err instanceof SignalUsageError) {
+          console.error(`deepindex signal: ${err.message}`);
+          process.exit(2);
+        }
+        const message = err instanceof Error ? err.message : String(err);
+        console.error(`deepindex signal: ${message}`);
+        process.exit(1);
+      }
+
+      withDb('signal', opts, (db) => {
+        console.log(applySignals(db, { ...input, reset: opts.reset }));
+      });
+    }
+  );
 
 program
   .command('repair')
@@ -251,6 +335,63 @@ program
     }
   });
 
+  const requirements = program
+    .command('requirements')
+    .description('Import requirements from an external tracker export');
+
+  requirements
+    .command('import')
+    .description('Import requirements from a Jira/GitHub export or a deepindex JSON file')
+    .argument('<file>', 'path to the export file')
+    .option('-d, --db <path>', 'SQLite database path', '.deepindex.db')
+    .option('--format <format>', 'jira | github | deepindex', 'deepindex')
+    .option('--dry-run', 'normalise and report without writing', false)
+    .option('--json', 'emit a JSON summary', false)
+    .action(
+      async (
+        file: string,
+        opts: { db: string; format: string; dryRun: boolean; json: boolean }
+      ) => {
+        // Issue #21: the logic lives in src/requirements/import-verb.ts, which the tests call
+        // in-process. The action keeps the process plumbing: usage errors exit 2, a file that
+        // cannot be parsed or normalised exits 1, exactly as before.
+        let report: NormalizeReport;
+        try {
+          report = loadRequirementsExport(file, opts.format);
+        } catch (err) {
+          if (err instanceof ImportUsageError) {
+            console.error(`deepindex requirements import: ${err.message}`);
+            process.exit(2);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          console.error(`deepindex requirements import: ${message}`);
+          process.exit(1);
+        }
+
+        for (const warning of report.warnings) {
+          console.error(`deepindex requirements import: ${file}: ${warning}`);
+        }
+
+        if (opts.dryRun) {
+          console.log(renderImport(report, { json: opts.json, dryRun: true }));
+          return;
+        }
+
+        withDb('requirements import', opts, (db) => {
+          const { imported, atomic } = upsertRequirements(db, report.requirements);
+          console.log(
+            renderImport(report, {
+              json: opts.json,
+              dryRun: false,
+              format: opts.format,
+              imported,
+              atomic,
+            })
+          );
+        });
+      }
+    );
+
   program
     .command('sync-requirements', { hidden: true })
     .description('Index requirements from a JSON file')
@@ -263,7 +404,6 @@ program
         process.exit(2);
       }
       const db = initDb(dbPath);
-      initRequirementsDb(db);
       try {
         const { imported, atomic } = syncRequirements(db, file);
         console.log(`Indexed ${imported} requirements and ${atomic} atomic statements.`);
@@ -285,18 +425,19 @@ program
         process.exit(2);
       }
       const db = initDb(dbPath);
-      initRequirementsDb(db);
       try {
         const report = calculateReqCoverage(db);
         console.log('Requirements Coverage Report');
         console.log('==================================================');
 
-        console.log(`\\nOrphan Requirements (no linked code): ${report.orphanRequirements.length}`);
+        console.log('');
+        console.log(`Orphan Requirements (no linked code): ${report.orphanRequirements.length}`);
         for (const req of report.orphanRequirements) {
           console.log(`- [${req.id}] ${req.title}`);
         }
 
-        console.log(`\\nUntracked Code (no linked requirement): ${report.untrackedCode.length}`);
+        console.log('');
+        console.log(`Untracked Code (no linked requirement): ${report.untrackedCode.length}`);
         for (const code of report.untrackedCode) {
           console.log(`- ${code.filePath} [${code.symbol}]`);
         }
@@ -627,7 +768,22 @@ program
       // loadability once. Resolves the model from the SAME [semantic] config
       // the embed run will use, so the fetched model is the embedded model.
       if (opts.fetchModel) {
-        const model = resolveModelName(loadSemanticConfig(repoPath));
+        const cfg = loadSemanticConfig(repoPath);
+        const model = resolveModelName(cfg);
+        // Issue #6: a configured local export IS the model. Downloading anyway would
+        // be the one network call an air-gapped setup cannot make, so stop here.
+        if (cfg.modelPath) {
+          const check = checkModelPath(cfg.modelPath);
+          if (check.ok) {
+            console.log(`model_path ${check.dir} set — skipping download`);
+            return;
+          }
+          console.error(`deepindex embed: ${check.message}`);
+          // The caller explicitly asked for the model; a configuration that says it lives
+          // elsewhere and is wrong is a usage error, not a graceful degradation. Exit 0 here told
+          // CI the bootstrap had succeeded.
+          process.exit(2);
+        }
         try {
           await fetchModel(model);
           await loadRealEmbedder(model);
@@ -745,28 +901,104 @@ program
 
   program
     .command('install')
-    .description('Install DeepIndex into an AI harness (Claude Code, Codex, OpenCode)')
-    .option('--harness <name>', 'harness to install (claude-code | codex | opencode) — omit for interactive prompt')
-    .action(async (opts: { harness?: string }) => {
-      const projectRoot = process.cwd();
-      if (opts.harness) {
-        const valid: Harness[] = ['claude-code', 'codex', 'opencode', 'deepseek-harness'];
-        if (!valid.includes(opts.harness as Harness)) {
-          console.error(`deepindex install: unknown harness: ${opts.harness} (expected ${valid.join(' | ')})`);
-          process.exit(2);
+    .description('Onboard a repository: config, gitignore, scripts, harness wiring, first index')
+    .option('--harness <name>', 'harness to install (claude-code | codex | opencode | deepseek-harness) — omit for interactive prompt')
+    .option('--dry-run', 'report what would change and write nothing', false)
+    .option('--no-index', 'skip the initial index and health run')
+    .option('--no-scripts', 'do not add the di:* npm scripts')
+    .option('--guidance', 'document deepindex in CLAUDE.md/AGENTS.md without asking', false)
+    .option('--skip-guidance', 'never document it, and do not ask')
+    .action(
+      async (opts: {
+        harness?: string;
+        dryRun: boolean;
+        index: boolean;
+        scripts: boolean;
+        guidance: boolean;
+        skipGuidance?: boolean;
+      }) => {
+        const projectRoot = process.cwd();
+        const say = (line: string) => console.log(opts.dryRun ? `[dry-run] ${line}` : line);
+
+        // 1. Guard BEFORE anything writes. installClaudeSettings swallows a parse failure and
+        //    would replace the whole file, losing whatever the user had in it.
+        const guard = guardClaudeSettings(projectRoot);
+        for (const warning of guard.warnings) console.warn(`deepindex install: ${warning}`);
+        if (guard.blocked) {
+          console.error(`deepindex install: ${guard.message}`);
+          process.exit(1);
         }
-        const r = installHarness(projectRoot, opts.harness as Harness);
-        console.log(r.message);
-        return;
+
+        if (opts.harness) {
+          const valid: Harness[] = ['claude-code', 'codex', 'opencode', 'deepseek-harness'];
+          if (!valid.includes(opts.harness as Harness)) {
+            console.error(`deepindex install: unknown harness: ${opts.harness} (expected ${valid.join(' | ')})`);
+            process.exit(2);
+          }
+        }
+
+        // 2. Back up everything install may rewrite, before it rewrites it.
+        const targets = existingTargets(projectRoot);
+        const backupDir = backupFiles(projectRoot, targets, opts.dryRun);
+        if (backupDir) {
+          say(`backed up ${targets.length} file(s) -> ${relative(projectRoot, backupDir)}/`);
+        }
+
+        // 3. Harness wiring — the part install always did.
+        if (opts.dryRun) {
+          say(`would install the ${opts.harness ?? 'selected'} harness wiring`);
+        } else if (opts.harness) {
+          console.log(installHarness(projectRoot, opts.harness as Harness).message);
+        } else {
+          const results = await installInteractive(projectRoot);
+          for (const r of results) console.log(r.message);
+          if (results.length === 0) console.log('no harness selected — nothing installed');
+        }
+
+        // 4. The repo envelope: config, gitignore, npm scripts, optional CLAUDE.md nudge.
+        // Ask before touching a file a human owns. --guidance says yes, --skip-guidance says
+        // no, and a non-interactive run (CI, a pipe) is never asked: it is told how to ask.
+        const target = guidanceTarget(projectRoot, opts.harness);
+        let wantsGuidance = false;
+        if (opts.guidance) wantsGuidance = true;
+        else if (!opts.skipGuidance) {
+          const asked = await askGuidance(target);
+          wantsGuidance = asked === true;
+          if (asked === null) {
+            console.log(
+              `deepindex install: not documenting deepindex in ${target} (no terminal to ask) — re-run with --guidance to add it`
+            );
+          }
+        }
+
+        for (const action of scaffoldRepo(projectRoot, {
+          dryRun: opts.dryRun,
+          guidance: wantsGuidance ? opts.harness : null,
+          scripts: opts.scripts,
+        })) {
+          say(action);
+        }
+
+        // 5. First index + health, so the repository is usable when the command returns.
+        if (!opts.index || opts.dryRun) return;
+        const db = initDb(join(projectRoot, '.deepindex.db'));
+        try {
+          const stats = await buildGraph(db, projectRoot);
+          try {
+            gitIndex(db, projectRoot);
+          } catch {
+            // Not a git repository: the symbol graph still built, which is the point.
+          }
+          const health = getHealth(db, { config: loadConfig(projectRoot) });
+          console.log(`indexed ${stats.fileCount} files, ${stats.symbolCount} symbols — health ${health.score}`);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          console.error(`deepindex install: index failed: ${message}`);
+        } finally {
+          db.close();
+        }
       }
-      const results = await installInteractive(projectRoot);
-      for (const r of results) {
-        console.log(r.message);
-      }
-      if (results.length === 0) {
-        console.log('no harness selected — nothing installed');
-      }
-    });
+    );
 
   program
     .command('mcp')
@@ -843,6 +1075,7 @@ Additional advanced commands (hidden from this list) are available:
   data-flow:   build-graph, list-tables, find-table-usage, summarize-graph,
                analyze-impact, check-parallel-storage
   requirements: sync-requirements, check-req-coverage
+  health:       signal (feed test/lint results into the score)
   internal:    git-index, git-sync, hook
 See docs/USAGE.md 'Advanced commands' for how to use them.`);
 

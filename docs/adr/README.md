@@ -13,3 +13,4 @@ This directory records the significant architecture decisions for DeepIndex, in 
 | [0007](0007-multi-harness-install.md) | Multi-Harness Install | Accepted |
 | [0008](0008-semantic-search-deferred.md) | Semantic Search Deferred | Accepted |
 | [0009](0009-ui-dashboard.md) | UI Dashboard (React + Vite, taste-skill) | Accepted |
+| [0010](0010-semantic-retrieval.md) | Semantic Retrieval (local embeddings, hybrid search) | Accepted |

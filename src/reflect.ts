@@ -10,11 +10,26 @@ export interface VitestSummary {
   durationMs: number;
 }
 
+export interface JunitSummary {
+  total: number;
+  fail: number;
+  skip: number;
+  pass: number;
+}
+
 export interface EslintSummary {
   errors: number;
   warnings: number;
   total: number;
   files: number;
+  /**
+   * How many of the linted files reported at least one error.
+   *
+   * This is the stable severity reading: `errorCount / warningCount` is not, because a file with
+   * one error and no warnings looks worse than the same error beside a hundred warnings, and the
+   * ratio saturates.
+   */
+  filesWithErrors: number;
 }
 
 export interface CoverageSummary {
@@ -61,6 +76,7 @@ export function parseEslintJson(json: unknown): EslintSummary {
   }
   let errors = 0;
   let warnings = 0;
+  let filesWithErrors = 0;
   for (const item of json) {
     if (!item || typeof item !== 'object') {
       throw new TypeError('parseEslintJson: each result must be an object');
@@ -71,8 +87,9 @@ export function parseEslintJson(json: unknown): EslintSummary {
     }
     errors += r.errorCount;
     warnings += r.warningCount;
+    if (r.errorCount > 0) filesWithErrors += 1;
   }
-  return { errors, warnings, total: errors + warnings, files: json.length };
+  return { errors, warnings, total: errors + warnings, files: json.length, filesWithErrors };
 }
 
 interface IstanbulFileEntry {
@@ -84,6 +101,44 @@ interface IstanbulFileEntry {
   f: Record<string, number>;
 }
 
+/**
+ * Parses JUnit XML (maven-surefire, pytest --junit-xml, Gradle, dotnet, cargo-nextest
+ * all emit this de-facto schema). Only six scalar attributes matter, so a hand-rolled
+ * scan is enough and this repo needs no XML dependency.
+ *
+ * The scan requires whitespace after `testsuite` on purpose: many writers also put
+ * tests/failures counters on the `<testsuites>` root, and matching that would count
+ * every test twice.
+ */
+export function parseJunitXml(xml: string): JunitSummary {
+  const suites = xml.match(/<testsuite\s[^>]*>/g) ?? [];
+  if (suites.length === 0) {
+    throw new TypeError('parseJunitXml: no <testsuite> element found');
+  }
+  const attr = (tag: string, name: string): number => {
+    const match = tag.match(new RegExp('\\b' + name + '\\s*=\\s*"([0-9]+)"'));
+    return match?.[1] ? Number.parseInt(match[1], 10) : 0;
+  };
+  let total = 0;
+  let fail = 0;
+  let skip = 0;
+  for (const tag of suites) {
+    total += attr(tag, 'tests');
+    fail += attr(tag, 'failures') + attr(tag, 'errors');
+    skip += attr(tag, 'skipped');
+  }
+  return { total, fail, skip, pass: Math.max(0, total - fail - skip) };
+}
+
+/**
+ * Parses an istanbul/v8 coverage summary.
+ *
+ * NOTE (issue #12): the resulting line percentage is NOT wired into the health
+ * score. The `coverage` dimension is `tests_rate * lint_factor`; recording this
+ * summary under the `coverage_lines` signal key has no effect on any dimension.
+ * The parser is kept as a public helper — changing what `coverage` means is a
+ * separate decision, not a side effect of a bug fix.
+ */
 export function parseCoverageJson(json: unknown): CoverageSummary {
   if (!json || typeof json !== 'object' || Array.isArray(json)) {
     throw new TypeError('parseCoverageJson: input must be a non-null object');

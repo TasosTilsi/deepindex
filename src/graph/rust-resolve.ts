@@ -1,0 +1,84 @@
+/**
+ * Rust's module-path resolution (issue #20).
+ *
+ * Two rules make Rust unlike the other languages here:
+ *
+ * 1. **A path names an item, not a file.** `use self::local::Thing;` refers to the type `Thing`
+ *    inside the module `local`. The file to link is the longest *prefix* of the path that is a
+ *    module (`local.rs`), which is also why a miss is not automatically a verdict — only a path
+ *    whose every prefix misses is dangling.
+ * 2. **A path is spelled from a root keyword.** `crate::` is the crate root (Cargo puts it in
+ *    `src/`), `self::` is the current module's directory, `super::` is its parent, and a leading
+ *    `::` belongs to another crate entirely. A bare `a::b` in the 2018 edition is an external crate
+ *    unless a module of that name exists, so it is tried and then left to the caller.
+ *
+ * A module lives at `<path>.rs` or `<path>/mod.rs`.
+ */
+import { existsSync, statSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
+
+/** Cargo's convention: the crate root is `src/`. */
+const CRATE_ROOT = 'src';
+
+function isFile(path: string): boolean {
+  try {
+    return statSync(path).isFile();
+  } catch {
+    return false;
+  }
+}
+
+function moduleFile(repoRoot: string, stem: string): string | null {
+  for (const candidate of [`${stem}.rs`, join(stem, 'mod.rs')]) {
+    if (isFile(resolve(repoRoot, candidate))) return candidate;
+  }
+  return null;
+}
+
+/**
+ * True when a specifier that failed to resolve still points inside this crate: `crate::`, `self::`
+ * and `super::` are in-crate by construction, so a miss is a dangling reference rather than a
+ * dependency. A leading `::` is another crate, and a bare path may be one too, so both are left to
+ * the caller's external classification.
+ */
+export function rustMissesInCrate(source: string): boolean {
+  return /^(crate|self|super)(::|$)/.test(source);
+}
+
+/** The repo-relative file a Rust path names, or null when nothing in the tree matches. */
+export function rustResolve(repoRoot: string, fromFile: string, source: string): string | null {
+  if (source.startsWith('::')) return null; // another crate
+
+  const segments = source.split('::').filter(Boolean);
+  if (segments.length === 0) return null;
+
+  let base: string;
+  let rest: string[];
+  if (segments[0] === 'crate') {
+    base = CRATE_ROOT;
+    rest = segments.slice(1);
+  } else if (segments[0] === 'self') {
+    base = dirname(fromFile);
+    rest = segments.slice(1);
+  } else if (segments[0] === 'super') {
+    let dir = dirname(fromFile);
+    let index = 0;
+    while (segments[index] === 'super') {
+      dir = dirname(dir);
+      index += 1;
+    }
+    base = dir;
+    rest = segments.slice(index);
+  } else {
+    // 2018 edition: a bare path may be an external crate; try it as a module first.
+    base = CRATE_ROOT;
+    rest = segments;
+  }
+
+  // Longest prefix first: the file is the module, the last segments are items inside it.
+  for (let cutoff = rest.length; cutoff > 0; cutoff -= 1) {
+    const found = moduleFile(repoRoot, join(base, ...rest.slice(0, cutoff)));
+    if (found) return found;
+  }
+  return null;
+}

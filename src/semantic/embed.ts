@@ -42,6 +42,9 @@ export interface EmbedOptions {
   /** Explicit model override; default is config-derived (rewired in Task 2
    *  to resolveModelName(loadSemanticConfig(rootDir)), D-24). */
   model?: string;
+  /** Explicit local model directory override; default is config-derived the same
+   *  way as `model`, so no call site has to thread it (issue #6). */
+  modelPath?: string;
   /** Force re-embedding of every doc regardless of hash. */
   full?: boolean;
   /** TEST SEAM (plan 01 F-3): forwarded to ensureVecTables so tests can force
@@ -144,7 +147,8 @@ export function embedStatus(db: Database.Database, repoPath: string): EmbedStatu
   const embeddedRows = (
     db.prepare('SELECT COUNT(*) c FROM embeddings_meta').get() as { c: number }
   ).c;
-  const cached = hasCachedModel(model);
+  // A configured local export counts as available (issue #6).
+  const cached = hasCachedModel(model, cfg.modelPath);
   const vecRows = countVecRows(db);
   const available = cfg.enabled && cached && vecRows > 0;
   const lastRow = db
@@ -180,7 +184,7 @@ export async function autoEmbedStep(
   opts: { loader?: (m: string) => Promise<Embedder> } = {}
 ): Promise<void> {
   const cfg = loadSemanticConfig(repoPath) ?? DEFAULT_SEMANTIC_CONFIG;
-  if (cfg.enabled && hasCachedModel(resolveModelName(cfg))) {
+  if (cfg.enabled && hasCachedModel(resolveModelName(cfg), cfg.modelPath)) {
     const scan = stalenessScan(db, repoPath);
     if (scan.stale.length > 0) {
       await embed(db, { rootDir: repoPath, loader: opts.loader });
@@ -207,7 +211,11 @@ export async function embed(
   // bge end-to-end without ANY call site threading model — the embed verb,
   // autoEmbedStep and the sessionStart chain all call embed() with no model
   // and inherit this resolution.
-  const model = opts.model ?? resolveModelName(loadSemanticConfig(opts.rootDir));
+  const cfg = loadSemanticConfig(opts.rootDir);
+  const model = opts.model ?? resolveModelName(cfg);
+  // Same config-aware default as `model`: a repo that configures `model_path` gets it
+  // end-to-end without any caller passing it (issue #6).
+  const modelPath = opts.modelPath ?? cfg.modelPath;
   const counts = corpusCounts(corpus);
 
   // REVIEW-FIX W2: capability check moved BEFORE the empty-stale early return —
@@ -281,6 +289,7 @@ export async function embed(
   // (fake injection) wins, then the loader-spy seam, then the cache gate —
   // an empty cache refuses with FETCH_MODEL_COMMAND (D-23).
   const embedder = await getEmbedder(model, {
+    modelPath,
     embedder: opts.embedder,
     loader: opts.loader,
   });

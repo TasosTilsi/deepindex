@@ -22,11 +22,15 @@ describe('git walker', () => {
     expect(commits[commits.length - 1].message).toContain('div');
   });
 
-  it('skips merge commits', () => {
-    const commits = walkCommits(FIXTURE);
-    for (const c of commits) {
-      expect(c.message.startsWith('Merge ')).toBe(false);
-    }
+  // The merge-commit behaviour lives in tests/git-walker-merge.test.ts. The version that
+  // used to sit here asserted over a fixture that contains no merges at all, so it could
+  // never fail (issue #3); the replacement builds one and checks both directions.
+
+  it('fetches a diff and file list for the root commit, which has no parent', () => {
+    const root = walkCommits(FIXTURE)[0];
+    expect(root.parentSha).toBeNull();
+    expect(fetchDiff(FIXTURE, root.sha, root.parentSha).length).toBeGreaterThan(0);
+    expect(fetchFilesChanged(FIXTURE, root.sha, root.parentSha)).toContain('src/version.ts');
   });
 
   it('populates commit metadata', () => {

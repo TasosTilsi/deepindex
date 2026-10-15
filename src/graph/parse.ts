@@ -2,7 +2,7 @@ import { Parser, Language, type Node as SyntaxNode } from 'web-tree-sitter';
 import { readFileSync, existsSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { LANGUAGE_CONFIGS, langForExt, type NormalizedKind } from '../parser/languages.js';
+import { LANGUAGE_CONFIGS, langForExt, type LanguageConfig, type NormalizedKind } from '../parser/languages.js';
 
 export interface ParsedSymbol {
   name: string;
@@ -19,6 +19,8 @@ export interface ParsedSymbol {
 
 export interface ParsedImport {
   source: string;
+  /** Java only: `import static a.b.C.member;` — the last segment is a member. */
+  isStatic?: boolean;
 }
 
 export interface ParseResult {
@@ -93,7 +95,7 @@ export async function parseFile(
     const imports: ParsedImport[] = [];
 
     collectSymbols(tree.rootNode, symbols, langKey);
-    collectImports(tree.rootNode, imports);
+    collectImports(tree.rootNode, imports, langKey);
 
     return { symbols, imports };
   } catch (e) {
@@ -220,6 +222,33 @@ function calculateComplexity(node: SyntaxNode): number {
   return count;
 }
 
+/**
+ * Issue #13: a language without an `export` keyword never produces an
+ * `export_statement`, so its symbols stayed exported = false and the edge builder —
+ * which needs an exported symbol on both sides — skipped every one of its files. A
+ * Java member is importable unless it is private.
+ */
+function isExportedByDefault(node: SyntaxNode, config: LanguageConfig, name: string): boolean {
+  // Two languages decide visibility by the NAME rather than by a modifier: Go exports what is
+  // capitalised, Dart hides what starts with an underscore.
+  if (config.exportedByCapitalisation) return /^[A-Z]/.test(name);
+  if (config.hiddenByPrefix) return !name.startsWith(config.hiddenByPrefix);
+  // Rust is the inverse case: `pub` marks what is importable, so no modifier means private.
+  // Reading it with the Java rule would have exported every private item in the crate.
+  if (config.exportedByVisibility) {
+    const visibility = node.namedChildren.find((child) => child.type === 'visibility_modifier');
+    return visibility ? visibility.text.trim().startsWith(config.exportedByVisibility) : false;
+  }
+  if (!config.exportedByDefault) return false;
+  const modifiers =
+    node.childForFieldName('modifiers') ?? node.namedChildren.find((c) => c.type === 'modifiers');
+  if (modifiers) return !/\bprivate\b/.test(modifiers.text);
+  // C and C++ mark the file-scope symbols with `static` where Java uses `private`.
+  const storage = node.namedChildren.find((c) => c.type === 'storage_class_specifier');
+  if (storage) return !/\bstatic\b/.test(storage.text);
+  return true;
+}
+
 function nodeToSymbol(
   node: SyntaxNode,
   langKey: string,
@@ -250,7 +279,9 @@ function nodeToSymbol(
   if (!name) {
     // Fallback: some grammars (kotlin, dart, etc.) name declarations via a
     // type_identifier/identifier child rather than a `name` field.
-    const id = node.namedChildren.find((c) => c.type === 'type_identifier' || c.type === 'identifier');
+    const id = node.namedChildren.find(
+      (c) => c.type === 'type_identifier' || c.type === 'identifier' || c.type === 'simple_identifier'
+    );
     if (id) name = id.text;
   }
 
@@ -271,13 +302,209 @@ function nodeToSymbol(
     kind: config.nodeMap[node.type] || 'unknown',
     startLine: node.startPosition.row,
     endLine: node.endPosition.row,
-    exported: false,
+    exported: isExportedByDefault(node, config, name),
     complexity: calculateComplexity(node),
     docstring: extractDocstring(docNode),
   };
 }
 
-function collectImports(node: SyntaxNode, out: ParsedImport[]): void {
+function collectImports(node: SyntaxNode, out: ParsedImport[], langKey: string): void {
+  // Issue #20. Python's imports carry no `source` field: `import a.b, c.d` has one `dotted_name`
+  // per module (an `aliased_import` when there is an `as`), and `from .mod import x` is an
+  // `import_from_statement` whose `module_name` field is a `relative_import` or a `dotted_name` —
+  // its other `dotted_name` children are the imported NAMES, so the field is the only safe reading.
+  // Shapes measured against the grammar; before this branch Python produced no import rows at all,
+  // which is why setting its export flag alone would have changed nothing.
+  // Issue #20, Kotlin and Scala: the package-plus-dotted-import shape Java has, under their own
+  // node names. Scala spells its wildcard `_`, rewritten to the `*` the shared resolver understands;
+  // `import a.b.{C, D}` is read down to its package, which is the module that exists on disk.
+  if (langKey === 'kotlin' && node.type === 'import_header') {
+    const dotted = node.namedChildren
+      .filter((child) => child.type === 'identifier')
+      .map((child) => child.text)
+      .join('.');
+    if (dotted) {
+      // `import a.b.*` carries the star as its own token, outside the identifier child.
+      out.push({ source: /\*$/.test(node.text.trim()) ? `${dotted}.*` : dotted });
+    }
+    return;
+  }
+  if (langKey === 'scala' && node.type === 'import_declaration') {
+    const path = node.childForFieldName('path');
+    const segments = [path, ...node.namedChildren.filter((child) => child.type === 'identifier')]
+      .filter((child) => child !== null && child !== undefined)
+      .map((child) => (child as { text: string }).text)
+      .filter((text, index, all) => all.indexOf(text) === index);
+    if (segments.length > 0) {
+      // `import a.b._` carries the underscore as its own token, outside the identifier children.
+      const wildcard = /(^|\.)_\s*$/.test(node.text.trim().replace(/[;\s]+$/, ''));
+      out.push({ source: wildcard ? `${segments.join('.')}.*` : segments.join('.') });
+    }
+    return;
+  }
+
+  // Issue #20, C#. `using System.Text;` is a `using_directive` whose namespace is a `qualified_name`
+  // child; the alias form (`using S = System.String;`) carries the alias as an `identifier` and the
+  // namespace as that same child, so the child is the thing to read.
+  if (langKey === 'c_sharp' && node.type === 'using_directive') {
+    const qualified = node.namedChildren.find((child) => child.type === 'qualified_name');
+    if (qualified) out.push({ source: qualified.text });
+    return;
+  }
+
+  // Issue #20, Swift, PHP and Elixir. Each was measured against its grammar: Swift's `import` is an
+  // `import_declaration` whose identifier child names a module; PHP's `require`/`include` family are
+  // four node types whose argument is a `string` (the `__DIR__ . '/x.php'` form is a
+  // binary_expression, which is a path the parser cannot know); Elixir's `alias` and `import` are
+  // `call`s whose `arguments` hold the dotted module.
+  if (langKey === 'swift' && node.type === 'import_declaration') {
+    const identifier = node.namedChildren.find((child) => child.type === 'identifier');
+    if (identifier) out.push({ source: identifier.text });
+    return;
+  }
+  if (
+    langKey === 'php' &&
+    (node.type === 'require_expression' ||
+      node.type === 'require_once_expression' ||
+      node.type === 'include_expression' ||
+      node.type === 'include_once_expression')
+  ) {
+    const literal = node.namedChildren.find((child) => child.type === 'string');
+    if (literal) out.push({ source: literal.text.replace(/^['"]|['"]$/g, '') });
+    return;
+  }
+  if (langKey === 'elixir' && node.type === 'call') {
+    const name = node.namedChildren.find((child) => child.type === 'identifier');
+    const args = node.namedChildren.find((child) => child.type === 'arguments');
+    const module = args?.namedChildren.find((child) => child.type === 'alias');
+    if ((name?.text === 'alias' || name?.text === 'import') && module) {
+      out.push({ source: module.text });
+    }
+    // No early return: Elixir nests these calls inside a `defmodule ... do_block`, and returning
+    // here skipped every alias and import in the file. (Third time this shape bit: the descent is
+    // at the end of this function, so any `return` on a node that can contain the interesting ones
+    // silently swallows them.)
+  }
+
+  // Issue #20, Go. `import_spec` carries the quoted package path in its `path` field; a
+  // single-import declaration (`import "fmt"`) has the literal directly.
+  // Gated on the node types on purpose: this function recurses at its END, so an ungated `return`
+  // for a language swallows the whole walk — which is how the first version of this branch produced
+  // no Go imports at all.
+  if (langKey === 'go' && (node.type === 'import_spec' || node.type === 'import_declaration')) {
+    if (node.type === 'import_spec') {
+      const literal = node.childForFieldName('path');
+      if (literal) out.push({ source: literal.text.replace(/^"|"$/g, '') });
+    } else if (!node.namedChildren.some((child) => child.type === 'import_spec_list')) {
+      // `import "fmt"` — the only form whose literal is a DIRECT child of the declaration.
+      const literal = node.namedChildren.find((child) => child.type === 'interpreted_string_literal');
+      if (literal) out.push({ source: literal.text.replace(/^"|"$/g, '') });
+    }
+    // Deliberately no early return: this function descends at its END, and an `import_declaration`
+    // CONTAINS the `import_spec` nodes. Returning here visited neither of them.
+  }
+
+  // Issue #20, Lua and Bash. Both are calls: `require('mod.sub')` is a `function_call` named
+  // `require`, and `source ./x.sh` a `command` named `source` (or `.`) with the path as its
+  // argument.
+  if (langKey === 'lua' && node.type === 'function_call') {
+    const name = node.childForFieldName('name');
+    const args = node.childForFieldName('arguments');
+    if (name?.text !== 'require' || !args) return;
+    const literal = args.namedChildren.find((child) => child.type === 'string');
+    if (literal) out.push({ source: literal.text.replace(/^['"]|['"]$/g, '') });
+    return;
+  }
+  if ((langKey === 'bash' || langKey === 'sh') && node.type === 'command') {
+    const name = node.childForFieldName('name');
+    if (name?.text !== 'source' && name?.text !== '.') return;
+    const argument = node.childForFieldName('argument');
+    if (argument) out.push({ source: argument.text });
+    return;
+  }
+
+  // Issue #20, Dart. The quoted URI sits under an `import_or_export`; `package:` URIs name a
+  // dependency and are left to the external verdict.
+  if (langKey === 'dart' && node.type === 'import_or_export') {
+    const literal = node.descendantsOfType?.('string_literal')?.[0];
+    if (!literal) return;
+    const uri = literal.text.replace(/^['"]|['"]$/g, '');
+    if (!uri.startsWith('package:')) out.push({ source: uri });
+    return;
+  }
+
+  // Issue #20, the C family. `#include "x.h"` is a `preproc_include` whose `path` field is a
+  // string_literal; `<x.h>` is a system_lib_string and names no file in this repository, so it
+  // produces no row at all.
+  if ((langKey === 'c' || langKey === 'cpp' || langKey === 'objc') && node.type === 'preproc_include') {
+    const included = node.childForFieldName('path');
+    if (included && included.type === 'string_literal') {
+      out.push({ source: included.text.replace(/^"|"$/g, '') });
+    }
+    return;
+  }
+
+  // Issue #20, Ruby. `require_relative 'helper'` is a `call` to that method with the path in its
+  // argument list. It is normalised to `./helper` so that a miss is broken by the same rule every
+  // relative import uses; a bare `require 'json'` stays bare and is left to the external verdict.
+  if (langKey === 'ruby' && node.type === 'call') {
+    const method =
+      node.childForFieldName('method') ?? node.namedChildren.find((child) => child.type === 'identifier');
+    const args = node.childForFieldName('arguments');
+    if (!method || !args) return;
+    const literal = args.namedChildren.find((child) => child.type === 'string');
+    if (!literal) return;
+    const text = literal.text.replace(/^['"]|['"]$/g, '');
+    if (method.text === 'require_relative') {
+      out.push({ source: text.startsWith('.') ? text : `./${text}` });
+    } else if (method.text === 'require') {
+      // Kept as written: `./x` is relative to the file, anything else is a gem or the standard
+      // library and becomes an external row like `import express` or `import os` do elsewhere.
+      out.push({ source: text });
+    }
+    // No early return: this function descends at its END, and a `call` can contain nested calls.
+  }
+
+  // Issue #20, Rust. Measured shapes: `use crate::a::b;` is a `use_declaration` whose `argument`
+  // field holds the path; `use a::b::{C, D};` is a `scoped_use_list` whose text carries the braces;
+  // and `mod helpers;` is a `mod_item` naming a sibling file (`mod x { .. }` names none).
+  if (langKey === 'rust' && (node.type === 'use_declaration' || node.type === 'mod_item')) {
+    if (node.type === 'mod_item') {
+      const name = node.childForFieldName('name');
+      const inline = node.namedChildren.some((child) => child.type === 'declaration_list');
+      if (name && !inline) out.push({ source: `self::${name.text}` });
+      return;
+    }
+    const argument = node.childForFieldName('argument');
+    if (!argument) return;
+    const source = argument.text
+      .replace(/\s*::\s*\{[\s\S]*$/, '') // use a::b::{C, D};
+      .replace(/\s*::\s*\*$/, '') // use a::b::*;
+      .replace(/\s+as\s+[\s\S]*$/, '') // use a::b as c;
+      .trim();
+    if (source) out.push({ source });
+    return;
+  }
+
+  if (
+    langKey === 'python' &&
+    (node.type === 'import_statement' || node.type === 'import_from_statement')
+  ) {
+    if (node.type === 'import_statement') {
+      for (const child of node.namedChildren) {
+        if (child.type === 'dotted_name') out.push({ source: child.text });
+        else if (child.type === 'aliased_import') {
+          // `import pkg.mod as m` names pkg.mod; the alias is not part of the path.
+          out.push({ source: child.text.replace(/\s+as\s+[\s\S]*$/, '') });
+        }
+      }
+      return;
+    }
+    const module = node.childForFieldName('module_name');
+    if (module) out.push({ source: module.text });
+    return;
+  }
+
   if (node.type === 'import_statement') {
     const src = node.childForFieldName('source');
     if (src) {
@@ -286,8 +513,30 @@ function collectImports(node: SyntaxNode, out: ParsedImport[]): void {
     }
     return;
   }
+
+  // Issue #5: Java emits `import_declaration` with a `scoped_identifier` child and no
+  // `source` field, so before this branch Java contributed no import rows at all. Gated
+  // on the language: tree-sitter-scala also emits `import_declaration`, with different
+  // children.
+  if (langKey === 'java' && node.type === 'import_declaration') {
+    // `import com.a.B;` arrives as a `scoped_identifier`, but `import Rooted;` — a type in the
+    // default package — is a bare `identifier`. Matching only the dotted form dropped those rows
+    // silently, which is how the class map could never see them.
+    const scoped = node.namedChildren.find(
+      (child) => child.type === 'scoped_identifier' || child.type === 'identifier'
+    );
+    if (scoped) {
+      const wildcard = node.namedChildren.some((child) => child.type === 'asterisk');
+      out.push({
+        source: wildcard ? `${scoped.text}.*` : scoped.text,
+        isStatic: /^import\s+static\s/.test(node.text),
+      });
+    }
+    return;
+  }
+
   for (let i = 0; i < node.childCount; i++) {
     const c = node.child(i);
-    if (c) collectImports(c, out);
+    if (c) collectImports(c, out, langKey);
   }
 }

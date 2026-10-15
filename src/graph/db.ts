@@ -2,7 +2,7 @@ import Database from 'better-sqlite3';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 
-const SCHEMA_VERSION = 6;
+const SCHEMA_VERSION = 7;
 
 const SCHEMA_V2 = `
 CREATE TABLE IF NOT EXISTS health_signals (
@@ -106,6 +106,33 @@ END;
 // must keep working without it. embeddings_meta maps each embedded doc to its
 // vec0 rowid (auto-rowid inserts only — declared-PK inserts are broken in
 // sqlite-vec 0.1.9) and records the model/dim per row.
+/**
+ * V7: the requirements tables move into the shared schema (issue #7/#15). They used to be
+ * created only by initRequirementsDb, which the two requirements verbs call — so a database
+ * that never ran one had no such table, and any other surface touching requirements (the MCP
+ * get_entity fallback, for instance) would fail with "no such table". Exported so
+ * requirements/setup.ts execs the same DDL instead of keeping a second copy.
+ */
+export const REQUIREMENTS_DDL = `
+CREATE TABLE IF NOT EXISTS requirements (
+  id TEXT PRIMARY KEY,
+  title TEXT,
+  description TEXT,
+  source TEXT,
+  status TEXT
+);
+CREATE TABLE IF NOT EXISTS atomic_requirements (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  req_id TEXT,
+  statement TEXT,
+  type TEXT,
+  "order" INTEGER,
+  FOREIGN KEY(req_id) REFERENCES requirements(id)
+);
+`;
+
+const SCHEMA_V7 = REQUIREMENTS_DDL;
+
 const SCHEMA_V6 = `
 CREATE TABLE IF NOT EXISTS embeddings_meta (
   kind TEXT NOT NULL CHECK(kind IN ('entity','symbol','module','doc')),
@@ -129,6 +156,22 @@ CREATE INDEX IF NOT EXISTS idx_embeddings_meta_source
 // corpus rebuild per query. Same lifecycle as the vector: refreshed on every
 // re-embed, so snippet staleness == vector staleness. Fresh v6 DBs get them
 // from the CREATE TABLE above; pre-existing v6 DBs via the idempotent ladder.
+/** Consumed by buildGraph: the store's stored classifications predate the current code. */
+export const REPARSE_REQUIRED_KEY = 'schema_reparse_required';
+
+/** Marks the store for one forced re-parse. Never fatal: a database without the metadata table
+ *  predates it, and the caller's build simply stays incremental. */
+function markStoreStale(db: Database.Database): void {
+  try {
+    db.prepare('INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)').run(
+      REPARSE_REQUIRED_KEY,
+      String(Date.now())
+    );
+  } catch {
+    // no metadata table: nothing to mark
+  }
+}
+
 function addColumnIfMissing(db: Database.Database, table: string, column: string, ddl: string): void {
   const cols = db.pragma(`table_info(${table})`) as { name: string }[];
   if (!cols.some((c) => c.name === column)) {
@@ -163,7 +206,11 @@ CREATE TABLE IF NOT EXISTS imports (
   file_id INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
   source TEXT NOT NULL,
   resolved_file_id INTEGER REFERENCES files(id),
-  resolved INTEGER NOT NULL
+  resolved INTEGER NOT NULL,
+  -- 1 = a specifier that cannot have an in-repo target (node builtin,
+  -- package id, workspace alias). Explicit so no consumer has to infer it
+  -- from a NULL resolved_file_id (issue #8).
+  external INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_imports_file ON imports(file_id);
 CREATE TABLE IF NOT EXISTS edges (
@@ -205,6 +252,7 @@ export function initDb(dbPath: string): Database.Database {
   db.exec(SCHEMA_V3);
   db.exec(SCHEMA_V5);
   db.exec(SCHEMA_V6);
+  db.exec(SCHEMA_V7);
   // Idempotent column migration: `complexity` was added to the base CREATE
   // TABLE, but CREATE TABLE IF NOT EXISTS is a no-op on existing DBs, so a
   // pre-existing .deepindex.db lacks the column. Add it if missing. This is the
@@ -222,9 +270,20 @@ export function initDb(dbPath: string): Database.Database {
   // REVIEW-FIX W3: label/snippet stored at embed time (see SCHEMA_V6 note).
   addColumnIfMissing(db, 'embeddings_meta', 'label', "label TEXT NOT NULL DEFAULT ''");
   addColumnIfMissing(db, 'embeddings_meta', 'snippet', "snippet TEXT NOT NULL DEFAULT ''");
+  // Issue #8: import classification. Same idempotent column-add pattern as
+  // above, so an existing database picks the column up on open.
+  addColumnIfMissing(db, 'imports', 'external', 'external INTEGER NOT NULL DEFAULT 0');
   const v = db.pragma('user_version', { simple: true }) as number;
   if (v < SCHEMA_VERSION) {
     db.pragma(`user_version = ${SCHEMA_VERSION}`);
+    // Issues #8/#16, and the upgrade path both release reviews flagged: a schema bump can change
+    // what a STORED value means (imports.external, the resolved flags, a symbol's kind). The hash
+    // cache would otherwise keep the old rows forever — an incremental run re-classifies nothing
+    // and the score stays wrong, while user_version says the store is current. Marking it stale
+    // here lets the next build re-parse once, whichever entry point runs it (the CLI, install, a
+    // hook, the watcher, repair), instead of only when someone remembers `--rebuild`.
+    // RULE: bump SCHEMA_VERSION whenever a stored classification changes meaning.
+    if (v > 0) markStoreStale(db);
   }
   _db = db;
   return db;

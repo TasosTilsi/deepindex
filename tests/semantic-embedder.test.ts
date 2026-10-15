@@ -293,8 +293,15 @@ describe('model revision pin + checksum marker (DI-03/DI-04)', () => {
   it('fetchModel sha256-verifies present LFS weights against the tree listing (DI-04)', async () => {
     const mod = await import('../src/semantic/embedder.js');
     const sha = createHash('sha256').update('weights-bytes').digest('hex');
-    const factory = async (_task: string, model: string): Promise<unknown> => {
-      const dir = join(tmp, 'cache', model);
+    // transformers.js keys a pinned fetch by revision, so the seam has to write where
+    // the real pipeline writes: <cache>/<model>/<revision>/… (issue #14 — verification
+    // used to look one level up, find nothing, and record `verified: []`).
+    const factory = async (
+      _task: string,
+      model: string,
+      opts?: { revision?: string }
+    ): Promise<unknown> => {
+      const dir = join(tmp, 'cache', model, opts?.revision ?? '');
       mkdirSync(join(dir, 'onnx'), { recursive: true });
       writeFileSync(join(dir, 'onnx', 'model.onnx'), 'weights-bytes');
       writeFileSync(join(dir, 'config.json'), '{}');
@@ -313,8 +320,12 @@ describe('model revision pin + checksum marker (DI-03/DI-04)', () => {
 
   it('fetchModel refuses on a checksum mismatch (DI-04)', async () => {
     const mod = await import('../src/semantic/embedder.js');
-    const factory = async (_task: string, model: string): Promise<unknown> => {
-      const dir = join(tmp, 'cache', model);
+    const factory = async (
+      _task: string,
+      model: string,
+      opts?: { revision?: string }
+    ): Promise<unknown> => {
+      const dir = join(tmp, 'cache', model, opts?.revision ?? '');
       mkdirSync(join(dir, 'onnx'), { recursive: true });
       writeFileSync(join(dir, 'onnx', 'model.onnx'), 'tampered-bytes');
       return {};

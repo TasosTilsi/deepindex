@@ -5,12 +5,28 @@ export interface LanguageConfig {
   extensions: string[];
   nodeMap: Record<string, NormalizedKind>;
   nameFields: string[];
+  /**
+   * True for languages without an `export` keyword (issue #13): their members are
+   * importable by default, so a symbol is exported unless a `private` modifier says
+   * otherwise. JS/TS keep using `export_statement`, exactly as before.
+   */
+  exportedByDefault?: boolean;
+  /**
+   * The keyword that marks the EXPORTED side, for languages where visibility is opt-in. Rust's
+   * `pub` is the inverse of Java's `private`: there, no modifier means public; here it means
+   * private.
+   */
+  exportedByVisibility?: string;
+  /** Languages where a capitalised name is the exported one (Go). */
+  exportedByCapitalisation?: boolean;
+  /** Languages where a name prefix hides a symbol (Dart's `_` is library-private). */
+  hiddenByPrefix?: string;
 }
 
 export const LANGUAGE_CONFIGS: Record<string, LanguageConfig> = {
   typescript: {
     wasmFile: 'tree-sitter-typescript.wasm',
-    extensions: ['.ts', '.tsx'],
+    extensions: ['.ts', '.tsx', '.mts', '.cts'],
     nodeMap: {
       'class_declaration': 'class',
       'function_declaration': 'method',
@@ -37,10 +53,14 @@ export const LANGUAGE_CONFIGS: Record<string, LanguageConfig> = {
       'function_definition': 'method',
     },
     nameFields: ['name'],
+    // Issue #20: Python has no visibility keyword, so anything defined at module level is
+    // importable. Without this every Python symbol was `exported = 0`.
+    exportedByDefault: true,
   },
   java: {
     wasmFile: 'tree-sitter-java.wasm',
     extensions: ['.java'],
+    exportedByDefault: true,
     nodeMap: {
       'class_declaration': 'class',
       // DI-02: records are the modern-Java domain-type idiom — capture them
@@ -54,6 +74,9 @@ export const LANGUAGE_CONFIGS: Record<string, LanguageConfig> = {
     nameFields: ['name'],
   },
   cpp: {
+    // C has no visibility keyword, but `static` makes a symbol file-local; the storage
+    // specifier is read in isExportedByDefault.
+    exportedByDefault: true,
     wasmFile: 'tree-sitter-cpp.wasm',
     extensions: ['.cpp', '.hpp', '.cc', '.cxx'],
     nodeMap: {
@@ -63,6 +86,8 @@ export const LANGUAGE_CONFIGS: Record<string, LanguageConfig> = {
     nameFields: ['declarator', 'name'],
   },
   go: {
+    // A Go export is a capitalised name.
+    exportedByCapitalisation: true,
     wasmFile: 'tree-sitter-go.wasm',
     extensions: ['.go'],
     nodeMap: {
@@ -72,6 +97,9 @@ export const LANGUAGE_CONFIGS: Record<string, LanguageConfig> = {
     nameFields: ['name'],
   },
   rust: {
+    // `pub` marks the exported side; see exportedByVisibility. `pub(crate)` counts as importable
+    // too — the graph is read inside one repository, which is exactly the crate's own scope.
+    exportedByVisibility: 'pub',
     wasmFile: 'tree-sitter-rust.wasm',
     extensions: ['.rs'],
     nodeMap: {
@@ -83,6 +111,9 @@ export const LANGUAGE_CONFIGS: Record<string, LanguageConfig> = {
     nameFields: ['name'],
   },
   c: {
+    // C has no visibility keyword, but `static` makes a symbol file-local; the storage
+    // specifier is read in isExportedByDefault.
+    exportedByDefault: true,
     wasmFile: 'tree-sitter-c.wasm',
     extensions: ['.c', '.h'],
     nodeMap: {
@@ -91,6 +122,8 @@ export const LANGUAGE_CONFIGS: Record<string, LanguageConfig> = {
     nameFields: ['declarator', 'name'],
   },
   php: {
+    // A member is importable unless the language marks it private.
+    exportedByDefault: true,
     wasmFile: 'tree-sitter-php.wasm',
     extensions: ['.php'],
     nodeMap: {
@@ -102,6 +135,9 @@ export const LANGUAGE_CONFIGS: Record<string, LanguageConfig> = {
     nameFields: ['name'],
   },
   ruby: {
+    // No visibility keyword: a method is public unless `private` is CALLED, which is a statement,
+    // not a modifier.
+    exportedByDefault: true,
     wasmFile: 'tree-sitter-ruby.wasm',
     extensions: ['.rb'],
     nodeMap: {
@@ -123,6 +159,8 @@ export const LANGUAGE_CONFIGS: Record<string, LanguageConfig> = {
     nameFields: ['name'],
   },
   swift: {
+    // A member is importable unless the language marks it private.
+    exportedByDefault: true,
     wasmFile: 'tree-sitter-swift.wasm',
     extensions: ['.swift'],
     nodeMap: {
@@ -134,6 +172,8 @@ export const LANGUAGE_CONFIGS: Record<string, LanguageConfig> = {
     nameFields: ['name'],
   },
   kotlin: {
+    // A member is importable unless it is private, as in Java.
+    exportedByDefault: true,
     wasmFile: 'tree-sitter-kotlin.wasm',
     extensions: ['.kt', '.kts'],
     nodeMap: {
@@ -144,6 +184,8 @@ export const LANGUAGE_CONFIGS: Record<string, LanguageConfig> = {
     nameFields: ['name'],
   },
   scala: {
+    // A member is importable unless it is private, as in Java.
+    exportedByDefault: true,
     wasmFile: 'tree-sitter-scala.wasm',
     extensions: ['.scala', '.sc'],
     nodeMap: {
@@ -154,6 +196,8 @@ export const LANGUAGE_CONFIGS: Record<string, LanguageConfig> = {
     nameFields: ['name'],
   },
   bash: {
+    // Sourcing a script defines its functions in the caller's shell.
+    exportedByDefault: true,
     wasmFile: 'tree-sitter-bash.wasm',
     extensions: ['.sh', '.bash'],
     nodeMap: {
@@ -162,6 +206,8 @@ export const LANGUAGE_CONFIGS: Record<string, LanguageConfig> = {
     nameFields: ['name'],
   },
   dart: {
+    // Dart hides a symbol with a leading underscore.
+    hiddenByPrefix: '_',
     wasmFile: 'tree-sitter-dart.wasm',
     extensions: ['.dart'],
     nodeMap: {
@@ -172,6 +218,8 @@ export const LANGUAGE_CONFIGS: Record<string, LanguageConfig> = {
     nameFields: ['name'],
   },
   lua: {
+    // Everything a Lua module defines lands in a table anyone can reach.
+    exportedByDefault: true,
     wasmFile: 'tree-sitter-lua.wasm',
     extensions: ['.lua'],
     nodeMap: {
@@ -189,6 +237,9 @@ export const LANGUAGE_CONFIGS: Record<string, LanguageConfig> = {
     nameFields: ['name'],
   },
   objc: {
+    // C has no visibility keyword, but `static` makes a symbol file-local; the storage
+    // specifier is read in isExportedByDefault.
+    exportedByDefault: true,
     wasmFile: 'tree-sitter-objc.wasm',
     extensions: ['.m', '.mm'],
     nodeMap: {

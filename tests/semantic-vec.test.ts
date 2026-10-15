@@ -30,7 +30,7 @@ describe('semantic vec layer (schema v6 + lazy vec0)', () => {
     expect(names).not.toContain('symbol_vecs');
     expect(names).not.toContain('doc_vecs');
     const v = db.pragma('user_version', { simple: true }) as number;
-    expect(v).toBe(6);
+    expect(v).toBe(7);
   });
 
   // (b) Lazy creation loads the extension per connection and builds all three

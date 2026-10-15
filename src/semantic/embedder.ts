@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -94,8 +94,43 @@ export function modelCacheDir(): string {
   return process.env.DEEPINDEX_MODEL_CACHE_DIR ?? join(homedir(), '.deepindex', 'models');
 }
 
-/** True when the model has been fetched into the cache dir (D-23 gate). */
-export function hasCachedModel(model: string): boolean {
+/** Result of validating a configured local model directory (issue #6). */
+export type ModelPathCheck =
+  | { ok: true; dir: string; dtype?: 'q8' }
+  | { ok: false; message: string };
+
+/**
+ * Validates a local model directory (issue #6). A HuggingFace/optimum-cli export
+ * holds the config, the tokenizer and one set of ONNX weights. The pinned runtime
+ * resolves fp32 by default, so a directory carrying only the quantized weight needs
+ * `dtype: q8` to load.
+ */
+export function checkModelPath(modelPath: string): ModelPathCheck {
+  if (!existsSync(modelPath) || !statSync(modelPath).isDirectory()) {
+    return {
+      ok: false,
+      message: `model_path ${modelPath} not found — semantic search disabled`,
+    };
+  }
+  const required = ['config.json', 'tokenizer.json'];
+  const missing = required.filter((name) => !existsSync(join(modelPath, name)));
+  const onnx = ['onnx/model.onnx', 'onnx/model_quantized.onnx'].find((rel) =>
+    existsSync(join(modelPath, rel))
+  );
+  if (missing.length > 0 || !onnx) {
+    const problems = [...missing, ...(onnx ? [] : ['onnx/model.onnx or onnx/model_quantized.onnx'])];
+    return {
+      ok: false,
+      message: `model_path ${modelPath} is missing ${problems.join(', ')} — semantic search disabled`,
+    };
+  }
+  return { ok: true, dir: modelPath, ...(onnx.endsWith('model_quantized.onnx') ? { dtype: 'q8' as const } : {}) };
+}
+
+/** True when the model can be loaded: from a configured local dir (issue #6), or
+ *  from the fetched cache (D-23 gate). */
+export function hasCachedModel(model: string, modelPath?: string): boolean {
+  if (modelPath) return checkModelPath(modelPath).ok;
   return existsSync(join(modelCacheDir(), model));
 }
 
@@ -123,10 +158,12 @@ export function modelMarkerPath(model: string): string {
   return join(modelCacheDir(), model, '.deepindex-model.json');
 }
 
-/** Read the fetch-time marker; null when absent or unparseable. */
-export function readModelMarker(model: string): ModelMarker | null {
+/** Read the fetch-time marker; null when absent or unparseable. A local export
+ *  (issue #6) usually has none, which is not an error. */
+export function readModelMarker(model: string, modelPath?: string): ModelMarker | null {
+  const path = modelPath ? join(modelPath, '.deepindex-model.json') : modelMarkerPath(model);
   try {
-    return JSON.parse(readFileSync(modelMarkerPath(model), 'utf8')) as ModelMarker;
+    return JSON.parse(readFileSync(path, 'utf8')) as ModelMarker;
   } catch {
     return null;
   }
@@ -157,12 +194,20 @@ async function fetchModelTree(model: string, revision?: string): Promise<ModelTr
  *  tampered cache must not silently produce different embeddings. */
 function verifyCachedFiles(
   model: string,
+  revision: string | null,
   files: ModelTreeFile[]
 ): { path: string; sha256: string }[] {
-  const root = join(modelCacheDir(), model);
+  // Issue #14: transformers.js keys its cache by revision for a pinned fetch
+  // (`<model>/<revision>/<file>`), so the verification root has to match. Hashing
+  // `<model>/<file>` found nothing, skipped every candidate, and recorded
+  // `verified: []` — DI-04 verified nothing at all.
+  const root =
+    revision && revision !== 'main' ? join(modelCacheDir(), model, revision) : join(modelCacheDir(), model);
   const verified: { path: string; sha256: string }[] = [];
+  let expected = 0;
   for (const f of files) {
     if (!f.sha256) continue;
+    expected += 1;
     const local = join(root, f.path);
     if (!existsSync(local)) continue;
     const actual = createHash('sha256').update(readFileSync(local)).digest('hex');
@@ -173,6 +218,15 @@ function verifyCachedFiles(
     }
     verified.push({ path: f.path, sha256: f.sha256 });
   }
+  if (expected > 0 && verified.length === 0) {
+    // Loud, not silent: the tree listing promised checksummed files and none of them
+    // was found where we looked. That is a layout assumption breaking, and it is exactly
+    // how issue #14 hid for a release.
+    console.error(
+      `embedder: no cached weight matched the tree listing for ${model} under ${root} — ` +
+        `${expected} checksummed file(s) expected. Cache verification is not covering this cache.`
+    );
+  }
   return verified;
 }
 
@@ -182,9 +236,24 @@ interface TransformersModule {
   pipeline: (
     task: string,
     modelName: string,
-    opts?: { revision?: string }
+    opts?: {
+      revision?: string;
+      /** Load only from disk; a missing file fails instead of downloading (#6). */
+      local_files_only?: boolean;
+      /** Weight precision. The shipped runtime resolves fp32 by default, so a
+       *  quantized-only export needs 'q8' (issue #6). */
+      dtype?: string;
+    }
   ) => Promise<unknown>;
-  env: { cacheDir: string; allowLocalModels: boolean };
+  env: {
+    cacheDir: string;
+    allowLocalModels: boolean;
+    /** Set false on every load path: the loader must never fetch (D-23, #6). */
+    allowRemoteModels: boolean;
+    /** Set false when reading a configured local export, so the fetched cache is not
+     *  consulted either (issue #6). */
+    useFSCache?: boolean;
+  };
 }
 
 interface Extractor {
@@ -256,7 +325,7 @@ export async function fetchModel(
       const files = opts.treeFetch
         ? await opts.treeFetch(model, revision)
         : await fetchModelTree(model, revision);
-      verified = verifyCachedFiles(model, files);
+      verified = verifyCachedFiles(model, revision ?? null, files);
     } catch (e) {
       if (e instanceof SemanticUnavailableError) throw e;
       throw new SemanticUnavailableError(
@@ -283,41 +352,77 @@ export async function fetchModel(
  *  load; failures evict the entry (a transient load error stays retryable). */
 const realEmbedderCache = new Map<string, Promise<Embedder>>();
 
-export function loadRealEmbedder(model: string): Promise<Embedder> {
-  if (!hasCachedModel(model)) {
+/** How to reach the weights: a configured local directory, or the fetched cache. */
+export interface LoadEmbedderOptions {
+  /** Absolute path to a local model export (issue #6). */
+  modelPath?: string;
+}
+
+export function loadRealEmbedder(
+  model: string,
+  opts: LoadEmbedderOptions = {}
+): Promise<Embedder> {
+  if (opts.modelPath) {
+    const check = checkModelPath(opts.modelPath);
+    if (!check.ok) return Promise.reject(new SemanticUnavailableError(check.message));
+  } else if (!hasCachedModel(model)) {
     return Promise.reject(
       new SemanticUnavailableError(
         `model ${model} is not cached — run ${FETCH_MODEL_COMMAND} first (cache dir: ${modelCacheDir()})`
       )
     );
   }
-  let cached = realEmbedderCache.get(model);
+  // The memo key must include the path: otherwise a request for the local export is
+  // served the cache-dir embedder, and vice versa (issue #6).
+  const key = `${opts.modelPath ?? ''}\u0000${model}`;
+  let cached = realEmbedderCache.get(key);
   if (!cached) {
-    cached = loadRealEmbedderUncached(model);
-    realEmbedderCache.set(model, cached);
-    cached.catch(() => realEmbedderCache.delete(model));
+    cached = loadRealEmbedderUncached(model, opts);
+    realEmbedderCache.set(key, cached);
+    cached.catch(() => realEmbedderCache.delete(key));
   }
   return cached;
 }
 
-async function loadRealEmbedderUncached(model: string): Promise<Embedder> {
+async function loadRealEmbedderUncached(
+  model: string,
+  opts: LoadEmbedderOptions = {}
+): Promise<Embedder> {
   const revision = resolveModelRevision(model);
   // DI-03: warn on pin drift — never crash, never download from here (D-23
-  // keeps the load path local-only; re-running --fetch-model re-pins).
-  const marker = readModelMarker(model);
+  // keeps the load path local-only; re-running --fetch-model re-pins). A local
+  // export carries no marker of ours, which is not a problem (issue #6).
+  const marker = readModelMarker(model, opts.modelPath);
   if (revision && marker?.revision && marker.revision !== revision) {
     console.error(
       `embedder: cached model ${model} is revision ${marker.revision} but this deepindex pins ${revision} — embeddings may not be reproducible. Re-run ${FETCH_MODEL_COMMAND} to re-pin.`
     );
   }
   const tf = await importTransformers();
-  tf.env.cacheDir = modelCacheDir();
   tf.env.allowLocalModels = true;
-  const extractor = (await tf.pipeline(
-    'feature-extraction',
-    model,
-    revision ? { revision } : undefined
-  )) as Extractor;
+  // Never fetch from here, on either path. With allowRemoteModels left true, a partial
+  // cache — or a revision-pin bump, which changes the cache sub-key — makes the loader
+  // fall through to a HuggingFace download, contradicting the "no auto-download (D-23)"
+  // the file header promises. A missing file now fails loudly instead (issues #6, #14).
+  tf.env.allowRemoteModels = false;
+  let extractor: Extractor;
+  if (opts.modelPath) {
+    const check = checkModelPath(opts.modelPath);
+    if (!check.ok) throw new SemanticUnavailableError(check.message);
+    // Belt and braces: the local branch must not consult the fetched cache either.
+    tf.env.useFSCache = false;
+    extractor = (await tf.pipeline('feature-extraction', check.dir, {
+      local_files_only: true,
+      ...(check.dtype ? { dtype: check.dtype } : {}),
+    })) as Extractor;
+  } else {
+    tf.env.cacheDir = modelCacheDir();
+    extractor = (await tf.pipeline(
+      'feature-extraction',
+      model,
+      revision ? { revision } : undefined
+    )) as Extractor;
+  }
   return {
     model,
     dim: 384,
@@ -335,11 +440,15 @@ async function loadRealEmbedderUncached(model: string): Promise<Embedder> {
  *  duplicated at call sites). */
 export async function getEmbedder(
   model: string,
-  opts: { embedder?: Embedder; loader?: (m: string) => Promise<Embedder> } = {}
+  opts: { embedder?: Embedder; loader?: (m: string) => Promise<Embedder> } & LoadEmbedderOptions = {}
 ): Promise<Embedder> {
   if (opts.embedder) return opts.embedder;
   if (opts.loader) return opts.loader(model);
-  if (hasCachedModel(model)) return loadRealEmbedder(model);
+  if (hasCachedModel(model, opts.modelPath)) return loadRealEmbedder(model, opts);
+  if (opts.modelPath) {
+    const check = checkModelPath(opts.modelPath);
+    throw new SemanticUnavailableError(check.ok ? 'model unavailable' : check.message);
+  }
   throw new SemanticUnavailableError(
     `model ${model} is not cached — run ${FETCH_MODEL_COMMAND} first`
   );

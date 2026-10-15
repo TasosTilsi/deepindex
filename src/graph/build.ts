@@ -3,7 +3,17 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 import { createHash } from 'node:crypto';
 import { parseFile } from './parse.js';
-import { resolveImport } from './resolve.js';
+import { isExternalSpecifier, resolveImport } from './resolve.js';
+import { ignoredDirs } from './ignore.js';
+import {
+  buildPackageIndex,
+  fqnForSource,
+  missesInPackageTree,
+  isPackageLanguage,
+} from './package-resolve.js';
+import { rustMissesInCrate } from './rust-resolve.js';
+import { goImportIsInModule, goModulePath } from './go-resolve.js';
+import { REPARSE_REQUIRED_KEY } from './db.js';
 import { extractSql } from '../parser/sql-extractor.js';
 import { EXT_TO_LANG, langForExt } from '../parser/languages.js';
 
@@ -21,25 +31,6 @@ export interface BuildOptions {
   force?: boolean;
 }
 
-// Exported for the phase-8 markdown chunker (D-27b) so the corpus walk never
-// diverges from the index walk.
-export const IGNORED_DIRS = new Set([
-  'node_modules',
-  '.git',
-  'dist',
-  'build',
-  'coverage',
-  '.omc',
-  '.planning',
-  '.claude',
-  '.next',
-  'out',
-  'target',
-  '__pycache__',
-  '.venv',
-  'venv',
-  '.cache',
-]);
 
 // Supported extensions = every tree-sitter language (single source:
 // EXT_TO_LANG from languages.ts) + '.sql' (handled by extractSql, not a
@@ -54,7 +45,7 @@ export async function buildGraph(
 ): Promise<BuildStats> {
   const start = Date.now();
   const absRoot = resolve(repoPath);
-  const files = walk(absRoot);
+  const files = walk(absRoot, ignoredDirs(repoPath));
 
   const insertFile = db.prepare(
     `INSERT INTO files (path, hash, mtime, size, language, parsed_at)
@@ -71,8 +62,8 @@ export async function buildGraph(
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
   );
   const insertImport = db.prepare(
-    `INSERT INTO imports (file_id, source, resolved_file_id, resolved)
-     VALUES (?, ?, ?, ?)`
+    `INSERT INTO imports (file_id, source, resolved_file_id, resolved, external)
+     VALUES (?, ?, ?, ?, ?)`
   );
   const getFileByPath = db.prepare('SELECT id FROM files WHERE path = ?');
   const getFileHash = db.prepare('SELECT hash FROM files WHERE path = ?');
@@ -101,6 +92,24 @@ export async function buildGraph(
   let fileCount = 0;
   let symbolCount = 0;
   let brokenImportCount = 0;
+  const packageEntries: Array<{ fqn: string; relPath: string }> = [];
+  // Issues #8/#16: an upgraded store carries rows the current classifier would decide
+  // differently (a node: builtin stored as broken, a ./db.js that now resolves). The hash cache
+  // would skip every unchanged file, so the verdicts would stay wrong indefinitely — and the
+  // score with them. Consume the migration marker so this build re-parses everything, once.
+  let reparseRequired = false;
+  try {
+    reparseRequired = Boolean(
+      db.prepare('SELECT value FROM metadata WHERE key = ?').get(REPARSE_REQUIRED_KEY)
+    );
+  } catch {
+    // A database without the metadata table predates it: nothing to consume.
+  }
+  if (reparseRequired) {
+    console.error(
+      'deepindex: the index schema changed — re-parsing every file once so stored classifications match the current code'
+    );
+  }
   const changedFiles: string[] = [];
   const needsParse: Array<{ relPath: string; fileId: number; content: string; absPath: string; ext: string }> = [];
 
@@ -110,9 +119,19 @@ export async function buildGraph(
     const content = readFileSync(file.absPath, 'utf8');
     const hash = createHash('sha256').update(content).digest('hex');
 
+    if (isPackageLanguage(langForExt(file.ext))) {
+      // Issue #5: the class map must cover EVERY Java file, including the unchanged
+      // ones the hash-cache check below skips — otherwise an incremental run would lose
+      // the classes of every file it did not re-parse. The content is already in hand.
+      packageEntries.push({
+        fqn: fqnForSource(relPath, content, langForExt(file.ext)),
+        relPath,
+      });
+    }
+
     const existing = getFileHash.get(relPath) as { hash: string } | undefined;
 
-    if (existing && existing.hash === hash && !opts.force) {
+    if (existing && existing.hash === hash && !opts.force && !reparseRequired) {
       continue;
     }
 
@@ -124,6 +143,14 @@ export async function buildGraph(
     changedFiles.push(relPath);
     fileCount++;
   }
+
+  // Deterministic map: the walk is a LIFO stack over readdir order, so without this
+  // sort the duplicate-FQN rule would depend on the filesystem.
+  packageEntries.sort((a, b) => (a.relPath < b.relPath ? -1 : a.relPath > b.relPath ? 1 : 0));
+  const packageIndex = buildPackageIndex(packageEntries);
+  // Read once: a Go import that names a package inside this module and leads nowhere is a dangling
+  // reference, not a dependency, and the module path is what tells the two apart.
+  const goModule = goModulePath(absRoot);
 
   // Second pass: parse + extract symbols/imports. All file rows exist now.
   for (const { relPath, fileId, content, absPath, ext } of needsParse) {
@@ -156,19 +183,51 @@ export async function buildGraph(
     }
 
     for (const imp of imports) {
-      const resolved = resolveImport(absRoot, relPath, imp.source, files);
+      // Resolve first, classify second (issues #5 and #8). Order matters: for Java a
+      // non-relative specifier may be an in-tree FQN, so classifying before the resolver
+      // ran would mark every Java import external and the class map would never be
+      // consulted.
+      const resolved = resolveImport(absRoot, relPath, imp.source, files, {
+        packageIndex,
+        isStatic: imp.isStatic,
+      });
       if (resolved) {
         const targetRow = getFileByPath.get(resolved) as { id: number } | undefined;
         if (targetRow) {
-          insertImport.run(fileId, imp.source, targetRow.id, 1);
+          insertImport.run(fileId, imp.source, targetRow.id, 1, 0);
         } else {
-          insertImport.run(fileId, imp.source, null, 0);
+          // Resolved to a path the walk did not index: we cannot link it, so it counts
+          // as broken rather than silently disappearing.
+          insertImport.run(fileId, imp.source, null, 0, 0);
           brokenImportCount++;
         }
-      } else {
-        insertImport.run(fileId, imp.source, null, 0);
-        brokenImportCount++;
+        continue;
       }
+
+      if (isExternalSpecifier(imp.source)) {
+        // A Java specifier can point into the tree and still miss: the package is here, the class
+        // is not. That is a broken import, not a dependency (found in the pre-release review).
+        const language = langForExt(extname(relPath));
+        if (
+          (packageIndex && isPackageLanguage(language) && missesInPackageTree(packageIndex, imp.source)) ||
+          // A Rust path from `crate::`, `self::` or `super::` is in-crate by construction, so a
+          // miss is a dangling reference — the same verdict Java gets above.
+          (language === 'rust' && rustMissesInCrate(imp.source)) ||
+          (language === 'go' && goModule !== null && goImportIsInModule(goModule, imp.source))
+        ) {
+          insertImport.run(fileId, imp.source, null, 0, 0);
+          brokenImportCount++;
+          continue;
+        }
+        // No in-repo target exists by definition. Recorded as resolved AND flagged
+        // external so nothing downstream reads it as a broken import (issue #8). Its
+        // resolved_file_id stays NULL, which is what every edge consumer filters on.
+        insertImport.run(fileId, imp.source, null, 1, 1);
+        continue;
+      }
+
+      insertImport.run(fileId, imp.source, null, 0, 0);
+      brokenImportCount++;
     }
 
     // SQL extraction: only run on code files (which may embed SQL strings) and
@@ -192,6 +251,14 @@ export async function buildGraph(
   // to each exported symbol of target file. Cheap approximation of symbol-level
   // import resolution; enough for BFS.
   buildFileLevelEdges(db);
+
+  if (reparseRequired) {
+    try {
+      db.prepare('DELETE FROM metadata WHERE key = ?').run(REPARSE_REQUIRED_KEY);
+    } catch {
+      // nothing to clear
+    }
+  }
 
   return {
     fileCount,
@@ -240,7 +307,8 @@ function buildFileLevelEdges(db: Database.Database): void {
 }
 
 function walk(
-  root: string
+  root: string,
+  ignore: ReadonlySet<string>
 ): Array<{ absPath: string; ext: string; mtime: number; size: number }> {
   const out: Array<{ absPath: string; ext: string; mtime: number; size: number }> = [];
   const stack = [root];
@@ -253,7 +321,10 @@ function walk(
       continue;
     }
     for (const name of entries) {
-      if (IGNORED_DIRS.has(name)) continue;
+      // Both forms work: a bare directory name ("vendor") and a repo-relative path
+      // ("src/vendor"). The second used to be accepted and then silently ignored, because only
+      // the basename was compared — the config said one thing and the walk did another.
+      if (ignore.has(name) || ignore.has(relative(root, join(dir, name)))) continue;
       const full = join(dir, name);
       let st;
       try {

@@ -77,7 +77,7 @@ export async function sessionStart(
     // (D-26b: auto-embed only when semantic.enabled AND model cached).
     if (elapsed() < budgetMs) {
       const cfg = loadSemanticConfig(absRepo) ?? DEFAULT_SEMANTIC_CONFIG;
-      if (cfg.enabled && hasCachedModel(resolveModelName(cfg))) {
+      if (cfg.enabled && hasCachedModel(resolveModelName(cfg), cfg.modelPath)) {
         try {
           const scan = stalenessScan(db, absRepo);
           if (scan.stale.length > 0) {

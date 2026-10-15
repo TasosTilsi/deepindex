@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { initDb, closeDb } from '../src/graph/db.js';
@@ -34,14 +34,29 @@ describe('repair', () => {
     });
 
     it('rebuild after one file change re-parses that file', async () => {
+      // Its own copy of the fixture. The property under test — an unchanged file is skipped, a
+      // changed one is re-parsed — has to be owned by this test: `fixtures/sample-repo` is walked
+      // by several suites at once, which made this the intermittent failure filed as #18. It also
+      // never changed a file, so it could not have caught the bug its name claims.
       const dir = mkdtempSync(join(tmpdir(), 'deepindex-s1-change-'));
+      const repo = join(dir, 'repo');
+      cpSync(FIXTURE, repo, { recursive: true });
       const db = initDb(join(dir, 'test.db'));
-      await stage1Rebuild(db, FIXTURE);
-      // No changes; second rebuild should be a no-op.
-      const r2 = await stage1Rebuild(db, FIXTURE);
-      expect(r2.actions[0]).toMatch(/no changes/);
-      db.close();
-      rmSync(dir, { recursive: true, force: true });
+      try {
+        await stage1Rebuild(db, repo);
+        const unchanged = await stage1Rebuild(db, repo);
+        expect(unchanged.actions[0]).toMatch(/no changes/);
+
+        writeFileSync(
+          join(repo, 'src', 'a.ts'),
+          "import { bar } from './b';\nexport function foo(): string { return bar() + '!'; }\n"
+        );
+        const changed = await stage1Rebuild(db, repo);
+        expect(changed.actions[0]).toMatch(/rebuilt 1 files/);
+      } finally {
+        db.close();
+        rmSync(dir, { recursive: true, force: true });
+      }
     });
   });
 

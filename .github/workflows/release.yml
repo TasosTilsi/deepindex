@@ -31,6 +31,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       id-token: write   # npm trusted publishing (OIDC) + provenance — no token secret
+      # contents: read — this job installs dependency scripts; it must not be able to write to the
+      # repository. Creating the release is a separate job below, with only the privilege it needs.
       contents: read
     steps:
       - uses: actions/checkout@v4
@@ -44,40 +46,45 @@ jobs:
           package-manager-cache: false
       - name: Install
         run: pnpm install --frozen-lockfile
-      - name: Debug OIDC claims
+      - name: Strip the empty authToken placeholder
+        # setup-node writes an empty `//registry.npmjs.org/:_authToken=` line into the
+        # userconfig. npm prefers that line over the OIDC exchange and fails with
+        # ENEEDAUTH (setup-node#1551). Trusted publishing uses no token, so the line has
+        # to go before anything authenticates.
         run: |
-          RESP=$(curl -sS -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
-            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=npm_registry")
-          echo "$RESP" | jq -r '.value' | cut -d. -f2 | python3 -c "import sys,base64,json; s=sys.stdin.read().strip(); s+='='*(-len(s)%4); c=json.loads(base64.urlsafe_b64decode(s)); print(json.dumps({k:c.get(k) for k in ['iss','aud','repository_owner','repository','workflow','ref','ref_type','event_name','job_workflow_ref']},indent=1))"
-          echo "npm $(npm --version) / node $(node --version)"
-          echo "=== npm config userconfig:"; cat "$NPM_CONFIG_USERCONFIG" 2>/dev/null || echo "(none)"
-      - name: Publish experiments (diagnostic)
+          if [ -f "$NPM_CONFIG_USERCONFIG" ]; then
+            sed -i '/_authToken/d' "$NPM_CONFIG_USERCONFIG"
+          fi
+      - name: Publish to npm
+        # One real publish. This step is ALLOWED to fail the job: a release that never
+        # reached the registry must not look shipped, and the previous two-attempt
+        # diagnostic form ended in `true`, which could never fail.
+        run: npm publish
+      - name: Publish diagnostics (only when the publish above failed)
+        if: failure()
         run: |
-          [ -f "$NPM_CONFIG_USERCONFIG" ] && sed -i '/_authToken/d' "$NPM_CONFIG_USERCONFIG" || true
-          echo "userconfig after strip:"; cat "$NPM_CONFIG_USERCONFIG" 2>/dev/null || echo "(none)"
+          echo "=== npm $(npm --version) / node $(node --version)"
+          echo "=== minted OIDC claims:"
           RESP=$(curl -sS -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
             "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=npm:registry.npmjs.org")
-          echo "OIDC response length: $(echo -n "$RESP" | wc -c)"
-          TOKEN=$(echo "$RESP" | jq -r '.value')
-          echo "token length: ${#TOKEN} (empty mint would be 4 for 'null')"
-          echo "=== attempt 1: npm 11.6.2 + NPM_ID_TOKEN"
-          npm install -g npm@11.6.2 >/dev/null 2>&1
-          export NPM_ID_TOKEN="$TOKEN"
-          npm publish; echo "ATTEMPT1_EXIT=$?"
-          echo "=== attempt 2: npm@latest + NPM_ID_TOKEN"
-          npm install -g npm@latest >/dev/null 2>&1
-          npm --version
-          npm publish; echo "ATTEMPT2_EXIT=$?"
-          true
-      - name: Dump npm debug logs
-        if: always()
-        run: grep -ihE "oidc|id.?token|eneedauth|need auth|trusted" /home/runner/.npm/_logs/*-debug-0.log 2>/dev/null | cut -c1-160 | head -40 || true
-      - name: GitHub release from tag
-        # Gate on the registry: only cut the release if this version actually
-        # published (the diagnostic publish step succeeds even when both
-        # attempts fail, so the job can proceed to the log dump).
+          echo "$RESP" | jq -r '.value' | cut -d. -f2 | python3 -c "import sys,base64,json; s=sys.stdin.read().strip(); s+='='*(-len(s)%4); c=json.loads(base64.urlsafe_b64decode(s)); print(json.dumps({k:c.get(k) for k in ['iss','aud','repository_owner','repository','workflow','ref','ref_type','event_name','job_workflow_ref']},indent=1))" || true
+          echo "=== userconfig:"
+          cat "$NPM_CONFIG_USERCONFIG" 2>/dev/null || echo "(none)"
+          echo "=== auth-related lines from the npm debug log:"
+          grep -ihE "oidc|id.?token|eneedauth|need auth|trusted" /home/runner/.npm/_logs/*-debug-0.log 2>/dev/null | cut -c1-160 | head -40 || true
+  release:
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # gh release create, and nothing else
+    steps:
+      - name: GitHub release from the tag
+        # Gate on THIS version as a key of the registry's versions map. The whole packument was
+        # searched before, so the literal `"0.3.4"` kept matching forever once 0.3.4 shipped, and
+        # a release was cut even when its own publish had failed.
         run: |
-          curl -fsSL https://registry.npmjs.org/deepindex | grep -q '"0.3.4"'
+          VERSION="${GITHUB_REF_NAME#v}"
+          curl -fsSL https://registry.npmjs.org/deepindex | grep -qE "\"$VERSION\"[[:space:]]*:"
           gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

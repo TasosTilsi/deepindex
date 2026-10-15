@@ -10,6 +10,19 @@ pnpm add -g deepindex
 
 The `deepindex` binary is the CLI. It reads/writes a single SQLite database (default `.deepindex.db` in the current directory).
 
+## Upgrading
+
+The import classification (which specifiers count as broken) is written when a file is
+parsed, and the incremental indexer skips files whose hash is unchanged. After upgrading:
+
+```bash
+deepindex index . --rebuild
+```
+
+Without it an existing index keeps the previous readings: on one repository an incremental
+re-index left 310 imports unresolved where a full rebuild left 1, and the score reflected
+the stale rows rather than the code.
+
 ## Indexing
 
 ```bash
@@ -56,6 +69,63 @@ deepindex repair <repo>
 ```
 
 `deepindex retrieve` and `deepindex search` run an **incremental git-sync** (from the last indexed commit) before querying, so entities are always current.
+
+### The health score, and what moves it
+
+`deepindex health <repo>` prints a JSON report:
+
+```
+score = round(100 * (0.3*freshness + 0.3*consistency + 0.2*coverage + 0.2*confidence))
+```
+
+| Dimension | Meaning | Neutral value |
+| --- | --- | --- |
+| `freshness` | share of indexed files parsed in the last 24h | 0.5 |
+| `consistency` | resolved ÷ **in-repo** imports (external specifiers are not counted — they can never have a target here) | 0.5 with no internal imports |
+| `coverage` | `tests_rate × lint_factor`, both from signals | 0.25 with no signals |
+| `confidence` | `0.5 × importsResolvedRate + 0.5 × testsPassRate` | 0.5 |
+
+The issue list is **paged, not capped silently**: the report always carries `issuesTotal` and `issuesTruncated` alongside the returned `issues` page, plus `issueSummary` (the ten most frequent `(type, message)` groups counted over the whole set) for consumers that cannot page.
+
+```bash
+deepindex health <repo> --issues-limit 50 --issues-offset 50
+```
+
+#### Feeding signals
+
+`coverage` and `confidence` read four keys from the `health_signals` table. Values are **ratios in `[0,1]`**, not counts — `recordSignal()` rejects anything else:
+
+| Key | Meaning |
+| --- | --- |
+| `tests_pass` | test pass rate, e.g. `148/150 → 0.9867` |
+| `tests_total` | accepted for compatibility; **ignored** by the score (the value already is the ratio) |
+| `lint_errors` | share of **linted files that reported at least one error**, e.g. `1 of 40 files → 0.025`. Not `errors / (errors + warnings)`: that made warnings improve the signal and saturated to 1.0 for any error-only run |
+| `lint_total` | accepted for compatibility; ignored like `tests_total` |
+
+`deepindex signal` is the supported way to feed them — it does the division for you:
+
+```bash
+# counts, straight from a CI step
+deepindex signal tests_pass=148 tests_total=150
+
+# or let it parse a report
+deepindex signal --from-vitest test-results/vitest.json     # vitest --reporter=json
+deepindex signal --from-eslint eslint-output.json           # eslint -f json
+deepindex signal --from-junit target/surefire-reports/      # a file or a directory
+
+# a ratio is accepted as-is when no denominator is given
+deepindex signal lint_errors=0.05
+
+# forget everything (back to the neutral fallbacks)
+deepindex signal --reset
+```
+
+A numerator is divided by its denominator when both are given; the partner key is then stored as the sentinel `1.0`, so older readers that still divide by it get the same answer. Exit codes follow the other verbs: `2` for a missing index, an unreadable or empty report, a malformed pair, `tests_total=0`, or `--reset` combined with signals; `1` for a report that parses but is malformed.
+
+Two consequences worth knowing before you wire this into CI:
+
+- **A missing factor is neutral, not ignored.** With no test signal, `tests_rate` is `0.5`; with no lint signal, `lint_factor` is `0.5` — so a tests-only CI caps `coverage` at `0.5`, and the score at `80` (the default `repair_below`). Feed both to clear the ceiling.
+- **`coverage_lines` is not part of the score.** Recording a coverage summary (line percentage) has no effect on any dimension; the `coverage` dimension is the test/lint product above. The parser is available (`parseCoverageJson`) but wiring it in would change what `coverage` means — a separate decision.
 
 ### Retrieval tips
 
@@ -109,6 +179,36 @@ enabled = true
 - **Reproducibility pin**: the model revision is pinned per release (commit sha recorded in `MODEL_CONFIGS` in the source) and passed to every pipeline fetch/load — two machines running the same deepindex version fetch identical weights. A cached model fetched under a different revision triggers a stderr warning on load; re-run `deepindex embed --fetch-model` to re-pin.
 - **Supply chain**: fetched LFS weight files are sha256-verified against the HuggingFace tree listing at fetch time; the verified digests + revision are recorded in `<cache>/<model>/.deepindex-model.json`. NOTE for audit tooling: the weights arrive via this explicit out-of-band download and are NOT visible to CycloneDX / osv-scanner SBOMs — account for the artifact via the marker file. Cache location: `~/.deepindex/models` (override: `DEEPINDEX_MODEL_CACHE_DIR`).
 
+### Offline / air-gapped use (`model_path`)
+
+Where outbound access is restricted, point the embedder at a model directory you supply out of band. Nothing is downloaded on that path, and a missing file fails loudly rather than reaching for the network:
+
+```toml
+[semantic]
+enabled = true
+model_path = "/opt/models/all-MiniLM-L6-v2"
+```
+
+```bash
+# or inject it in CI without touching committed config
+DEEPINDEX_MODEL_PATH=/opt/models/all-MiniLM-L6-v2 deepindex embed
+```
+
+The directory is a standard HuggingFace / `optimum-cli export onnx` layout:
+
+```
+all-MiniLM-L6-v2/
+  config.json
+  tokenizer.json
+  tokenizer_config.json
+  onnx/model.onnx            # fp32 (the runtime default) — or:
+  onnx/model_quantized.onnx  # quantized; selected automatically with dtype q8
+```
+
+- `DEEPINDEX_MODEL_PATH` wins over the TOML value; a relative value resolves against the repository root (against the cwd for the environment variable).
+- `deepindex embed --fetch-model` with a valid `model_path` prints `model_path … set — skipping download` and exits without a network call. With an invalid one it reports what is missing and exits **2**: you asked for the model, the configuration points somewhere wrong, and a silent success would tell CI the bootstrap worked.
+- **No load path fetches.** `allowRemoteModels` is forced off on every load, not only for `model_path`: a partially populated cache used to be able to fall through to a silent download, contradicting the "no auto-download" guarantee.
+
 ## Data-Flow & Requirements
 
 ```bash
@@ -124,8 +224,14 @@ deepindex analyze-impact <table>
 # Parallel-storage detection
 deepindex check-parallel-storage
 
-# Sync requirements from a JSON file
+# Sync requirements from a JSON file (canonical shape)
 deepindex sync-requirements <file>
+
+# Or import a tracker export — Jira and GitHub shapes are adapted offline
+deepindex requirements import jira-export.json --format jira
+deepindex requirements import gh-issues.json --format github
+deepindex requirements import requirements.json --format deepindex   # default
+deepindex requirements import jira-export.json --format jira --dry-run
 
 # Requirements coverage report
 deepindex check-req-coverage
@@ -197,16 +303,62 @@ The MCP server exposes 6 read-only tools: `search_knowledge`, `get_entity`, `get
 
 ## Harness Integration
 
+`deepindex install` onboards the repository and wires your harness in one command. Run it
+from the repository root:
+
 ```bash
-# Interactive install — choose harness(es)
+# Interactive — choose harness(es)
 deepindex install
 
-# Or install for a specific harness
+# Or name one
 deepindex install --harness claude-code
 deepindex install --harness codex
 deepindex install --harness opencode
 deepindex install --harness deepseek-harness
+
+# See what it would do, and write nothing
+deepindex install --harness claude-code --dry-run
 ```
+
+Beyond the harness wiring it creates or updates, so the repository is usable the moment the
+command returns:
+
+| Step | Detail |
+| --- | --- |
+| `.deepindex.toml` | created when absent — `repair_below`, the hooks session budget, the semantic flag, an `[index] ignore` placeholder. An existing file is never touched |
+| `.gitignore` | `.deepindex.db`, its WAL/SHM siblings and the backup root. Idempotent |
+| `package.json` | `di:index`, `di:health`, `di:serve`, `di:retrieve`, pinned to the same `npx -y deepindex@<version>` the wiring uses. Skip with `--no-scripts` |
+| Backup | every file it may rewrite is copied to `.deepindex-backup/<timestamp>/` first |
+| First index | `index` + `health` on the current repository. Skip with `--no-index` |
+| Instructions file | **asks first**, then appends a short section on how to use deepindex — `CLAUDE.md` for Claude Code, `AGENTS.md` for the other harnesses, reusing whichever of the two the repository already has. `--guidance` answers yes without asking, `--skip-guidance` never asks, and a non-interactive run skips it and says how to ask |
+
+Two guarantees worth knowing:
+
+- **It refuses rather than destroys.** If `.claude/settings.json` is not valid JSON (JSONC or
+  comments), install stops with exit 1 and writes nothing at all — the installer would
+  otherwise replace the whole file with one holding only its own hooks. When the four hook
+  events already exist, they are named on stderr before they are replaced, and the backup
+  holds the previous file.
+- **It is idempotent.** A second run adds nothing: same config, same gitignore, same scripts,
+  and the instructions text is marker-guarded so it can never be duplicated.
+
+| Language | Import forms the resolver understands |
+| --- | --- |
+| TypeScript / JavaScript | `import`/`export`, relative and bare, with the NodeNext emitted-extension mapping (`.js` → `.ts`) |
+| Java | `import a.b.C;`, `import static a.b.C.m;`, `import a.b.*;`, and default-package (`import C;`) |
+| Python | `import pkg.mod`, `import a.b as m`, `from .pkg import x` (dots climb packages from the module's own package). Roots: the repository root and `src/` |
+| Ruby | `require_relative 'helper'` resolved against the file; `require 'json'` is external |
+| Swift | `import MyModule` linked to the first file of `Sources/MyModule/`; the standard library and package dependencies are external |
+| PHP | `require`/`include` (and their `_once` forms) resolved relative to the working directory then the file. An unresolvable one stays external, since `include_path` may hold it; the `__DIR__ . '/x.php'` concatenation form produces no row |
+| Elixir | `alias MyApp.Accounts.User` and `import MyApp.Helpers` mapped by convention to `lib/my_app/accounts/user.ex`; anything not in the project is external |
+| C# | `using App.Data;` through the same in-tree map, with `namespace` read where the others read `package`; `System.Text` and the framework stay external, and a miss inside a known namespace is broken |
+| Kotlin / Scala | `import com.example.foo.Bar` through the same in-tree map Java uses; `import com.example.foo.*` and Scala's `import com.example.foo._` name the package, and a miss inside a known package is broken |
+| Go | `import "example.com/mod/pkg/sub"` mapped through `go.mod`'s module path to the package directory, linked to its first file in path order. A miss inside the module is broken; `fmt` and other modules are external |
+| Lua | `require('mod.sub')` → `mod/sub.lua`, then next to the requiring file, then `mod/sub/init.lua`; an unknown module stays external |
+| Bash | `source ./x.sh` and `. ./x.sh`, relative to the working directory then to the script; a missing one is broken |
+| Dart | `import 'src/x.dart'` relative to the file; `package:` URIs are not extracted |
+| C / C++ / Objective-C | `#include "local.h"` next to the file, at the repository root, or under `include/`. Angle-bracket includes are system headers and produce no row; an unresolved quoted include stays external, since `-I` may point at it |
+| Rust | `use crate::a::b::Item` (the file is the longest module prefix), `use self::x`, `use super::y`, `mod sibling`, and `::other_crate` stays external. The crate root is `src/` |
 
 | Harness | What's installed |
 |---------|------------------|

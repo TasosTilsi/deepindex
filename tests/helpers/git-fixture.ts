@@ -7,8 +7,19 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 
+/** Options for {@link createGitFixture}. */
+export interface GitFixtureOptions {
+  /**
+   * Adds two merge commits: one with git's default `Merge …` subject, which the
+   * walker skips by design, and one whose subject does not start with `Merge ` —
+   * the case the walker used to pass to git as `"<p1> <p2>"` in a single argv
+   * element, which fails with `fatal: ambiguous argument` (issue #3).
+   */
+  withMerge?: boolean;
+}
+
 /** Create a temp git repo with a known history. Returns the repo root. */
-export function createGitFixture(): string {
+export function createGitFixture(opts: GitFixtureOptions = {}): string {
   const root = mkdtempSync(join(tmpdir(), 'deepindex-gitfix-'));
   const src = join(root, 'src');
   mkdirSync(src, { recursive: true });
@@ -42,7 +53,29 @@ export function createGitFixture(): string {
   git(root, ['add', '-A']);
   git(root, ['commit', '-q', '-m', 'feat: add div function']);
 
+  if (opts.withMerge) addMergeCommits(root, src);
+
   return root;
+}
+
+/** Two merges: the skipped default-subject one, and the lowercase-subject one. */
+function addMergeCommits(root: string, src: string): void {
+  git(root, ['checkout', '-q', '-b', 'feature']);
+  writeFileSync(join(src, 'feature.ts'), 'export const feature = 1;\n');
+  git(root, ['add', '-A']);
+  git(root, ['commit', '-q', '-m', 'feat: work on the feature branch']);
+  git(root, ['checkout', '-q', 'main']);
+  // Lowercase subject: the `Merge ` guard does not match, so this commit reaches the
+  // diff calls and used to be handed to git as a single "<p1> <p2>" argument (#3).
+  git(root, ['merge', '-q', '--no-ff', 'feature', '-m', 'merge: integrate feature branch']);
+
+  git(root, ['checkout', '-q', '-b', 'feature2']);
+  writeFileSync(join(src, 'feature2.ts'), 'export const feature2 = 2;\n');
+  git(root, ['add', '-A']);
+  git(root, ['commit', '-q', '-m', 'feat: second feature branch']);
+  git(root, ['checkout', '-q', 'main']);
+  // git's own default merge subject — the walker skips these on purpose.
+  git(root, ['merge', '-q', '--no-ff', 'feature2']);
 }
 
 function git(cwd: string, args: string[]): void {

@@ -30,8 +30,20 @@ export const RequirementSchema = z.object({
 export function syncRequirements(db: Database.Database, jsonPath: string): { imported: number; atomic: number } {
   const raw = fs.readFileSync(jsonPath, 'utf-8');
   const data = JSON.parse(raw);
+  return upsertRequirements(db, (Array.isArray(data) ? data : [data]) as Requirement[]);
+}
 
-  const reqs = Array.isArray(data) ? data : [data];
+/**
+ * Upserts requirements and their atomic statements. The ONE write path (issue #7):
+ * the JSON-file verb and every tracker adapter go through it, so the transaction
+ * semantics stay in a single place. The explicit child-delete before INSERT OR REPLACE
+ * is load-bearing — SQLite's REPLACE delete does not fire FK actions, so atomics would
+ * otherwise go stale.
+ */
+export function upsertRequirements(
+  db: Database.Database,
+  reqs: Requirement[]
+): { imported: number; atomic: number } {
   let imported = 0;
   let atomic = 0;
 
