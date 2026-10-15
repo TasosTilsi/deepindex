@@ -71,8 +71,11 @@ describe('semantic vec layer (schema v6 + lazy vec0)', () => {
       Buffer.from(new Float32Array(384).fill(0.5).buffer)
     );
     const rid = Number(
-      db.prepare('SELECT rowid FROM entity_vecs ORDER BY rowid DESC LIMIT 1').get() as { rowid: number }
-        .rowid
+      (
+        db.prepare('SELECT rowid FROM entity_vecs ORDER BY rowid DESC LIMIT 1').get() as {
+          rowid: number;
+        }
+      ).rowid
     );
     deleteVecRow(db, 'entity_vecs', rid);
     const gone = db.prepare('SELECT COUNT(*) c FROM entity_vecs WHERE rowid = ?').get(rid) as {

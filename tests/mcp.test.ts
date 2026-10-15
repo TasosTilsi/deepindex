@@ -79,7 +79,7 @@ describe('mcp', () => {
 
   it('get_entity by name returns entity with merged-store context (D-11)', () => {
     const r = getEntity(db, { entity_id: 'off-by-one-error-in-counter-loop' });
-    expect(r.type).toBe('bug_fix');
+    expect((r as { type?: string }).type).toBe('bug_fix');
     expect(r).toHaveProperty('symbols');
     expect(r).toHaveProperty('dataFlow');
   });
@@ -92,13 +92,14 @@ describe('mcp', () => {
 
   it('get_entity returns error for unknown id', () => {
     const r = getEntity(db, { entity_id: 'nonexistent' });
-    expect(r.error).toBeTruthy();
+    expect((r as { error?: string }).error).toBeTruthy();
   });
 
   it('get_backlinks traverses relationships', () => {
     const r = getBacklinks(db, { entity_id: 'off-by-one-error-in-counter-loop', hops: 1 });
-    expect(r.related.length).toBeGreaterThan(0);
-    expect(r.related[0].relationship).toBeTruthy();
+    const related = (r as { related?: { relationship: string }[] }).related ?? [];
+    expect(related.length).toBeGreaterThan(0);
+    expect(related[0]?.relationship).toBeTruthy();
   });
 
   it('get_decisions/get_bugs/get_patterns filter by type', () => {

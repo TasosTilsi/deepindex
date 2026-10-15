@@ -216,7 +216,7 @@ describe('model_path loading', () => {
     writeFileSync(join(bare, 'config.json'), '{}\n');
     const result = embedder.checkModelPath(bare);
     expect(result.ok).toBe(false);
-    expect(result.message).toMatch(/onnx\/model\.onnx/);
+    expect(result.ok ? '' : result.message).toMatch(/onnx\/model\.onnx/);
   });
 });
 

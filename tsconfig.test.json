@@ -1,0 +1,18 @@
+{
+  // The test files were never typechecked: `tsconfig.json` excludes tests/, so a broken import or a
+  // syntax error there made a whole suite fail to load while the rest of the run still reported
+  // green — which is exactly what happened during the pre-release review, and what the first run of
+  // this config found (a malformed cast in tests/semantic-vec.test.ts, latent since September).
+  //
+  // It checks what matters for a test file — imports, types that resolve, syntax — and not the
+  // fixture-index strictness the source project enforces; retrofitting that onto ~5000 lines of
+  // existing tests would be a change of its own.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "noEmit": true,
+    "noUncheckedIndexedAccess": false
+  },
+  "include": ["src/**/*", "tests/**/*", "scripts/**/*"],
+  "exclude": ["node_modules", "dist", "fixtures"]
+}

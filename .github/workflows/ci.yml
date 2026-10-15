@@ -19,7 +19,10 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
       - name: Typecheck
-        run: pnpm exec tsc --noEmit
+        # Both projects: `tsconfig.json` excludes tests/, so a broken import in a test file — which
+        # makes its whole suite fail to load while the rest of the run still reports green — went
+        # unnoticed by this step.
+        run: pnpm exec tsc --noEmit && pnpm exec tsc -p tsconfig.test.json --noEmit
       - name: Test
         run: pnpm exec vitest run
       - name: Coverage gate (>=70% lines on src/)
