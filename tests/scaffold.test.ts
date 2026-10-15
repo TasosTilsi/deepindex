@@ -105,11 +105,21 @@ describe('backing up what install may rewrite', () => {
       expect(dir).toContain(BACKUP_ROOT);
       expect(readFileSync(join(dir!, 'package.json'), 'utf8')).toBe('{"name":"demo"}\n');
 
-      const dry = backupFiles(repo, ['package.json'], true);
-      expect(dry).toContain(BACKUP_ROOT);
-      expect(existsSync(dry!)).toBe(false);
-
       expect(backupFiles(repo, [], false)).toBeNull();
+
+      // A dry run reports where the backup WOULD go and writes nothing — asserted in a repository
+      // with no backup yet. Doing it here, after the call above, compared timestamps: the two land
+      // in the same millisecond often enough to make `existsSync` true roughly one run in ten, which
+      // is what made this suite look like the intermittent cross-file failure it was not.
+      const fresh = tempRepo();
+      try {
+        const dry = backupFiles(fresh, ['package.json'], true);
+        expect(dry).toContain(BACKUP_ROOT);
+        expect(existsSync(dry!)).toBe(false);
+        expect(existsSync(join(fresh, BACKUP_ROOT))).toBe(false);
+      } finally {
+        rmSync(fresh, { recursive: true, force: true });
+      }
     } finally {
       rmSync(repo, { recursive: true, force: true });
     }
