@@ -18,7 +18,6 @@ import type Database from 'better-sqlite3';
  * repair LLM prompt, the adapter's injected context, the dashboard) a summary of
  * the whole set rather than a silently short list.
  */
-const FIXTURE = resolve(process.cwd(), 'fixtures/sample-repo');
 
 function writeFixture(dir: string, brokenCount: number): void {
   mkdirSync(join(dir, 'src'), { recursive: true });
@@ -127,7 +126,8 @@ describe('health report honesty', () => {
 
     it('pages the JSON report and keeps the total honest', async () => {
       const r = await runCli(['health', repoPath, '--db', dbPath, '--issues-limit', '1']);
-      expect(r.code === 0 || r.code === 1).toBe(true);
+      // The throwaway repository is deliberately broken, so health exits 1 (below repair_below).
+      expect(r.code).toBe(1);
       const report = JSON.parse(r.stdout);
       expect(report.issues).toHaveLength(1);
       expect(report.issuesTotal).toBeGreaterThan(1);

@@ -169,6 +169,51 @@ describe('signal verb', () => {
     }
   });
 
+  it('derives test signals from a vitest JSON report', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'deepindex-signal-'));
+    try {
+      const dbPath = freshDb(dir);
+      const report = join(dir, 'vitest.json');
+      writeFileSync(
+        report,
+        JSON.stringify({
+          numTotalTests: 10,
+          numPassedTests: 9,
+          numFailedTests: 1,
+          numPendingTests: 0,
+        })
+      );
+      const r = await run(['signal', '--from-vitest', report, '--db', dbPath]);
+      expect(r.code).toBe(0);
+      expect(readSignals(dbPath).tests_pass).toBeCloseTo(0.9, 6);
+      expect(readHealth(dbPath).dimensions.coverage).toBeCloseTo(0.45, 5);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects a vitest report that contains no tests', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'deepindex-signal-'));
+    try {
+      const dbPath = freshDb(dir);
+      const report = join(dir, 'empty-vitest.json');
+      writeFileSync(
+        report,
+        JSON.stringify({
+          numTotalTests: 0,
+          numPassedTests: 0,
+          numFailedTests: 0,
+          numPendingTests: 0,
+        })
+      );
+      const r = await run(['signal', '--from-vitest', report, '--db', dbPath]);
+      expect(r.code).toBe(2);
+      expect(r.stderr).toMatch(/contains no tests/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it('sums a directory of JUnit reports', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'deepindex-signal-'));
     try {

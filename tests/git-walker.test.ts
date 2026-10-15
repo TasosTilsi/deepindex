@@ -26,6 +26,13 @@ describe('git walker', () => {
   // used to sit here asserted over a fixture that contains no merges at all, so it could
   // never fail (issue #3); the replacement builds one and checks both directions.
 
+  it('fetches a diff and file list for the root commit, which has no parent', () => {
+    const root = walkCommits(FIXTURE)[0];
+    expect(root.parentSha).toBeNull();
+    expect(fetchDiff(FIXTURE, root.sha, root.parentSha).length).toBeGreaterThan(0);
+    expect(fetchFilesChanged(FIXTURE, root.sha, root.parentSha)).toContain('src/version.ts');
+  });
+
   it('populates commit metadata', () => {
     const commits = walkCommits(FIXTURE);
     const c = commits[0];

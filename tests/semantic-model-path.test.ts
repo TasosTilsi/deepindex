@@ -93,7 +93,8 @@ describe('semantic config: model_path', () => {
 
   it('omits modelPath entirely when nothing is configured', () => {
     writeFileSync(join(dir, '.deepindex.toml'), '[semantic]\nenabled = true\n');
-    expect(Object.keys(loadSemanticConfig(dir))).toEqual(['enabled', 'model']);
+    // Assert the field is absent rather than pinning the object's shape and key order.
+    expect(loadSemanticConfig(dir).modelPath).toBeUndefined();
     rmSync(join(dir, '.deepindex.toml'));
   });
 });

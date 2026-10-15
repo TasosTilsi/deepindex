@@ -17,17 +17,26 @@ export interface JavaClassIndex {
   readonly byPackage: ReadonlyMap<string, readonly string[]>;
 }
 
-// Exactly one package declaration is legal in a Java source and it must be the first
-// statement, so one regex is a complete parse of it. The lookahead skips a line that is
-// really inside a comment.
+// Exactly one package declaration is legal in a Java source and it must be the first statement,
+// so a line-anchored search is a complete parse of it. Comments are removed first: a lookahead
+// that tried to recognise them in place did not hold, and a commented-out `package` line was
+// taken as the real one.
 const PACKAGE_DECL_RE =
-  /^(?!\s*(\/\/|\/\*|\*))[ \t]*package[ \t]+([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)[ \t]*;/m;
+  /^[ \t]*package[ \t]+([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)[ \t]*;/m;
+
+/** Blank out Java comments so the package search cannot match inside one. */
+function stripJavaComments(source: string): string {
+  return source.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/\/\/[^\n\r]*/g, '');
+}
 
 /** The importable FQN of a Java source, derived from its content and file name. */
 export function javaFqnFor(relPath: string, content: string): string {
   const stem = basename(relPath).replace(/\.java$/i, '');
-  const match = PACKAGE_DECL_RE.exec(content);
-  return match?.[2] ? `${match[2]}.${stem}` : stem;
+  const match = PACKAGE_DECL_RE.exec(stripJavaComments(content));
+  // Group 1: the package is the regex`s only capturing group now that the comment lookahead is
+  // gone (it used to be group 2, which the accessor still read — hence stem-only FQNs and a
+  // class map that could not resolve anything).
+  return match?.[1] ? `${match[1]}.${stem}` : stem;
 }
 
 /**

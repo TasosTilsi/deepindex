@@ -307,7 +307,12 @@ function collectImports(node: SyntaxNode, out: ParsedImport[], langKey: string):
   // on the language: tree-sitter-scala also emits `import_declaration`, with different
   // children.
   if (langKey === 'java' && node.type === 'import_declaration') {
-    const scoped = node.namedChildren.find((child) => child.type === 'scoped_identifier');
+    // `import com.a.B;` arrives as a `scoped_identifier`, but `import Rooted;` — a type in the
+    // default package — is a bare `identifier`. Matching only the dotted form dropped those rows
+    // silently, which is how the class map could never see them.
+    const scoped = node.namedChildren.find(
+      (child) => child.type === 'scoped_identifier' || child.type === 'identifier'
+    );
     if (scoped) {
       const wildcard = node.namedChildren.some((child) => child.type === 'asterisk');
       out.push({

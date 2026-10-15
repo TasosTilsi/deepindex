@@ -157,6 +157,55 @@ describe('java import resolution', () => {
   });
 });
 
+describe('java class map inputs that were uncovered', () => {
+  it('names a class in the default package by its file stem, and resolves an import of it', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'deepindex-java-default-'));
+    try {
+      mkdirSync(join(dir, 'src'), { recursive: true });
+      writeFileSync(join(dir, 'src', 'Rooted.java'), 'public class Rooted { public int x() { return 1; } }\n');
+      writeFileSync(join(dir, 'src', 'User.java'), 'import Rooted;\npublic class User { Rooted r; }\n');
+      const { initDb } = await import('../src/graph/db.js');
+      const { buildGraph } = await import('../src/graph/build.js');
+      const db = initDb(join(dir, '.db'));
+      await buildGraph(db, dir);
+      const row = db
+        .prepare("SELECT resolved FROM imports WHERE source = 'Rooted'")
+        .get() as { resolved: number } | undefined;
+      expect(row?.resolved).toBe(1);
+      db.close();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('does not export a private member, and exports a package-private class', async () => {
+    const { db, dir } = await buildJavaRepo();
+    try {
+      const exported = (name: string) =>
+        (
+          db
+            .prepare('SELECT exported FROM symbols WHERE name = ? ORDER BY id LIMIT 1')
+            .get(name) as { exported: number } | undefined
+        )?.exported;
+      expect(exported('Util')).toBe(1);
+      expect(exported('secret')).toBe(0);
+    } finally {
+      db.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('ignores a commented-out package declaration when naming a class', async () => {
+    const { javaFqnFor } = await import('../src/graph/java-resolve.js');
+    expect(javaFqnFor('src/a/Thing.java', '// package com.wrong;\npackage com.right;\nclass Thing {}')).toBe(
+      'com.right.Thing'
+    );
+    expect(javaFqnFor('src/a/Thing.java', '/*\npackage com.wrong;\n*/\npackage com.right;\nclass Thing {}')).toBe(
+      'com.right.Thing'
+    );
+  });
+});
+
 describe('java exported semantics and edges', () => {
   it('exports public members, not private ones', async () => {
     const { db, dir } = await buildJavaRepo();
