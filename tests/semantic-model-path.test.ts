@@ -156,9 +156,9 @@ describe('model_path loading', () => {
   it('reports the exact validation messages', async () => {
     const { embedder } = await mockTransformers(join(tmp, 'cache-e'));
 
+    // The message is the contract the user reads; the shape carries only ok/message.
     expect(embedder.checkModelPath(join(tmp, 'missing'))).toEqual({
       ok: false,
-      reason: 'missing',
       message: `model_path ${join(tmp, 'missing')} not found — semantic search disabled`,
     });
 
@@ -167,7 +167,6 @@ describe('model_path loading', () => {
     writeFileSync(join(bare, 'config.json'), '{}\n');
     const result = embedder.checkModelPath(bare);
     expect(result.ok).toBe(false);
-    expect(result.reason).toBe('incomplete');
     expect(result.message).toMatch(/onnx\/model\.onnx/);
   });
 });

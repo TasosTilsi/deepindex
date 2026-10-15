@@ -1,4 +1,4 @@
-import { RequirementSchema, type Requirement } from './sync.js';
+import type { Requirement } from './sync.js';
 
 /**
  * Adapters for external trackers (issue #7).
@@ -95,8 +95,10 @@ export function normalizeRequirements(
   let skipped = 0;
 
   if (format === 'deepindex') {
+    // The canonical shape goes straight through: upsertRequirements is the single write path and
+    // validates it there, so parsing here would only validate it twice.
     const list = Array.isArray(raw) ? raw : [raw];
-    for (const item of list) requirements.push(RequirementSchema.parse(item));
+    for (const item of list) requirements.push(item as Requirement);
     return { requirements, warnings, skipped };
   }
 

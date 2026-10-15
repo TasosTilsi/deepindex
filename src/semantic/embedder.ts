@@ -97,7 +97,7 @@ export function modelCacheDir(): string {
 /** Result of validating a configured local model directory (issue #6). */
 export type ModelPathCheck =
   | { ok: true; dir: string; dtype?: 'q8' }
-  | { ok: false; reason: 'missing' | 'incomplete'; message: string };
+  | { ok: false; message: string };
 
 /**
  * Validates a local model directory (issue #6). A HuggingFace/optimum-cli export
@@ -109,7 +109,6 @@ export function checkModelPath(modelPath: string): ModelPathCheck {
   if (!existsSync(modelPath) || !statSync(modelPath).isDirectory()) {
     return {
       ok: false,
-      reason: 'missing',
       message: `model_path ${modelPath} not found — semantic search disabled`,
     };
   }
@@ -122,7 +121,6 @@ export function checkModelPath(modelPath: string): ModelPathCheck {
     const problems = [...missing, ...(onnx ? [] : ['onnx/model.onnx or onnx/model_quantized.onnx'])];
     return {
       ok: false,
-      reason: 'incomplete',
       message: `model_path ${modelPath} is missing ${problems.join(', ')} — semantic search disabled`,
     };
   }

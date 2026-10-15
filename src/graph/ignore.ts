@@ -10,7 +10,7 @@ import { join } from 'node:path';
  * One set, imported by both the index walk and the markdown corpus walk, so the
  * symbol graph and the doc corpus can never disagree about what is source.
  */
-export const DEFAULT_IGNORED_DIRS: ReadonlySet<string> = new Set([
+const DEFAULT_IGNORED_DIRS: ReadonlySet<string> = new Set([
   'node_modules',
   '.git',
   'dist',
@@ -37,19 +37,19 @@ export const DEFAULT_IGNORED_DIRS: ReadonlySet<string> = new Set([
   'tmp',
 ]);
 
-export interface IndexConfig {
+interface IndexConfig {
   /** Extra directory names to skip, from `[index] ignore`. */
   ignore: string[];
 }
 
-export const DEFAULT_INDEX_CONFIG: IndexConfig = { ignore: [] };
+const DEFAULT_INDEX_CONFIG: IndexConfig = { ignore: [] };
 
 /**
  * Reads `[index] ignore = ["a", "b"]` from .deepindex.toml. Hand-rolled like the
  * other section loaders in this codebase (no TOML dependency). A malformed value is
  * ignored rather than fatal: a bad ignore list must never stop an index run.
  */
-export function loadIndexConfig(repoPath: string): IndexConfig {
+function loadIndexConfig(repoPath: string): IndexConfig {
   const tomlPath = join(repoPath, '.deepindex.toml');
   if (!existsSync(tomlPath)) return { ...DEFAULT_INDEX_CONFIG };
   let text: string;

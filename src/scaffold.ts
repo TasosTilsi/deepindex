@@ -13,6 +13,7 @@
  */
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { npxCommand } from './version.js';
 
 /** Where pre-existing files are copied before install may rewrite them. */
 export const BACKUP_ROOT = '.deepindex-backup';
@@ -68,13 +69,6 @@ export interface ScaffoldOptions {
   guidance?: string | null;
   /** Add the di:* npm scripts when a package.json exists. */
   scripts?: boolean;
-}
-
-export interface ScaffoldReport {
-  actions: string[];
-  warnings: string[];
-  /** Directory holding the copies, or the directory that would hold them under dry-run. */
-  backupDir: string | null;
 }
 
 /**
@@ -165,7 +159,7 @@ export function ensureRepoConfig(repoRoot: string, dryRun: boolean): boolean {
 }
 
 /** Adds the di:* scripts, pinned the same way the harness wiring is. Idempotent. */
-export function ensurePackageScripts(repoRoot: string, dryRun: boolean, version: string): string[] {
+export function ensurePackageScripts(repoRoot: string, dryRun: boolean): string[] {
   const path = join(repoRoot, 'package.json');
   if (!existsSync(path)) return [];
   let pkg: { scripts?: Record<string, string> };
@@ -174,12 +168,12 @@ export function ensurePackageScripts(repoRoot: string, dryRun: boolean, version:
   } catch {
     return [];
   }
-  const npx = `npx -y deepindex@${version}`;
+  // Pinned the same way the harness wiring is, through the one helper that owns the pin (DI-05).
   const wanted: Record<string, string> = {
-    'di:index': `${npx} index .`,
-    'di:health': `${npx} health .`,
-    'di:serve': `${npx} serve --port 7331`,
-    'di:retrieve': `${npx} retrieve`,
+    'di:index': npxCommand('index', '.'),
+    'di:health': npxCommand('health', '.'),
+    'di:serve': npxCommand('serve', '--port', '7331'),
+    'di:retrieve': npxCommand('retrieve'),
   };
   pkg.scripts = pkg.scripts ?? {};
   const added = Object.keys(wanted).filter((key) => !(key in pkg.scripts!));
@@ -230,11 +224,7 @@ export function appendGuidance(
 }
 
 /** The repo-level envelope: everything install does beyond harness wiring. */
-export function scaffoldRepo(
-  repoRoot: string,
-  version: string,
-  opts: ScaffoldOptions = {}
-): ScaffoldReport {
+export function scaffoldRepo(repoRoot: string, opts: ScaffoldOptions = {}): string[] {
   const dryRun = opts.dryRun === true;
   const actions: string[] = [];
   const label = (what: string) => (dryRun ? `would ${what}` : what);
@@ -247,12 +237,12 @@ export function scaffoldRepo(
     actions.push(label(`add ${ignored.join(', ')} to .gitignore`));
   }
   if (opts.scripts !== false) {
-    const scripts = ensurePackageScripts(repoRoot, dryRun, version);
+    const scripts = ensurePackageScripts(repoRoot, dryRun);
     if (scripts.length > 0) actions.push(label(`add npm scripts: ${scripts.join(', ')}`));
   }
   if (opts.guidance !== null && opts.guidance !== undefined) {
     const written = appendGuidance(repoRoot, opts.guidance, dryRun);
     if (written) actions.push(label(`document deepindex in ${written}`));
   }
-  return { actions, warnings: [], backupDir: null };
+  return actions;
 }

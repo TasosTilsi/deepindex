@@ -102,15 +102,6 @@ interface IstanbulFileEntry {
 }
 
 /**
- * Parses an istanbul/v8 coverage summary.
- *
- * NOTE (issue #12): the resulting line percentage is NOT wired into the health
- * score. The `coverage` dimension is `tests_rate * lint_factor`; recording this
- * summary under the `coverage_lines` signal key has no effect on any dimension.
- * The parser is kept as a public helper — changing what `coverage` means is a
- * separate decision, not a side effect of a bug fix.
- */
-/**
  * Parses JUnit XML (maven-surefire, pytest --junit-xml, Gradle, dotnet, cargo-nextest
  * all emit this de-facto schema). Only six scalar attributes matter, so a hand-rolled
  * scan is enough and this repo needs no XML dependency.
@@ -139,6 +130,15 @@ export function parseJunitXml(xml: string): JunitSummary {
   return { total, fail, skip, pass: Math.max(0, total - fail - skip) };
 }
 
+/**
+ * Parses an istanbul/v8 coverage summary.
+ *
+ * NOTE (issue #12): the resulting line percentage is NOT wired into the health
+ * score. The `coverage` dimension is `tests_rate * lint_factor`; recording this
+ * summary under the `coverage_lines` signal key has no effect on any dimension.
+ * The parser is kept as a public helper — changing what `coverage` means is a
+ * separate decision, not a side effect of a bug fix.
+ */
 export function parseCoverageJson(json: unknown): CoverageSummary {
   if (!json || typeof json !== 'object' || Array.isArray(json)) {
     throw new TypeError('parseCoverageJson: input must be a non-null object');

@@ -32,7 +32,6 @@ import {
   type RequirementFormat,
 } from './requirements/sources.js';
 import { calculateReqCoverage } from './requirements/coverage.js';
-import { initRequirementsDb } from './requirements/setup.js';
 import { clearSignals, normaliseSignalPairs } from './health.js';
 import { parseEslintJson, parseJunitXml, parseVitestJson } from './reflect.js';
 import { gitIndex, gitSync, syncSafe, type IndexResult } from './git/indexer.js';
@@ -475,8 +474,7 @@ program
         }
 
         withDb('requirements import', opts, (db) => {
-          initRequirementsDb(db);
-          const { imported, atomic } = upsertRequirements(db, report.requirements);
+              const { imported, atomic } = upsertRequirements(db, report.requirements);
           if (opts.json) {
             console.log(
               JSON.stringify({ imported, atomic, skipped: report.skipped, warnings: report.warnings }, null, 2)
@@ -500,7 +498,6 @@ program
         process.exit(2);
       }
       const db = initDb(dbPath);
-      initRequirementsDb(db);
       try {
         const { imported, atomic } = syncRequirements(db, file);
         console.log(`Indexed ${imported} requirements and ${atomic} atomic statements.`);
@@ -522,7 +519,6 @@ program
         process.exit(2);
       }
       const db = initDb(dbPath);
-      initRequirementsDb(db);
       try {
         const report = calculateReqCoverage(db);
         console.log('Requirements Coverage Report');
@@ -1075,11 +1071,11 @@ program
           }
         }
 
-        for (const action of scaffoldRepo(projectRoot, readVersion(), {
+        for (const action of scaffoldRepo(projectRoot, {
           dryRun: opts.dryRun,
           guidance: wantsGuidance ? opts.harness : null,
           scripts: opts.scripts,
-        }).actions) {
+        })) {
           say(action);
         }
 
