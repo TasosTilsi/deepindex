@@ -18,6 +18,11 @@ import { projectFullGraph, validateProjection } from './graph/projection.js';
 import { getImpact, findParallelStorage } from './graph/sql-impact.js';
 import { syncRequirements, upsertRequirements } from './requirements/sync.js';
 import {
+  ImportUsageError,
+  loadRequirementsExport,
+  renderImport,
+} from './requirements/import-verb.js';
+import {
   applySignals,
   computeSignals,
   SignalUsageError,
@@ -347,20 +352,17 @@ program
         file: string,
         opts: { db: string; format: string; dryRun: boolean; json: boolean }
       ) => {
-        const format = opts.format as RequirementFormat;
-        if (!['jira', 'github', 'deepindex'].includes(format)) {
-          console.error(`deepindex requirements import: invalid --format: ${opts.format}`);
-          process.exit(2);
-        }
-        if (!existsSync(file)) {
-          console.error(`deepindex requirements import: file not found: ${file}`);
-          process.exit(2);
-        }
-
+        // Issue #21: the logic lives in src/requirements/import-verb.ts, which the tests call
+        // in-process. The action keeps the process plumbing: usage errors exit 2, a file that
+        // cannot be parsed or normalised exits 1, exactly as before.
         let report: NormalizeReport;
         try {
-          report = normalizeRequirements(format, JSON.parse(readFileSync(file, 'utf8')));
+          report = loadRequirementsExport(file, opts.format);
         } catch (err) {
+          if (err instanceof ImportUsageError) {
+            console.error(`deepindex requirements import: ${err.message}`);
+            process.exit(2);
+          }
           const message = err instanceof Error ? err.message : String(err);
           console.error(`deepindex requirements import: ${message}`);
           process.exit(1);
@@ -371,27 +373,21 @@ program
         }
 
         if (opts.dryRun) {
-          const summary = {
-            imported: report.requirements.length,
-            atomic: 0,
-            skipped: report.skipped,
-            warnings: report.warnings,
-          };
-          if (opts.json) console.log(JSON.stringify(summary, null, 2));
-          else
-            console.log(`Would import ${report.requirements.length} requirements (${report.skipped} skipped).`);
+          console.log(renderImport(report, { json: opts.json, dryRun: true }));
           return;
         }
 
         withDb('requirements import', opts, (db) => {
-              const { imported, atomic } = upsertRequirements(db, report.requirements);
-          if (opts.json) {
-            console.log(
-              JSON.stringify({ imported, atomic, skipped: report.skipped, warnings: report.warnings }, null, 2)
-            );
-          } else {
-            console.log(`Imported ${imported} requirements (${atomic} atomic statements) from ${format} export.`);
-          }
+          const { imported, atomic } = upsertRequirements(db, report.requirements);
+          console.log(
+            renderImport(report, {
+              json: opts.json,
+              dryRun: false,
+              format: opts.format,
+              imported,
+              atomic,
+            })
+          );
         });
       }
     );
