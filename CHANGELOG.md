@@ -99,7 +99,7 @@ Version bumped, not yet tagged or published. Closes the fifteen issues opened af
   pinned to the same `npx -y deepindex@<version>` the wiring uses, backs up every file it may
   rewrite into `.deepindex-backup/<timestamp>/`, and indexes the repository with a health
   reading before returning. `--dry-run` reports all of it and writes nothing; `--no-index` and
-  `--no-scripts` opt out of parts; `--claude-md` appends a retrieval nudge once, off by
+  `--no-scripts` opt out of parts; `--guidance` appends a retrieval nudge once, off by
   default. This replaces the separate bootstrap shell script, whose pnpm allowlist had
   silently stopped working because it wrote to `package.json#pnpm`, a location pnpm 10 and
   later no longer read. (#19)

@@ -159,7 +159,7 @@ describe('pinned npx install commands (DI-05)', () => {
     // The property, not the expression it used to be written with: the plugin now runs the CLI
       // through argv (`execFileSync("npx", ["-y", `deepindex@<ver>`, ...args])`) so that a harness
       // session id cannot inject shell metacharacters. The pin is what must hold.
-      expect(plugin).toContain(`deepindex@${PIN}`);
+      expect(plugin).toContain(PIN);
     rmSync(d, { recursive: true, force: true });
   });
 

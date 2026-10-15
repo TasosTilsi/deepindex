@@ -948,7 +948,7 @@ program
         if (opts.dryRun) {
           say(`would install the ${opts.harness ?? 'selected'} harness wiring`);
         } else if (opts.harness) {
-          console.log(installHarness(projectRoot, opts.harness as Harness).message);
+          console.log(installHarness(projectRoot, opts.harness as Harness, { backup: false }).message);
         } else {
           const results = await installInteractive(projectRoot);
           for (const r of results) console.log(r.message);

@@ -26,5 +26,14 @@ jobs:
         run: CI=1 pnpm exec vitest run
       - name: Dashboard build
         run: pnpm --dir dashboard build
+
+      - name: Build the published artifact
+        run: pnpm build
+      - name: Run the published artifact
+        # Nothing else in CI executes dist/: the tarball's bin was only ever exercised
+        # by a user installing it. tests/packaged-cli.test.ts runs the same file.
+        run: |
+          node dist/cli.js --version
+          node dist/cli.js index fixtures/sample-repo --db /tmp/ci-artifact.db
       - name: Smoke
         run: pnpm run smoke

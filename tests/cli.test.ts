@@ -5,7 +5,16 @@ import { join, resolve } from 'node:path';
 import { spawn, type ChildProcess } from 'node:child_process';
 
 const FIXTURE = resolve(process.cwd(), 'fixtures/sample-repo');
-const SERVE_PORT = 17331;
+// A fixed port collides with whatever else is listening (another checkout of this suite, a local
+// dev server). Ask the OS for a free one at import time instead — serve.test.ts already uses port 0.
+const SERVE_PORT = (() => {
+  const probe = createServer();
+  probe.listen(0);
+  const address = probe.address();
+  const port = typeof address === 'object' && address ? address.port : 17331;
+  probe.close();
+  return port;
+})();
 
 function run(
   args: string[],
