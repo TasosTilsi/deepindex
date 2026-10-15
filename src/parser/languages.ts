@@ -70,6 +70,9 @@ export const LANGUAGE_CONFIGS: Record<string, LanguageConfig> = {
     nameFields: ['name'],
   },
   cpp: {
+    // C has no visibility keyword, but `static` makes a symbol file-local; the storage
+    // specifier is read in isExportedByDefault.
+    exportedByDefault: true,
     wasmFile: 'tree-sitter-cpp.wasm',
     extensions: ['.cpp', '.hpp', '.cc', '.cxx'],
     nodeMap: {
@@ -102,6 +105,9 @@ export const LANGUAGE_CONFIGS: Record<string, LanguageConfig> = {
     nameFields: ['name'],
   },
   c: {
+    // C has no visibility keyword, but `static` makes a symbol file-local; the storage
+    // specifier is read in isExportedByDefault.
+    exportedByDefault: true,
     wasmFile: 'tree-sitter-c.wasm',
     extensions: ['.c', '.h'],
     nodeMap: {
@@ -121,6 +127,9 @@ export const LANGUAGE_CONFIGS: Record<string, LanguageConfig> = {
     nameFields: ['name'],
   },
   ruby: {
+    // No visibility keyword: a method is public unless `private` is CALLED, which is a statement,
+    // not a modifier.
+    exportedByDefault: true,
     wasmFile: 'tree-sitter-ruby.wasm',
     extensions: ['.rb'],
     nodeMap: {
@@ -208,6 +217,9 @@ export const LANGUAGE_CONFIGS: Record<string, LanguageConfig> = {
     nameFields: ['name'],
   },
   objc: {
+    // C has no visibility keyword, but `static` makes a symbol file-local; the storage
+    // specifier is read in isExportedByDefault.
+    exportedByDefault: true,
     wasmFile: 'tree-sitter-objc.wasm',
     extensions: ['.m', '.mm'],
     nodeMap: {

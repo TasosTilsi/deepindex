@@ -347,6 +347,8 @@ Two guarantees worth knowing:
 | TypeScript / JavaScript | `import`/`export`, relative and bare, with the NodeNext emitted-extension mapping (`.js` → `.ts`) |
 | Java | `import a.b.C;`, `import static a.b.C.m;`, `import a.b.*;`, and default-package (`import C;`) |
 | Python | `import pkg.mod`, `import a.b as m`, `from .pkg import x` (dots climb packages from the module's own package). Roots: the repository root and `src/` |
+| Ruby | `require_relative 'helper'` resolved against the file; `require 'json'` is external |
+| C / C++ / Objective-C | `#include "local.h"` next to the file, at the repository root, or under `include/`. Angle-bracket includes are system headers and produce no row; an unresolved quoted include stays external, since `-I` may point at it |
 | Rust | `use crate::a::b::Item` (the file is the longest module prefix), `use self::x`, `use super::y`, `mod sibling`, and `::other_crate` stays external. The crate root is `src/` |
 
 | Harness | What's installed |

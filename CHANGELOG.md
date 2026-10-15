@@ -110,6 +110,14 @@ Version bumped, not yet tagged or published. Closes the fifteen issues opened af
 
 ### Added
 
+- **Ruby and the C family are extracted and resolved.** `require_relative 'helper'` is relative to
+  the file, so it resolves (normalised to `./helper`) and a miss is broken; a bare `require 'json'`
+  stays an external row, like `import express` does. A quoted `#include "local.h"` is looked for
+  next to the file, at the repository root, then under `include/`, and an unresolved one stays
+  **external rather than broken** — reporting it broken would fill the health report with false
+  positives for every header that lives behind a `-I` directory. Angle-bracket includes are system
+  headers and produce no row. Ruby symbols report `exported` (no visibility keyword), and C symbols
+  report it unless `static` makes them file-local. (#20)
 - **Rust imports are extracted and resolved.** `use` and `mod` declarations produced no rows, so
   no edge could exist whatever the export flag said. A path is resolved the Rust way: `crate::` is
   the crate root (`src/`), `self::` the current module's directory, `super::` its parent, and the

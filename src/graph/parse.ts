@@ -238,7 +238,11 @@ function isExportedByDefault(node: SyntaxNode, config: LanguageConfig): boolean 
   if (!config.exportedByDefault) return false;
   const modifiers =
     node.childForFieldName('modifiers') ?? node.namedChildren.find((c) => c.type === 'modifiers');
-  return modifiers ? !/\bprivate\b/.test(modifiers.text) : true;
+  if (modifiers) return !/\bprivate\b/.test(modifiers.text);
+  // C and C++ mark the file-scope symbols with `static` where Java uses `private`.
+  const storage = node.namedChildren.find((c) => c.type === 'storage_class_specifier');
+  if (storage) return !/\bstatic\b/.test(storage.text);
+  return true;
 }
 
 function nodeToSymbol(
@@ -305,6 +309,38 @@ function collectImports(node: SyntaxNode, out: ParsedImport[], langKey: string):
   // its other `dotted_name` children are the imported NAMES, so the field is the only safe reading.
   // Shapes measured against the grammar; before this branch Python produced no import rows at all,
   // which is why setting its export flag alone would have changed nothing.
+  // Issue #20, the C family. `#include "x.h"` is a `preproc_include` whose `path` field is a
+  // string_literal; `<x.h>` is a system_lib_string and names no file in this repository, so it
+  // produces no row at all.
+  if ((langKey === 'c' || langKey === 'cpp' || langKey === 'objc') && node.type === 'preproc_include') {
+    const included = node.childForFieldName('path');
+    if (included && included.type === 'string_literal') {
+      out.push({ source: included.text.replace(/^"|"$/g, '') });
+    }
+    return;
+  }
+
+  // Issue #20, Ruby. `require_relative 'helper'` is a `call` to that method with the path in its
+  // argument list. It is normalised to `./helper` so that a miss is broken by the same rule every
+  // relative import uses; a bare `require 'json'` stays bare and is left to the external verdict.
+  if (langKey === 'ruby' && node.type === 'call') {
+    const method =
+      node.childForFieldName('method') ?? node.namedChildren.find((child) => child.type === 'identifier');
+    const args = node.childForFieldName('arguments');
+    if (!method || !args) return;
+    const literal = args.namedChildren.find((child) => child.type === 'string');
+    if (!literal) return;
+    const text = literal.text.replace(/^['"]|['"]$/g, '');
+    if (method.text === 'require_relative') {
+      out.push({ source: text.startsWith('.') ? text : `./${text}` });
+    } else if (method.text === 'require') {
+      // Kept as written: `./x` is relative to the file, anything else is a gem or the standard
+      // library and becomes an external row like `import express` or `import os` do elsewhere.
+      out.push({ source: text });
+    }
+    return;
+  }
+
   // Issue #20, Rust. Measured shapes: `use crate::a::b;` is a `use_declaration` whose `argument`
   // field holds the path; `use a::b::{C, D};` is a `scoped_use_list` whose text carries the braces;
   // and `mod helpers;` is a `mod_item` naming a sibling file (`mod x { .. }` names none).

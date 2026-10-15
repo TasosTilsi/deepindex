@@ -5,6 +5,8 @@ import type { JavaClassIndex } from './java-resolve.js';
 import { javaResolve } from './java-resolve.js';
 import { pythonResolve } from './python-resolve.js';
 import { rustResolve } from './rust-resolve.js';
+import { rubyResolve } from './ruby-resolve.js';
+import { cResolve } from './c-resolve.js';
 
 const EXT_TRY = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs'];
 
@@ -63,6 +65,11 @@ export function resolveImport(
   if (langForExt(extname(fromFile)) === 'python') {
     return pythonResolve(repoRoot, fromFile, importSource);
   }
+  // `require_relative` is relative to the file, so it has its own candidate rules — none of the
+  // JavaScript extensions below apply.
+  if (langForExt(extname(fromFile)) === 'ruby') {
+    return rubyResolve(repoRoot, fromFile, importSource);
+  }
 
   // External / bare module — not resolvable in our graph (see isExternalSpecifier),
   // with one exception: for a Java source a non-relative specifier may be an in-tree
@@ -77,6 +84,12 @@ export function resolveImport(
     // names an item inside a module; only those three roots can land inside the tree.
     if (langForExt(extname(fromFile)) === 'rust') {
       return rustResolve(repoRoot, fromFile, importSource);
+    }
+    // A quoted `#include` is relative to the including file, then to whatever `-I` points at. Only
+    // the first is knowable here, so a miss returns null and stays external.
+    const language = langForExt(extname(fromFile));
+    if (language === 'c' || language === 'cpp' || language === 'objc') {
+      return cResolve(repoRoot, fromFile, importSource);
     }
     return null;
   }
