@@ -99,7 +99,7 @@ deepindex health <repo> --issues-limit 50 --issues-offset 50
 | --- | --- |
 | `tests_pass` | test pass rate, e.g. `148/150 → 0.9867` |
 | `tests_total` | accepted for compatibility; **ignored** by the score (the value already is the ratio) |
-| `lint_errors` | share of lint problems that are errors, e.g. `0 errors / 40 problems → 0` |
+| `lint_errors` | share of **linted files that reported at least one error**, e.g. `1 of 40 files → 0.025`. Not `errors / (errors + warnings)`: that made warnings improve the signal and saturated to 1.0 for any error-only run |
 | `lint_total` | accepted for compatibility; ignored like `tests_total` |
 
 `deepindex signal` is the supported way to feed them — it does the division for you:

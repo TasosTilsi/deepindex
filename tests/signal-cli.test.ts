@@ -116,7 +116,7 @@ describe('signal verb', () => {
     }
   });
 
-  it('derives lint signals from an ESLint report and treats a clean run as zero errors', async () => {
+  it('derives lint signals from an ESLint report as the share of files that fail lint', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'deepindex-signal-'));
     try {
       const dbPath = freshDb(dir);
@@ -131,8 +131,39 @@ describe('signal verb', () => {
       const r = await run(['signal', '--from-eslint', report, '--db', dbPath]);
       expect(r.code).toBe(0);
       const signals = readSignals(dbPath);
-      expect(signals.lint_errors).toBeCloseTo(1 / 4, 6);
+      // One of the two linted files has an error. The old mapping stored errors/total, which
+      // made the value depend on how many warnings surrounded the error.
+      expect(signals.lint_errors).toBeCloseTo(0.5, 6);
       expect(signals.lint_total).toBe(1);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('lets a warning count change nothing about the lint signal', async () => {
+    // A release review found the mapping inverted: one error with no warnings stored 1.0
+    // (lint_factor 0) while the same error beside 99 warnings stored 0.01 (lint_factor 0.99),
+    // so a dirtier report scored better and any error-only run saturated. These two reports
+    // carry the same single error and must produce the same signal.
+    const dir = mkdtempSync(join(tmpdir(), 'deepindex-signal-'));
+    try {
+      const dbPath = freshDb(dir);
+      const quiet = join(dir, 'quiet.json');
+      const noisy = join(dir, 'noisy.json');
+      writeFileSync(quiet, JSON.stringify([{ filePath: 'a.ts', errorCount: 1, warningCount: 0 }]));
+      writeFileSync(noisy, JSON.stringify([{ filePath: 'a.ts', errorCount: 1, warningCount: 99 }]));
+
+      expect((await run(['signal', '--from-eslint', quiet, '--db', dbPath])).code).toBe(0);
+      const withoutWarnings = readSignals(dbPath).lint_errors;
+      expect((await run(['signal', '--from-eslint', noisy, '--db', dbPath])).code).toBe(0);
+      const withWarnings = readSignals(dbPath).lint_errors;
+
+      expect(withWarnings).toBeCloseTo(withoutWarnings, 6);
+      // And a clean report is zero, so lint_factor stays 1.
+      const clean = join(dir, 'clean.json');
+      writeFileSync(clean, JSON.stringify([{ filePath: 'a.ts', errorCount: 0, warningCount: 7 }]));
+      await run(['signal', '--from-eslint', clean, '--db', dbPath]);
+      expect(readSignals(dbPath).lint_errors).toBe(0);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

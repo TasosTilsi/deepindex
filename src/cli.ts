@@ -275,9 +275,13 @@ program
         if (opts.fromEslint) {
           source = 'eslint';
           const summary = parseEslintJson(JSON.parse(readReport(opts.fromEslint)));
-          pairs.lint_errors = summary.errors;
+          // The share of linted files that have an error, not errors / (errors + warnings).
+          // The latter made warnings improve the signal and saturated to 1.0 for any error-only
+          // report, which drove lint_factor - and with it coverage - to zero. (#4, found in the
+          // pre-release release review.)
+          pairs.lint_errors = summary.filesWithErrors;
           // A clean run reports zero problems; the sentinel keeps the division safe.
-          pairs.lint_total = Math.max(1, summary.total);
+          pairs.lint_total = Math.max(1, summary.files);
         }
         if (opts.fromJunit) {
           source = 'junit';

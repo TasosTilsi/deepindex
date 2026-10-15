@@ -110,6 +110,15 @@ Version bumped, not yet tagged or published. Closes the fifteen issues opened af
 
 ### Changed
 
+- **A warning count can no longer change the lint signal.** `signal --from-eslint` mapped ESLint
+  to `errors / (errors + warnings)`, which the reader turns into `lint_factor = 1 - value`. One
+  error with no warnings therefore stored 1.0 and drove `coverage` to zero, while the *same* error
+  beside ninety-nine warnings stored 0.01 — a dirtier report scoring better, saturating for any
+  error-only run, and firing auto-repair on repositories that were fine. It now stores the share
+  of linted files that reported at least one error: bounded, proportional, and independent of how
+  many warnings surround the failure. `parseEslintJson` exposes that count as `filesWithErrors`.
+  Found by the pre-release review, not by the suite — which had pinned the wrong value. (#4)
+
 - `deepindex install` and the harness wiring are unchanged; the release workflow is not.
   The tag-triggered workflow could not fail: it published twice and ended in `true`, and its
   registry gate grepped for the literal `"0.3.4"`, which is true forever once shipped. It also

@@ -61,7 +61,7 @@ describe('reflect', () => {
         { errorCount: 2, warningCount: 3 },
         { errorCount: 0, warningCount: 1 },
       ]);
-      expect(v).toEqual({ errors: 2, warnings: 4, total: 6, files: 2 });
+      expect(v).toEqual({ errors: 2, warnings: 4, total: 6, files: 2, filesWithErrors: 1 });
     });
 
     it('throws TypeError on non-array input', () => {
@@ -76,7 +76,7 @@ describe('reflect', () => {
 
     it('returns zeros for an empty array', () => {
       const v = parseEslintJson([]);
-      expect(v).toEqual({ errors: 0, warnings: 0, total: 0, files: 0 });
+      expect(v).toEqual({ errors: 0, warnings: 0, total: 0, files: 0, filesWithErrors: 0 });
     });
   });
 

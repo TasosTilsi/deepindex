@@ -22,6 +22,14 @@ export interface EslintSummary {
   warnings: number;
   total: number;
   files: number;
+  /**
+   * How many of the linted files reported at least one error.
+   *
+   * This is the stable severity reading: `errorCount / warningCount` is not, because a file with
+   * one error and no warnings looks worse than the same error beside a hundred warnings, and the
+   * ratio saturates.
+   */
+  filesWithErrors: number;
 }
 
 export interface CoverageSummary {
@@ -68,6 +76,7 @@ export function parseEslintJson(json: unknown): EslintSummary {
   }
   let errors = 0;
   let warnings = 0;
+  let filesWithErrors = 0;
   for (const item of json) {
     if (!item || typeof item !== 'object') {
       throw new TypeError('parseEslintJson: each result must be an object');
@@ -78,8 +87,9 @@ export function parseEslintJson(json: unknown): EslintSummary {
     }
     errors += r.errorCount;
     warnings += r.warningCount;
+    if (r.errorCount > 0) filesWithErrors += 1;
   }
-  return { errors, warnings, total: errors + warnings, files: json.length };
+  return { errors, warnings, total: errors + warnings, files: json.length, filesWithErrors };
 }
 
 interface IstanbulFileEntry {
